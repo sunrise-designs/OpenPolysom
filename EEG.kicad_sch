@@ -1624,9 +1624,20 @@
 			(embedded_fonts no)
 		)
 	)
+	(text "Ipsum lorem\n"
+		(exclude_from_sim no)
+		(at 18.542 16.256 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(color 132 0 0 1)
+			)
+		)
+		(uuid "311cbd43-e22e-495b-ab52-b483cd70ad45")
+	)
 	(text "EN HIGH = Enable (active)\n"
 		(exclude_from_sim no)
-		(at 30.48 31.496 0)
+		(at 33.02 83.566 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1634,8 +1645,21 @@
 		)
 		(uuid "ce601929-7cc8-415d-9401-621d5577260f")
 	)
+	(text "What's going on here:\n"
+		(exclude_from_sim no)
+		(at 61.468 14.224 0)
+		(effects
+			(font
+				(size 1.905 1.905)
+				(thickness 0.381)
+				(bold yes)
+				(color 132 0 0 1)
+			)
+		)
+		(uuid "e6bbd3df-e328-4085-8570-59c09240d555")
+	)
 	(junction
-		(at 44.45 26.67)
+		(at 46.99 78.74)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "054f52d0-d179-43a9-900f-8b51578eee13")
@@ -1647,7 +1671,7 @@
 		(uuid "51829ffc-7431-4208-b691-8567a2c06d02")
 	)
 	(junction
-		(at 59.69 41.91)
+		(at 62.23 93.98)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "7197fdd3-8218-4cc5-a434-8bcfff6addc9")
@@ -1660,7 +1684,7 @@
 	)
 	(wire
 		(pts
-			(xy 59.69 36.83) (xy 59.69 41.91)
+			(xy 62.23 88.9) (xy 62.23 93.98)
 		)
 		(stroke
 			(width 0)
@@ -1690,7 +1714,7 @@
 	)
 	(wire
 		(pts
-			(xy 59.69 41.91) (xy 59.69 46.99)
+			(xy 62.23 93.98) (xy 62.23 99.06)
 		)
 		(stroke
 			(width 0)
@@ -1700,7 +1724,7 @@
 	)
 	(wire
 		(pts
-			(xy 44.45 39.37) (xy 44.45 41.91)
+			(xy 46.99 91.44) (xy 46.99 93.98)
 		)
 		(stroke
 			(width 0)
@@ -1710,7 +1734,7 @@
 	)
 	(wire
 		(pts
-			(xy 36.83 29.21) (xy 52.07 29.21)
+			(xy 39.37 81.28) (xy 54.61 81.28)
 		)
 		(stroke
 			(width 0)
@@ -1730,7 +1754,7 @@
 	)
 	(wire
 		(pts
-			(xy 44.45 41.91) (xy 59.69 41.91)
+			(xy 46.99 93.98) (xy 62.23 93.98)
 		)
 		(stroke
 			(width 0)
@@ -1750,7 +1774,7 @@
 	)
 	(wire
 		(pts
-			(xy 59.69 41.91) (xy 69.85 41.91)
+			(xy 62.23 93.98) (xy 72.39 93.98)
 		)
 		(stroke
 			(width 0)
@@ -1800,7 +1824,7 @@
 	)
 	(wire
 		(pts
-			(xy 67.31 29.21) (xy 69.85 29.21)
+			(xy 69.85 81.28) (xy 72.39 81.28)
 		)
 		(stroke
 			(width 0)
@@ -1820,7 +1844,7 @@
 	)
 	(wire
 		(pts
-			(xy 69.85 36.83) (xy 69.85 41.91)
+			(xy 72.39 88.9) (xy 72.39 93.98)
 		)
 		(stroke
 			(width 0)
@@ -1830,7 +1854,7 @@
 	)
 	(wire
 		(pts
-			(xy 44.45 26.67) (xy 44.45 31.75)
+			(xy 46.99 78.74) (xy 46.99 83.82)
 		)
 		(stroke
 			(width 0)
@@ -1850,7 +1874,7 @@
 	)
 	(wire
 		(pts
-			(xy 36.83 20.32) (xy 36.83 26.67)
+			(xy 39.37 72.39) (xy 39.37 78.74)
 		)
 		(stroke
 			(width 0)
@@ -1870,7 +1894,7 @@
 	)
 	(wire
 		(pts
-			(xy 67.31 26.67) (xy 76.2 26.67)
+			(xy 69.85 78.74) (xy 78.74 78.74)
 		)
 		(stroke
 			(width 0)
@@ -1920,7 +1944,7 @@
 	)
 	(wire
 		(pts
-			(xy 52.07 26.67) (xy 44.45 26.67)
+			(xy 54.61 78.74) (xy 46.99 78.74)
 		)
 		(stroke
 			(width 0)
@@ -1928,9 +1952,31 @@
 		)
 		(uuid "ec02c2d6-701f-42c9-b361-efb1e60f0cd5")
 	)
+	(polyline
+		(pts
+			(xy 12.7 34.29) (xy 118.11 34.29)
+		)
+		(stroke
+			(width 0)
+			(type dash)
+			(color 132 0 0 1)
+		)
+		(uuid "ef7324bf-88e8-446a-8379-613b24dc564b")
+	)
+	(polyline
+		(pts
+			(xy 118.11 12.7) (xy 118.11 34.29)
+		)
+		(stroke
+			(width 0)
+			(type dash)
+			(color 132 0 0 1)
+		)
+		(uuid "f08f940f-8879-4f5b-9238-112822f28016")
+	)
 	(wire
 		(pts
-			(xy 44.45 26.67) (xy 36.83 26.67)
+			(xy 46.99 78.74) (xy 39.37 78.74)
 		)
 		(stroke
 			(width 0)
@@ -1949,7 +1995,7 @@
 		(uuid "b009b135-b161-403e-8476-4819d966b0e2")
 	)
 	(label "AVDD"
-		(at 76.2 26.67 0)
+		(at 78.74 78.74 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1960,7 +2006,7 @@
 	)
 	(hierarchical_label "GND"
 		(shape output)
-		(at 59.69 46.99 270)
+		(at 62.23 99.06 270)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -2026,7 +2072,7 @@
 	)
 	(hierarchical_label "VDD"
 		(shape input)
-		(at 36.83 20.32 90)
+		(at 39.37 72.39 90)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -2037,7 +2083,7 @@
 	)
 	(hierarchical_label "EN"
 		(shape input)
-		(at 36.83 29.21 180)
+		(at 39.37 81.28 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -2059,7 +2105,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 69.85 33.02 0)
+		(at 72.39 85.09 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -2070,7 +2116,7 @@
 		(fields_autoplaced yes)
 		(uuid "1aefdd2b-0f61-49df-a475-b19282b3c12a")
 		(property "Reference" "C7"
-			(at 73.66 31.7499 0)
+			(at 76.2 83.8199 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2081,7 +2127,7 @@
 			)
 		)
 		(property "Value" "470p"
-			(at 73.66 34.2899 0)
+			(at 76.2 86.3599 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2092,7 +2138,7 @@
 			)
 		)
 		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
-			(at 70.8152 36.83 0)
+			(at 73.3552 88.9 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2103,7 +2149,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 69.85 33.02 0)
+			(at 72.39 85.09 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2114,7 +2160,7 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
-			(at 69.85 33.02 0)
+			(at 72.39 85.09 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2141,7 +2187,7 @@
 	)
 	(symbol
 		(lib_id "Regulator_Linear:MIC5205-3.3YM5")
-		(at 59.69 29.21 0)
+		(at 62.23 81.28 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -2152,7 +2198,7 @@
 		(fields_autoplaced yes)
 		(uuid "1ec24f60-8f56-4663-a147-f0a9c38e2d78")
 		(property "Reference" "U11"
-			(at 59.69 20.32 0)
+			(at 62.23 72.39 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2162,7 +2208,7 @@
 			)
 		)
 		(property "Value" "MIC5205-3.3YM5"
-			(at 59.69 22.86 0)
+			(at 62.23 74.93 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2172,7 +2218,7 @@
 			)
 		)
 		(property "Footprint" "Package_TO_SOT_SMD:SOT-23-5"
-			(at 59.69 20.955 0)
+			(at 62.23 73.025 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2183,7 +2229,7 @@
 			)
 		)
 		(property "Datasheet" "http://ww1.microchip.com/downloads/en/DeviceDoc/20005785A.pdf"
-			(at 59.69 29.21 0)
+			(at 62.23 81.28 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2194,7 +2240,7 @@
 			)
 		)
 		(property "Description" "150mA low dropout linear regulator, fixed 3.3V output, SOT-23-5"
-			(at 59.69 29.21 0)
+			(at 62.23 81.28 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2499,7 +2545,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 44.45 35.56 0)
+		(at 46.99 87.63 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -2509,7 +2555,7 @@
 		(dnp no)
 		(uuid "54aed4e0-4fe9-43a4-9b1c-653f9fca3c68")
 		(property "Reference" "C21"
-			(at 47.244 34.798 0)
+			(at 49.784 86.868 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2520,7 +2566,7 @@
 			)
 		)
 		(property "Value" "1u"
-			(at 47.498 36.83 0)
+			(at 50.038 88.9 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2531,7 +2577,7 @@
 			)
 		)
 		(property "Footprint" "Capacitor_SMD:C_1206_3216Metric"
-			(at 45.4152 39.37 0)
+			(at 47.9552 91.44 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2542,7 +2588,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 44.45 35.56 0)
+			(at 46.99 87.63 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2553,7 +2599,7 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
-			(at 44.45 35.56 0)
+			(at 46.99 87.63 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)

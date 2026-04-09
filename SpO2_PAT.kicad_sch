@@ -431,6 +431,19 @@
 			(embedded_fonts no)
 		)
 	)
+	(text "What's going on here:\n"
+		(exclude_from_sim no)
+		(at 61.468 14.224 0)
+		(effects
+			(font
+				(size 1.905 1.905)
+				(thickness 0.381)
+				(bold yes)
+				(color 132 0 0 1)
+			)
+		)
+		(uuid "101a7133-b9b3-481a-b3f5-5ff59d366e1d")
+	)
 	(text "I2C address = 0x48"
 		(exclude_from_sim no)
 		(at 147.066 100.076 0)
@@ -441,11 +454,33 @@
 		)
 		(uuid "142dac63-7d77-4128-8ed2-9d4e19a0d008")
 	)
+	(text "Ipsum lorem\n"
+		(exclude_from_sim no)
+		(at 18.542 16.256 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(color 132 0 0 1)
+			)
+		)
+		(uuid "665c3b28-c970-4f6e-8973-72f6daae7137")
+	)
 	(junction
 		(at 133.35 97.79)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "10defd31-2f9b-4db4-befd-4e32a2ce4b5b")
+	)
+	(polyline
+		(pts
+			(xy 12.7 34.29) (xy 118.11 34.29)
+		)
+		(stroke
+			(width 0)
+			(type dash)
+			(color 132 0 0 1)
+		)
+		(uuid "211e0e12-5ff6-4214-868c-605ef0a0e353")
 	)
 	(wire
 		(pts
@@ -546,6 +581,17 @@
 			(type default)
 		)
 		(uuid "e4812e51-a516-4514-9f58-1a2333f7599a")
+	)
+	(polyline
+		(pts
+			(xy 118.11 12.7) (xy 118.11 34.29)
+		)
+		(stroke
+			(width 0)
+			(type dash)
+			(color 132 0 0 1)
+		)
+		(uuid "fd711ee2-c5c7-427a-9423-4603725cd96b")
 	)
 	(hierarchical_label "AIN3"
 		(shape input)

@@ -524,6 +524,30 @@
 			(embedded_fonts no)
 		)
 	)
+	(text "What's going on here:\n"
+		(exclude_from_sim no)
+		(at 61.468 14.224 0)
+		(effects
+			(font
+				(size 1.905 1.905)
+				(thickness 0.381)
+				(bold yes)
+				(color 132 0 0 1)
+			)
+		)
+		(uuid "0565ddd7-17bb-4996-8ad2-bb67adbbfcf3")
+	)
+	(text "Ipsum lorem\n"
+		(exclude_from_sim no)
+		(at 18.542 16.256 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(color 132 0 0 1)
+			)
+		)
+		(uuid "61a102cd-e25f-44ba-9b35-ef72bd53bc63")
+	)
 	(text "I2C address = 0x18"
 		(exclude_from_sim no)
 		(at 130.302 122.174 0)
@@ -588,6 +612,17 @@
 		)
 		(uuid "270f219c-448f-44ca-8530-65a7e85fa135")
 	)
+	(polyline
+		(pts
+			(xy 12.7 34.29) (xy 118.11 34.29)
+		)
+		(stroke
+			(width 0)
+			(type dash)
+			(color 132 0 0 1)
+		)
+		(uuid "2abd3a96-a6da-4538-8bc7-672202a2121a")
+	)
 	(wire
 		(pts
 			(xy 143.51 120.65) (xy 143.51 125.73)
@@ -607,6 +642,17 @@
 			(type default)
 		)
 		(uuid "3e9f6815-f1dc-4cda-b4a5-29728844e7d3")
+	)
+	(polyline
+		(pts
+			(xy 118.11 12.7) (xy 118.11 34.29)
+		)
+		(stroke
+			(width 0)
+			(type dash)
+			(color 132 0 0 1)
+		)
+		(uuid "3ebf5d85-4fa6-4afd-8d4a-f07866ce6b8b")
 	)
 	(wire
 		(pts

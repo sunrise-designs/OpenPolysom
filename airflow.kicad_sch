@@ -282,6 +282,30 @@
 		)
 		(uuid "4eab5151-a26a-48b7-92af-876778d3da5e")
 	)
+	(text "Ipsum lorem\n"
+		(exclude_from_sim no)
+		(at 18.542 16.256 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(color 132 0 0 1)
+			)
+		)
+		(uuid "8ad6ba69-c13b-421a-b32f-911481bf3f41")
+	)
+	(text "What's going on here:\n"
+		(exclude_from_sim no)
+		(at 61.468 14.224 0)
+		(effects
+			(font
+				(size 1.905 1.905)
+				(thickness 0.381)
+				(bold yes)
+				(color 132 0 0 1)
+			)
+		)
+		(uuid "e644c2bb-f756-45b9-b410-9431019749fa")
+	)
 	(wire
 		(pts
 			(xy 128.27 86.36) (xy 128.27 91.44)
@@ -302,6 +326,17 @@
 		)
 		(uuid "065f1811-5ee7-41cc-814d-15f0ce488026")
 	)
+	(polyline
+		(pts
+			(xy 12.7 34.29) (xy 118.11 34.29)
+		)
+		(stroke
+			(width 0)
+			(type dash)
+			(color 132 0 0 1)
+		)
+		(uuid "2fed5924-8cd0-4534-8ddd-1e1b527fc6ce")
+	)
 	(wire
 		(pts
 			(xy 138.43 96.52) (xy 147.32 96.52)
@@ -321,6 +356,17 @@
 			(type default)
 		)
 		(uuid "6164447d-1075-46b7-bfd7-ec36627847a9")
+	)
+	(polyline
+		(pts
+			(xy 118.11 12.7) (xy 118.11 34.29)
+		)
+		(stroke
+			(width 0)
+			(type dash)
+			(color 132 0 0 1)
+		)
+		(uuid "9c0daa79-3f0b-4c75-807c-5b2a09bc6221")
 	)
 	(hierarchical_label "VCC"
 		(shape bidirectional)

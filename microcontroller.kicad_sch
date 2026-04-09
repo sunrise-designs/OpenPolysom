@@ -1406,6 +1406,376 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "Transistor_FET:2N7002"
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "Q"
+				(at 5.08 1.905 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Value" "2N7002"
+				(at 5.08 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
+				(at 5.08 -1.905 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+						(italic yes)
+					)
+					(justify left)
+				)
+			)
+			(property "Datasheet" "https://www.onsemi.com/pub/Collateral/NDS7002A-D.PDF"
+				(at 5.08 -3.81 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Description" "0.115A Id, 60V Vds, N-Channel MOSFET, SOT-23"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "N-Channel Switching MOSFET"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "SOT?23*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "2N7002_0_1"
+				(polyline
+					(pts
+						(xy 0.254 1.905) (xy 0.254 -1.905)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0.254 0) (xy -2.54 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0.762 2.286) (xy 0.762 1.27)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0.762 0.508) (xy 0.762 -0.508)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0.762 -1.27) (xy 0.762 -2.286)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0.762 -1.778) (xy 3.302 -1.778) (xy 3.302 1.778) (xy 0.762 1.778)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 1.016 0) (xy 2.032 0.381) (xy 2.032 -0.381) (xy 1.016 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(circle
+					(center 1.651 0)
+					(radius 2.794)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 2.54 2.54) (xy 2.54 1.778)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(circle
+					(center 2.54 1.778)
+					(radius 0.254)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(circle
+					(center 2.54 -1.778)
+					(radius 0.254)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(polyline
+					(pts
+						(xy 2.54 -2.54) (xy 2.54 0) (xy 0.762 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 2.921 0.381) (xy 3.683 0.381)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 3.302 0.381) (xy 2.921 -0.254) (xy 3.683 -0.254) (xy 3.302 0.381)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "2N7002_1_1"
+				(pin input line
+					(at -5.08 0 0)
+					(length 2.54)
+					(name "G"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 2.54 -5.08 90)
+					(length 2.54)
+					(name "S"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 2.54 5.08 270)
+					(length 2.54)
+					(name "D"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+	)
+	(text "Prevents battery drain when not running\n"
+		(exclude_from_sim no)
+		(at 112.268 152.908 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "54a40bd0-a889-4a4b-baa8-eb5ae1b70fdf")
+	)
+	(text "To external ADC\n(battery gauge)"
+		(exclude_from_sim no)
+		(at 60.706 129.286 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "88d4adff-524a-46ad-912d-d237d1269667")
+	)
+	(text "ESP32-C6FH4"
+		(exclude_from_sim no)
+		(at 171.196 121.666 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "ab889b3f-10b9-4f21-8f7e-5c804427aecc")
+	)
+	(text "What's going on here:\n"
+		(exclude_from_sim no)
+		(at 61.468 14.224 0)
+		(effects
+			(font
+				(size 1.905 1.905)
+				(thickness 0.381)
+				(bold yes)
+				(color 132 0 0 1)
+			)
+		)
+		(uuid "c4a81c40-70ab-4abb-9cb6-d57fefe023d7")
+	)
+	(text "ESP32-C6 is very well suited for this application, because it has:\nI2S (for audio),\nUnique ID (which is important for a medical device), \nWiFi (which is important to transfer the data to the cloud first thing in the morning with minimum user input)\n"
+		(exclude_from_sim no)
+		(at 12.954 16.51 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(color 132 0 0 1)
+			)
+			(justify left top)
+		)
+		(uuid "f9bc3084-eab0-4659-a176-6217650600c7")
 	)
 	(junction
 		(at 134.62 114.3)
@@ -1450,16 +1820,16 @@
 		(uuid "98b8b74d-b2bd-469f-abc8-5f64ae9c992c")
 	)
 	(junction
+		(at 139.7 151.13)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "a81b040f-2c3c-4b9d-b807-47492b54919c")
+	)
+	(junction
 		(at 114.3 125.73)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "a9d5305e-c821-4cc3-983a-036a8e464f53")
-	)
-	(junction
-		(at 139.7 138.43)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "c362cdd3-6664-4efa-b77a-305c41b62f68")
 	)
 	(junction
 		(at 114.3 114.3)
@@ -1478,6 +1848,22 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "efcec4fd-eab0-4c54-b73c-a4b37272f037")
+	)
+	(junction
+		(at 90.17 101.6)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "fb41f451-5efd-4702-9b32-e69284a922ca")
+	)
+	(wire
+		(pts
+			(xy 114.3 135.89) (xy 114.3 138.43)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "004d3459-e5a6-42cf-9b64-0c5318ea2412")
 	)
 	(wire
 		(pts
@@ -1498,6 +1884,16 @@
 			(type default)
 		)
 		(uuid "0474f05c-2b9b-4e6a-a47d-8259f68397b3")
+	)
+	(wire
+		(pts
+			(xy 139.7 151.13) (xy 139.7 154.94)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "05ebdd7b-219e-42b0-8e5e-efb3bd629df8")
 	)
 	(wire
 		(pts
@@ -1538,6 +1934,16 @@
 			(type default)
 		)
 		(uuid "1cabb6b7-a30e-4019-bcd4-4f554cb1b6f2")
+	)
+	(wire
+		(pts
+			(xy 114.3 148.59) (xy 114.3 151.13)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2498d9d4-321f-4bfd-85b7-53c441d86455")
 	)
 	(wire
 		(pts
@@ -1601,7 +2007,7 @@
 	)
 	(wire
 		(pts
-			(xy 139.7 134.62) (xy 139.7 138.43)
+			(xy 139.7 134.62) (xy 139.7 151.13)
 		)
 		(stroke
 			(width 0)
@@ -1721,6 +2127,16 @@
 	)
 	(wire
 		(pts
+			(xy 90.17 143.51) (xy 90.17 101.6)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5ac77d8b-3f27-434b-a4e9-0bfb0882976a")
+	)
+	(wire
+		(pts
 			(xy 187.96 41.91) (xy 187.96 59.69)
 		)
 		(stroke
@@ -1801,6 +2217,16 @@
 	)
 	(wire
 		(pts
+			(xy 90.17 101.6) (xy 115.57 101.6)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "78fde24d-6b9a-4a7f-a4bf-5a43e449d082")
+	)
+	(wire
+		(pts
 			(xy 185.42 44.45) (xy 185.42 54.61)
 		)
 		(stroke
@@ -1811,16 +2237,6 @@
 	)
 	(wire
 		(pts
-			(xy 139.7 138.43) (xy 139.7 140.97)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "8057643e-4f0e-4d75-a9e2-782bad740002")
-	)
-	(wire
-		(pts
 			(xy 190.5 46.99) (xy 204.47 46.99)
 		)
 		(stroke
@@ -1828,6 +2244,17 @@
 			(type default)
 		)
 		(uuid "83d1f908-a3f4-4228-b6fe-05206f5f9aef")
+	)
+	(polyline
+		(pts
+			(xy 12.7 34.29) (xy 118.11 34.29)
+		)
+		(stroke
+			(width 0)
+			(type dash)
+			(color 132 0 0 1)
+		)
+		(uuid "8625f6cd-04f7-4cbb-9a66-700c0628f5a2")
 	)
 	(wire
 		(pts
@@ -1918,6 +2345,17 @@
 			(type default)
 		)
 		(uuid "a3da7d6e-6264-4ce8-85e9-31b4fca715c3")
+	)
+	(polyline
+		(pts
+			(xy 118.11 12.7) (xy 118.11 34.29)
+		)
+		(stroke
+			(width 0)
+			(type dash)
+			(color 132 0 0 1)
+		)
+		(uuid "a7e0d793-746d-4a98-9735-4a8f5e333232")
 	)
 	(wire
 		(pts
@@ -2061,7 +2499,7 @@
 	)
 	(wire
 		(pts
-			(xy 114.3 138.43) (xy 139.7 138.43)
+			(xy 114.3 151.13) (xy 139.7 151.13)
 		)
 		(stroke
 			(width 0)
@@ -2078,16 +2516,6 @@
 			(type default)
 		)
 		(uuid "d5061edf-93dc-40f8-b037-0f24372df0ca")
-	)
-	(wire
-		(pts
-			(xy 114.3 135.89) (xy 114.3 138.43)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "d7ac3b7b-9557-4436-8580-9bf3db821fef")
 	)
 	(wire
 		(pts
@@ -2138,6 +2566,16 @@
 			(type default)
 		)
 		(uuid "e030183c-c370-4669-8c87-c97b3b8313f1")
+	)
+	(wire
+		(pts
+			(xy 90.17 143.51) (xy 106.68 143.51)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e05f4a93-c3d6-46ed-a7a2-75bf4f1e2cea")
 	)
 	(wire
 		(pts
@@ -2201,7 +2639,7 @@
 	)
 	(wire
 		(pts
-			(xy 64.77 101.6) (xy 115.57 101.6)
+			(xy 64.77 101.6) (xy 90.17 101.6)
 		)
 		(stroke
 			(width 0)
@@ -2562,7 +3000,7 @@
 	)
 	(hierarchical_label "GND"
 		(shape bidirectional)
-		(at 139.7 140.97 270)
+		(at 139.7 154.94 270)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -2894,6 +3332,93 @@
 			(project "Polysom"
 				(path "/1e2e6ca7-e378-49e7-a678-d857aef12e0d/d2ec0716-6a1c-4ede-982f-fa084a578ce0"
 					(reference "J1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Transistor_FET:2N7002")
+		(at 111.76 143.51 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "908d8523-3e87-4269-967c-c27c43d9d6fb")
+		(property "Reference" "Q3"
+			(at 116.84 142.24 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "2N7002"
+			(at 117.094 144.78 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
+			(at 116.84 145.415 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+					(italic yes)
+				)
+				(justify left)
+			)
+		)
+		(property "Datasheet" "https://www.onsemi.com/pub/Collateral/NDS7002A-D.PDF"
+			(at 116.84 147.32 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Description" "0.115A Id, 60V Vds, N-Channel MOSFET, SOT-23"
+			(at 111.76 143.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "2"
+			(uuid "24cee118-0153-4a18-bbd3-63c3b3d1fbc6")
+		)
+		(pin "1"
+			(uuid "d67115a3-f981-44d7-8741-3a3e1179d04d")
+		)
+		(pin "3"
+			(uuid "53af80cb-6823-402e-8e5d-d3868ae7f3b7")
+		)
+		(instances
+			(project "Polysom"
+				(path "/1e2e6ca7-e378-49e7-a678-d857aef12e0d/d2ec0716-6a1c-4ede-982f-fa084a578ce0"
+					(reference "Q3")
 					(unit 1)
 				)
 			)
