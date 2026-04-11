@@ -163,30 +163,6 @@
 		)
 		(uuid "ad741a9c-a8f4-4b67-8e19-43c261779871")
 	)
-	(text "Ipsum lorem\n"
-		(exclude_from_sim no)
-		(at 18.542 16.256 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-				(color 132 0 0 1)
-			)
-		)
-		(uuid "be598fd5-79b3-48f4-847d-779e0efe5183")
-	)
-	(text "What's going on here:\n"
-		(exclude_from_sim no)
-		(at 61.468 14.224 0)
-		(effects
-			(font
-				(size 1.905 1.905)
-				(thickness 0.381)
-				(bold yes)
-				(color 132 0 0 1)
-			)
-		)
-		(uuid "e977f346-b0c1-4c63-8560-c856208b5e91")
-	)
 	(junction
 		(at 137.16 80.01)
 		(diameter 0)
@@ -325,17 +301,6 @@
 		)
 		(uuid "a919dbdf-7689-4054-9b5f-f6e875981b72")
 	)
-	(polyline
-		(pts
-			(xy 12.7 34.29) (xy 118.11 34.29)
-		)
-		(stroke
-			(width 0)
-			(type dash)
-			(color 132 0 0 1)
-		)
-		(uuid "c0a24b5b-a220-4263-a2af-afdd42e47e1a")
-	)
 	(wire
 		(pts
 			(xy 114.3 92.71) (xy 116.84 92.71)
@@ -395,17 +360,6 @@
 			(type default)
 		)
 		(uuid "f493d319-637b-4ec7-b8df-3cdfc3ef5532")
-	)
-	(polyline
-		(pts
-			(xy 118.11 12.7) (xy 118.11 34.29)
-		)
-		(stroke
-			(width 0)
-			(type dash)
-			(color 132 0 0 1)
-		)
-		(uuid "f7a56b97-0f1d-408c-b68c-4df8361595bf")
 	)
 	(hierarchical_label "SCL"
 		(shape input)
