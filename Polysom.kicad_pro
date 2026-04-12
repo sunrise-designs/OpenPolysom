@@ -628,17 +628,36 @@
       "sort_field": "Reference"
     },
     "bus_aliases": {
+      "": [],
       "I2S": [
         "BCK",
         "DOUT",
         "LRCK",
         "SCKI"
       ],
+      "SDMMC": [
+        "CLK",
+        "CMD",
+        "D0",
+        "D1",
+        "D2",
+        "D3"
+      ],
+      "SPI": [
+        "CS",
+        "SCK",
+        "MISO",
+        "MOSI"
+      ],
       "SPI2": [
         "CS",
         "SCK",
         "MISO",
         "MOSI"
+      ],
+      "USB": [
+        "D+",
+        "D-"
       ]
     },
     "connection_grid_size": 50.0,
@@ -681,7 +700,7 @@
         "uuid": "1e2e6ca7-e378-49e7-a678-d857aef12e0d"
       }
     ],
-    "used_designators": "Q3,FB1-2",
+    "used_designators": "R20-22",
     "variants": []
   },
   "sheets": [

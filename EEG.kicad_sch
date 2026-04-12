@@ -1658,6 +1658,16 @@
 		)
 		(uuid "e6bbd3df-e328-4085-8570-59c09240d555")
 	)
+	(text "DIN 42 802 (often cited as DIN 42802-1 or -2) defines the standard for 1.5mm \"touch-proof\" safety connectors used in medical, biomedical, EEG, and EMG recording systems"
+		(exclude_from_sim no)
+		(at 109.474 160.528 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "e85e5ac4-06f3-45d5-b28b-b0849cd90d7c")
+	)
 	(junction
 		(at 46.99 78.74)
 		(diameter 0)

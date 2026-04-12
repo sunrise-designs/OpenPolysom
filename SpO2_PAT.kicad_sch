@@ -465,6 +465,26 @@
 		)
 		(uuid "665c3b28-c970-4f6e-8973-72f6daae7137")
 	)
+	(text "Texas Instruments\nTMP102AIDRLR (or can use an NTC)"
+		(exclude_from_sim no)
+		(at 97.282 121.158 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "74d64899-23ad-4a7e-8940-8846c0891274")
+	)
+	(text "BH1750\n(Can probably just use a photodiode + an ADC channel)"
+		(exclude_from_sim no)
+		(at 96.774 105.664 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "8df35abc-09cb-4be8-b651-5dfb2ef30012")
+	)
 	(junction
 		(at 133.35 97.79)
 		(diameter 0)

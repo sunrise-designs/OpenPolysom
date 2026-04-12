@@ -3485,6 +3485,16 @@
 		)
 		(uuid "e945edb2-f39f-4bb8-953d-c6a60722587d")
 	)
+	(bus
+		(pts
+			(xy 267.97 76.2) (xy 274.32 76.2)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "eaeecf47-f073-462e-9170-f1f9a7e69dbc")
+	)
 	(wire
 		(pts
 			(xy 137.16 69.85) (xy 137.16 67.31)
@@ -3667,6 +3677,17 @@
 			(justify right)
 		)
 		(uuid "3c9d4798-571d-4200-8522-0cf0a4a3cdd4")
+	)
+	(hierarchical_label "{I2S}"
+		(shape input)
+		(at 274.32 76.2 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "53c512b3-286c-4f7e-a61a-07920446d349")
 	)
 	(hierarchical_label "V-"
 		(shape input)
