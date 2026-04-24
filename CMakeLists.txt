@@ -47,6 +47,7 @@ add_executable(main
     src/main.cpp
     src/patient.cpp
     src/hr_receiver.cpp
+    src/hr_i2c.cpp
     src/sdp800.cpp
     src/Seeed_LDC1612.cpp
     src/edflib.c

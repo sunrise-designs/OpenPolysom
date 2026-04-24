@@ -1,5 +1,6 @@
 #include "Seeed_LDC1612.h"
 #include "hr_receiver.h"
+#include "hr_i2c.h"
 #include "sdp800.h"
 #include "patient.h"
 
@@ -21,6 +22,7 @@ extern "C" {
 #define SAMPLE_RATE_HZ          50
 #define SAMPLE_INTERVAL_US      (1000000 / SAMPLE_RATE_HZ)   // 20 000 µs
 #define FLUSH_INTERVAL_SAMPLES  (SAMPLE_RATE_HZ * 10)        // every 10 s
+#define HR_RAW_RATE_HZ          100
 
 // Physical range for EDF: signed deviation from baseline in raw counts
 #define EDF_PHYS_MIN  -1000000.0
@@ -52,8 +54,10 @@ static std::string timestamped_name(const char* ext) {
 static void usage(const char* prog) {
     fprintf(stderr,
         "Usage:\n"
-        "  %s               print values to stdout (default)\n"
-        "  %s edf  [file]   save to EDF  (default: ldc1612_YYYYMMDD_HHMMSS.edf)\n",
+        "  %s [--ble-hr]              print values to stdout (default)\n"
+        "  %s [--ble-hr] edf [file]   save to EDF  (default: ldc1612_YYYYMMDD_HHMMSS.edf)\n"
+        "\n"
+        "  --ble-hr   Use BLE Polar monitor for HR/RR (default: I2C AD8232 at 0x30)\n",
         prog, prog);
 }
 
@@ -69,18 +73,30 @@ static void average_raw_bufs(const u32* ch0_raw_buf, const u32* ch1_raw_buf, u32
 
 int main(int argc, char* argv[]) {
     enum class Mode { PRINT, EDF };
+    enum class HrMode { I2C, BLE };
 
     PatientInfo patient = load_patient("patient.cfg");
 
     Mode mode = Mode::PRINT;
+    HrMode hr_mode = HrMode::I2C;
     std::string out_file;
 
-    if (argc >= 2) {
-        if      (strcmp(argv[1], "edf") == 0) mode = Mode::EDF;
-        else { usage(argv[0]); return 1; }
+    int arg_idx = 1;
+    if (argc > arg_idx && strcmp(argv[arg_idx], "--ble-hr") == 0) {
+        hr_mode = HrMode::BLE;
+        arg_idx++;
     }
-    if (argc >= 3) {
-        out_file = argv[2];
+    if (argc > arg_idx) {
+        if (strcmp(argv[arg_idx], "edf") == 0) {
+            mode = Mode::EDF;
+            arg_idx++;
+        } else {
+            usage(argv[0]);
+            return 1;
+        }
+    }
+    if (argc > arg_idx) {
+        out_file = argv[arg_idx];
     } else {
         if (mode == Mode::EDF) out_file = timestamped_name(".edf");
     }
@@ -115,9 +131,11 @@ int main(int argc, char* argv[]) {
 
     HrReceiver hrReceiver(POLAR_HR_SOCKET_PATH);
     bool hr_ok = false;
+    HrI2c hrI2c;
+    bool hr_i2c_ok = false;
 
     if (mode == Mode::EDF) {
-        edf_hdl = edfopen_file_writeonly(out_file.c_str(), EDFLIB_FILETYPE_EDFPLUS, 5);
+        edf_hdl = edfopen_file_writeonly(out_file.c_str(), EDFLIB_FILETYPE_EDFPLUS, 6);
         if (edf_hdl < 0) {
             fprintf(stderr, "edfopen_file_writeonly failed (error %d)\n", edf_hdl);
             return 1;
@@ -141,7 +159,8 @@ int main(int argc, char* argv[]) {
             { "LDC1612 CH1 - abdomen",  "Abdomen",  SAMPLE_RATE_HZ,  32767, -32768, EDF_PHYS_MAX, EDF_PHYS_MIN, "Inductance (nH)" },
             { "HR - Polar H9",         "HR",       1,                32767, -32768, 250.0,        0.0,          "BPM" },
             { "RR - Polar H9",         "RR",       5,                32767, -32768, 2000.0,       0.0,          "ms" },
-            { "Sensirion SDP800-125P", "Flow",     SAMPLE_RATE_HZ,   32767, -32768, 1000.0,       0.0,          "Pressure" }
+            { "Sensirion SDP800-125P", "Flow",     SAMPLE_RATE_HZ,   32767, -32768, 1000.0,       0.0,          "Pressure" },
+            { "AD8232",                "HR_Raw",   HR_RAW_RATE_HZ,   4095,  0,      4095.0,       0.0,          "ADC" }
         };
 
         const int num_channels = sizeof(channels) / sizeof(channels[0]);
@@ -156,12 +175,21 @@ int main(int argc, char* argv[]) {
             edf_set_physical_dimension(edf_hdl, i, channels[i].physical_dim);
         }
 
-        hr_ok = hrReceiver.start();
-        if (!hr_ok) {
-            fprintf(stderr, "Failed to start HR receiver\n");
+        if (hr_mode == HrMode::BLE) {
+            hr_ok = hrReceiver.start();
+            if (!hr_ok) {
+                fprintf(stderr, "Warning: Failed to start BLE HR receiver\n");
+            }
         }
 
-        printf("Recording to %s at %d Hz  (Ctrl-C to stop)\n\n", out_file.c_str(), SAMPLE_RATE_HZ);
+        hr_i2c_ok = hrI2c.start();
+        if (!hr_i2c_ok) {
+            fprintf(stderr, "Warning: Failed to start I2C HR reader (AD8232); HR_Raw will be zeros\n");
+        }
+
+        printf("Recording to %s at %d Hz  HR source: %s  (Ctrl-C to stop)\n\n",
+               out_file.c_str(), SAMPLE_RATE_HZ,
+               hr_mode == HrMode::BLE ? "BLE Polar" : "I2C AD8232");
 
     } else {
         printf("%-10s  %-12s  %-12s\n", "Time (s)", "CH0", "CH1");
@@ -189,6 +217,7 @@ int main(int argc, char* argv[]) {
     double hr_buf[1] = { 0.0 };
     double rr_buf[5] = { 0.0 };
     double flow_buf[SAMPLE_RATE_HZ] = { 0.0 };
+    double hr_raw_buf[HR_RAW_RATE_HZ] = { 0.0 };
     int rr_slot = 0;
     bool offsets_determined = false;
     u32 ch0_raw_buf[SAMPLE_RATE_HZ], ch1_raw_buf[SAMPLE_RATE_HZ];
@@ -271,11 +300,14 @@ int main(int argc, char* argv[]) {
                         }
                     }
 
+                    hrI2c.drain(hr_raw_buf, HR_RAW_RATE_HZ);
+
                     edfwrite_physical_samples(edf_hdl, ch0_buf);
                     edfwrite_physical_samples(edf_hdl, ch1_buf);
                     edfwrite_physical_samples(edf_hdl, hr_buf);
                     edfwrite_physical_samples(edf_hdl, rr_buf);
                     edfwrite_physical_samples(edf_hdl, flow_buf);
+                    edfwrite_physical_samples(edf_hdl, hr_raw_buf);
                     buf_idx = 0;
                     rr_slot = 0;
                     edf_records++;
