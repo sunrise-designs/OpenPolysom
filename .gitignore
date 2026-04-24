@@ -1,0 +1,15 @@
+# Binaries
+main
+*.o
+
+# Data files
+*.csv
+*.edf
+*.json
+
+# Patient data which should stay private and not be committed to the repository
+patient.cfg
+
+# Directories
+.venv/
+build/
