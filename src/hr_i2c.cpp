@@ -1,6 +1,7 @@
 #include "hr_i2c.h"
 
 #include <cerrno>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
@@ -12,7 +13,8 @@ static const int SAMPLE_INTERVAL_US = 10000; // 100 Hz
 
 HrI2c::HrI2c(const char* i2c_dev, uint8_t addr)
     : i2c_dev_(i2c_dev), addr_(addr), fd_(-1), running_(false),
-      head_(0), tail_(0), avail_(0) {
+      head_(0), tail_(0), avail_(0),
+      latestHr_(0), latestRr_(0), hasHR_(false) {
     pthread_mutex_init(&lock_, nullptr);
 }
 
@@ -71,27 +73,51 @@ void HrI2c::drain(double* buf, size_t count) {
     pthread_mutex_unlock(&lock_);
 }
 
+bool HrI2c::getLatestHR(int& hr, int& rr) const {
+    pthread_mutex_lock(&lock_);
+    bool ok = hasHR_;
+    if (ok) {
+        hr = latestHr_;
+        rr = latestRr_;
+    }
+    pthread_mutex_unlock(&lock_);
+    return ok;
+}
+
 void* HrI2c::threadFunc(void* arg) {
     HrI2c* self = static_cast<HrI2c*>(arg);
+    uint16_t lastRr = 0;
 
     while (self->running_) {
-        uint8_t buf[2] = {0, 0};
-        ssize_t n = read(self->fd_, buf, 2);
+        // ESP32-S3 slave sends 6 bytes big-endian: [ECG_H, ECG_L, MAG_H, MAG_L, RR_H, RR_L]
+        uint8_t buf[6] = {};
+        ssize_t n = read(self->fd_, buf, 6);
 
-        uint16_t value = 0;
-        if (n == 2) {
-            value = (static_cast<uint16_t>(buf[0]) << 8) | buf[1];
+        uint16_t ecg = 0;
+        uint16_t rr  = 0;
+        if (n == 6) {
+            ecg = (static_cast<uint16_t>(buf[0]) << 8) | buf[1];
+            // buf[2-3] = acceleration magnitude (not recorded here)
+            rr  = (static_cast<uint16_t>(buf[4]) << 8) | buf[5];
         }
 
         pthread_mutex_lock(&self->lock_);
-        self->ring_[self->head_] = value;
+
+        self->ring_[self->head_] = ecg;
         self->head_ = (self->head_ + 1) % RING_SIZE;
         if (self->avail_ < RING_SIZE) {
             self->avail_++;
         } else {
-            // Ring full: discard oldest
             self->tail_ = (self->tail_ + 1) % RING_SIZE;
         }
+
+        if (rr > 0 && rr != lastRr) {
+            lastRr = rr;
+            self->latestRr_ = static_cast<int>(rr);
+            self->latestHr_ = static_cast<int>(std::round(60000.0 / rr));
+            self->hasHR_ = true;
+        }
+
         pthread_mutex_unlock(&self->lock_);
 
         usleep(SAMPLE_INTERVAL_US);

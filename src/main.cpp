@@ -1,5 +1,4 @@
 #include "Seeed_LDC1612.h"
-#include "hr_receiver.h"
 #include "hr_i2c.h"
 #include "sdp800.h"
 #include "patient.h"
@@ -54,10 +53,8 @@ static std::string timestamped_name(const char* ext) {
 static void usage(const char* prog) {
     fprintf(stderr,
         "Usage:\n"
-        "  %s [--ble-hr]              print values to stdout (default)\n"
-        "  %s [--ble-hr] edf [file]   save to EDF  (default: ldc1612_YYYYMMDD_HHMMSS.edf)\n"
-        "\n"
-        "  --ble-hr   Use BLE Polar monitor for HR/RR (default: I2C AD8232 at 0x30)\n",
+        "  %s              print values to stdout (default)\n"
+        "  %s edf [file]   save to EDF  (default: ldc1612_YYYYMMDD_HHMMSS.edf)\n",
         prog, prog);
 }
 
@@ -73,32 +70,21 @@ static void average_raw_bufs(const u32* ch0_raw_buf, const u32* ch1_raw_buf, u32
 
 int main(int argc, char* argv[]) {
     enum class Mode { PRINT, EDF };
-    enum class HrMode { I2C, BLE };
 
     PatientInfo patient = load_patient("patient.cfg");
 
     Mode mode = Mode::PRINT;
-    HrMode hr_mode = HrMode::I2C;
     std::string out_file;
 
-    int arg_idx = 1;
-    if (argc > arg_idx && strcmp(argv[arg_idx], "--ble-hr") == 0) {
-        hr_mode = HrMode::BLE;
-        arg_idx++;
-    }
-    if (argc > arg_idx) {
-        if (strcmp(argv[arg_idx], "edf") == 0) {
+    if (argc > 1) {
+        if (strcmp(argv[1], "edf") == 0) {
             mode = Mode::EDF;
-            arg_idx++;
+            if (argc > 2) out_file = argv[2];
+            else          out_file = timestamped_name(".edf");
         } else {
             usage(argv[0]);
             return 1;
         }
-    }
-    if (argc > arg_idx) {
-        out_file = argv[arg_idx];
-    } else {
-        if (mode == Mode::EDF) out_file = timestamped_name(".edf");
     }
 
     // ── Sensor init ───────────────────────────────────────────────────────────
@@ -129,8 +115,6 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Warning: SDP800 sensor initialization failed. Pressure readings will be disabled.\n");
     }
 
-    HrReceiver hrReceiver(POLAR_HR_SOCKET_PATH);
-    bool hr_ok = false;
     HrI2c hrI2c;
     bool hr_i2c_ok = false;
 
@@ -157,8 +141,8 @@ int main(int argc, char* argv[]) {
         const ChannelInfo channels[] = {
             { "LDC1612 CH0 - thoracic", "Thoracic", SAMPLE_RATE_HZ,  32767, -32768, EDF_PHYS_MAX, EDF_PHYS_MIN, "Inductance (nH)" },
             { "LDC1612 CH1 - abdomen",  "Abdomen",  SAMPLE_RATE_HZ,  32767, -32768, EDF_PHYS_MAX, EDF_PHYS_MIN, "Inductance (nH)" },
-            { "HR - Polar H9",         "HR",       1,                32767, -32768, 250.0,        0.0,          "BPM" },
-            { "RR - Polar H9",         "RR",       5,                32767, -32768, 2000.0,       0.0,          "ms" },
+            { "HR - Polar H9 via ESP32-S3", "HR",   1,                32767, -32768, 250.0,        0.0,          "BPM" },
+            { "RR - Polar H9 via ESP32-S3", "RR",  5,                32767, -32768, 2000.0,       0.0,          "ms" },
             { "Sensirion SDP800-125P", "Flow",     SAMPLE_RATE_HZ,   32767, -32768, 1000.0,       0.0,          "Pressure" },
             { "AD8232",                "HR_Raw",   HR_RAW_RATE_HZ,   4095,  0,      4095.0,       0.0,          "ADC" }
         };
@@ -175,21 +159,13 @@ int main(int argc, char* argv[]) {
             edf_set_physical_dimension(edf_hdl, i, channels[i].physical_dim);
         }
 
-        if (hr_mode == HrMode::BLE) {
-            hr_ok = hrReceiver.start();
-            if (!hr_ok) {
-                fprintf(stderr, "Warning: Failed to start BLE HR receiver\n");
-            }
-        }
-
         hr_i2c_ok = hrI2c.start();
         if (!hr_i2c_ok) {
             fprintf(stderr, "Warning: Failed to start I2C HR reader (AD8232); HR_Raw will be zeros\n");
         }
 
-        printf("Recording to %s at %d Hz  HR source: %s  (Ctrl-C to stop)\n\n",
-               out_file.c_str(), SAMPLE_RATE_HZ,
-               hr_mode == HrMode::BLE ? "BLE Polar" : "I2C AD8232");
+        printf("Recording to %s at %d Hz  HR source: ESP32-S3 I2C  (Ctrl-C to stop)\n\n",
+               out_file.c_str(), SAMPLE_RATE_HZ);
 
     } else {
         printf("%-10s  %-12s  %-12s\n", "Time (s)", "CH0", "CH1");
@@ -259,7 +235,7 @@ int main(int argc, char* argv[]) {
                 if (sample_count % (SAMPLE_RATE_HZ / 5) == 0) {
                     int latestHr = 0;
                     int latestRr = 0;
-                    if (hr_ok && hrReceiver.getLatest(latestHr, latestRr)) {
+                    if (hr_i2c_ok && hrI2c.getLatestHR(latestHr, latestRr)) {
                         rr_buf[rr_slot] = static_cast<double>(latestRr);
                     } else {
                         rr_buf[rr_slot] = 0.0;
@@ -287,8 +263,8 @@ int main(int argc, char* argv[]) {
                     }
 
                     int latestHr = 0;
-                    int latestRrIgnore = 0;
-                    if (hr_ok && hrReceiver.getLatest(latestHr, latestRrIgnore)) {
+                    int latestRr = 0;
+                    if (hr_i2c_ok && hrI2c.getLatestHR(latestHr, latestRr)) {
                         hr_buf[0] = static_cast<double>(latestHr);
                     } else {
                         hr_buf[0] = 0.0;
