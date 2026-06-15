@@ -1,4 +1,5 @@
 import serial, sys, time, struct
+import matplotlib.pyplot as plt
 
 PORT = '/dev/ttyACM0'   # Linux default. Mac: /dev/cu.usbmodem*, Windows: COM3 etc.
 BAUD = 115200
@@ -37,9 +38,30 @@ with open(OUT, 'wb') as f:
     f.write(data)
 print(f"Saved {len(data)} bytes to {OUT}")
 
-# Quick decode preview of first 5 records
-print("\nFirst records (accel_x, accel_y, accel_z in 8-bit, rr_ms):")
-for i in range(0, min(len(data) - 4, 25), 5):
-    x, y, z = data[i], data[i+1], data[i+2]
-    rr = struct.unpack_from('<H', data, i + 3)[0]
-    print(f"  [{i//5:4d}]  x={x:3d} y={y:3d} z={z:3d}  rr={rr} ms")
+records = [(data[i], data[i+1], data[i+2], struct.unpack_from('<H', data, i+3)[0])
+           for i in range(0, len(data) - 4, 5)]
+
+accel_x = [r[0] for r in records]
+accel_y = [r[1] for r in records]
+accel_z = [r[2] for r in records]
+rr      = [r[3] for r in records]
+t       = [i / 10.0 for i in range(len(records))]  # seconds at 10 Hz
+
+fig, axes = plt.subplots(4, 1, figsize=(12, 8), sharex=True)
+fig.suptitle('Biometric log')
+
+axes[0].plot(t, rr, color='tab:red')
+axes[0].set_ylabel('RR (ms)')
+
+axes[1].plot(t, accel_x, color='tab:blue')
+axes[1].set_ylabel('Accel X')
+
+axes[2].plot(t, accel_y, color='tab:green')
+axes[2].set_ylabel('Accel Y')
+
+axes[3].plot(t, accel_z, color='tab:orange')
+axes[3].set_ylabel('Accel Z')
+axes[3].set_xlabel('Time (s)')
+
+plt.tight_layout()
+plt.show()
