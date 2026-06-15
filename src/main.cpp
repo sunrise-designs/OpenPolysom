@@ -117,6 +117,10 @@ int main(int argc, char* argv[]) {
 
     HrI2c hrI2c;
     bool hr_i2c_ok = false;
+    hr_i2c_ok = hrI2c.start();
+    if (!hr_i2c_ok) {
+        fprintf(stderr, "Warning: Failed to start I2C HR reader (AD8232); HR_Raw will be zeros\n");
+    }
 
     if (mode == Mode::EDF) {
         edf_hdl = edfopen_file_writeonly(out_file.c_str(), EDFLIB_FILETYPE_EDFPLUS, 6);
@@ -159,10 +163,7 @@ int main(int argc, char* argv[]) {
             edf_set_physical_dimension(edf_hdl, i, channels[i].physical_dim);
         }
 
-        hr_i2c_ok = hrI2c.start();
-        if (!hr_i2c_ok) {
-            fprintf(stderr, "Warning: Failed to start I2C HR reader (AD8232); HR_Raw will be zeros\n");
-        }
+       
 
         printf("Recording to %s at %d Hz  HR source: ESP32-S3 I2C  (Ctrl-C to stop)\n\n",
                out_file.c_str(), SAMPLE_RATE_HZ);
@@ -234,7 +235,7 @@ int main(int argc, char* argv[]) {
         switch (mode) {
             case Mode::PRINT:
                 print_sample(s);
-                printf("RR: %.1f", rr_buf[rr_slot]);
+                printf("RR: %.1f\n", rr_buf[rr_slot]);
                 if (sample_count % SAMPLE_RATE_HZ == 0 && sdp_ok) {
                     printf("SDP800 pressure: %.3f mbar\n", sdp_pressure_mbar);
                 }

@@ -107,6 +107,7 @@ void* HrI2c::threadFunc(void* arg) {
         ssize_t n = read(self->fd_, buf, 10);
 
         uint16_t ecg = 0, ax = 0, ay = 0, az = 0, rr = 0;
+        printf("Read %d bytes from I2C\n", n);
         if (n == 10) {
             ecg = (static_cast<uint16_t>(buf[0]) << 8) | buf[1];
             ax  = (static_cast<uint16_t>(buf[2]) << 8) | buf[3];
