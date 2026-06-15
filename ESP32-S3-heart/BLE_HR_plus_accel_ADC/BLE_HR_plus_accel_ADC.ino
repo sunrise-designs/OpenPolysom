@@ -61,9 +61,10 @@ unsigned long lastAccelSampleTime = 0;
 unsigned long lastScanTime        = 0;
 unsigned long lastLogMillis       = 0;
 
-static File     logFile;
-static uint32_t recordCount   = 0;
-static bool     loggingActive = false;
+static File             logFile;
+static uint32_t         recordCount   = 0;
+static bool             loggingActive = false;
+static volatile bool    dumping       = false;
 
 const unsigned long ecgInterval   = 1000 / SAMPLE_RATE_HZ; // 10ms
 const unsigned long accelInterval = 1000 / ACCEL_RATE_HZ;  // 20ms
@@ -96,10 +97,10 @@ static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic,
 
   if (is16BitBpm) {
     uint16_t bpm = (uint16_t)pData[1] | ((uint16_t)pData[2] << 8);
-    Serial.printf("BPM: %d\n", bpm);
+    if (!dumping) Serial.printf("BPM: %d\n", bpm);
     offset = 3;
   } else {
-    Serial.printf("BPM: %d\n", pData[1]);
+    if (!dumping) Serial.printf("BPM: %d\n", pData[1]);
     offset = 2;
   }
 
@@ -111,7 +112,7 @@ static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic,
       uint16_t rr_raw = (uint16_t)pData[offset] | ((uint16_t)pData[offset + 1] << 8);
       // BT SIG: RR unit is 1/1024 s
       uint16_t rr_ms = (uint16_t)((rr_raw * 1000UL) / 1024UL);
-      Serial.printf("RR Interval: %d ms\n", rr_ms);
+      if (!dumping) Serial.printf("RR Interval: %d ms\n", rr_ms);
       latestRR_ms = rr_ms;
       offset += 2;
     }
@@ -309,6 +310,7 @@ void loop() {
   if (Serial.available()) {
     char cmd = Serial.read();
     if (cmd == 'D') {
+      dumping = true;
       if (loggingActive && logFile) {
         logFile.flush();
         logFile.close();
@@ -325,6 +327,7 @@ void loop() {
         rf.close();
       }
       Serial.print("\nDUMP_END\n");
+      dumping = false;
       // Reopen for append
       logFile = LittleFS.open(LOG_FILE, FILE_APPEND);
       if (logFile) {
