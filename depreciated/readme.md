@@ -1,1 +1,1 @@
-Moving Windows-related stuff here. Because the code is running on Raspberry Pi, I don't want to spend time supporting Windows, for now, as Linix is a much better fit for this
+Moving Windows-related stuff here. Because the code is running on Raspberry Pi, I don't want to spend time supporting Windows, for now, as Linux is a much better fit for this
