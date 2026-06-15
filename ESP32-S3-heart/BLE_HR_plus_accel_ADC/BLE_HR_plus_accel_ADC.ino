@@ -6,6 +6,7 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 #include "esp_sleep.h"
+#include <LittleFS.h>
 
 // --- Configuration ---
 #define I2C_SLAVE_ADDR 0x30
@@ -20,6 +21,15 @@
 #define BLE_RESCAN_INTERVAL_MS  10000
 #define MAX_SCAN_RETRIES        10
 #define SLEEP_DURATION_US       (10ULL * 60ULL * 1000000ULL)  // 10 minutes
+
+// --- Flash Logging ---
+// Record layout (5 bytes): [X_8, Y_8, Z_8, RR_L, RR_H]
+// Accel axes scaled 12-bit → 8-bit (>> 4). RR in ms, little-endian uint16_t.
+// 6 h × 10 Hz × 5 bytes = 1,080,000 bytes (~1.03 MB). Fits in default 1.5 MB LittleFS.
+#define LOG_FILE           "/biometric.bin"
+#define LOG_RATE_MS        100      // 10 Hz
+#define MAX_RECORDS        216000UL // 6 hours at 10 Hz
+#define FLUSH_EVERY        600      // flush to flash every 60 s (600 records × 100 ms)
 
 // --- BLE UUIDs (Bluetooth SIG standard) ---
 static BLEUUID serviceUUID((uint16_t)0x180D);  // Heart Rate Service
@@ -49,6 +59,11 @@ volatile uint16_t latestRR_ms     = 0;
 unsigned long lastEcgSampleTime   = 0;
 unsigned long lastAccelSampleTime = 0;
 unsigned long lastScanTime        = 0;
+unsigned long lastLogMillis       = 0;
+
+static File     logFile;
+static uint32_t recordCount   = 0;
+static bool     loggingActive = false;
 
 const unsigned long ecgInterval   = 1000 / SAMPLE_RATE_HZ; // 10ms
 const unsigned long accelInterval = 1000 / ACCEL_RATE_HZ;  // 20ms
@@ -57,6 +72,11 @@ const unsigned long accelInterval = 1000 / ACCEL_RATE_HZ;  // 20ms
 static void enterDeepSleep() {
   Serial.println("Entering deep sleep for 10 minutes...");
   Serial.flush();
+  if (loggingActive && logFile) {
+    logFile.flush();
+    logFile.close();
+    loggingActive = false;
+  }
   wokeFromSleep = true;
   esp_sleep_enable_timer_wakeup(SLEEP_DURATION_US);
   esp_deep_sleep_start();
@@ -189,7 +209,7 @@ void setup() {
   Serial.begin(115200);
 
   // I2C Slave
-  if (!Wire.begin(I2C_SLAVE_ADDR, SDA_PIN, SCL_PIN, 0)) {
+  if (!Wire.begin(I2C_SLAVE_ADDR, SDA_PIN, SCL_PIN, 100000)) {
     Serial.println("I2C Init Failed");
     while (1);
   }
@@ -197,6 +217,20 @@ void setup() {
 
   // ADC — 12-bit (0–4095)
   analogReadResolution(12);
+
+  // Flash logging
+  if (LittleFS.begin(true)) {
+    logFile = LittleFS.open(LOG_FILE, FILE_APPEND);
+    if (logFile) {
+      recordCount   = logFile.size() / 5;
+      loggingActive = (recordCount < MAX_RECORDS);
+      Serial.printf("LittleFS: %lu records already stored\n", recordCount);
+    } else {
+      Serial.println("LittleFS: failed to open log file");
+    }
+  } else {
+    Serial.println("LittleFS: mount failed");
+  }
 
   // BLE
   BLEDevice::init("ESP32_HRM_Client");
@@ -244,6 +278,30 @@ void loop() {
       enterDeepSleep();
     } else {
       startBLEScan();
+    }
+  }
+
+  // --- 10 Hz Flash Logging ---
+  if (loggingActive && (currentTime - lastLogMillis >= LOG_RATE_MS)) {
+    lastLogMillis = currentTime;
+
+    uint8_t rec[5];
+    rec[0] = (uint8_t)(latestAccelX >> 4);
+    rec[1] = (uint8_t)(latestAccelY >> 4);
+    rec[2] = (uint8_t)(latestAccelZ >> 4);
+    rec[3] = (uint8_t)(latestRR_ms & 0xFF);
+    rec[4] = (uint8_t)(latestRR_ms >> 8);
+    logFile.write(rec, 5);
+
+    recordCount++;
+    if (recordCount % FLUSH_EVERY == 0) {
+      logFile.flush();
+    }
+    if (recordCount >= MAX_RECORDS) {
+      logFile.flush();
+      logFile.close();
+      loggingActive = false;
+      Serial.println("Flash log full (6 hours).");
     }
   }
 
