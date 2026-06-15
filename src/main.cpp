@@ -215,14 +215,27 @@ int main(int argc, char* argv[]) {
         if (sdp_ok) {
             if (!sdp800.readPressureMbar(sdp_pressure_mbar)) {
                 fprintf(stdout, "Warning: SDP800 read failed\n");
+                sdp_ok = false;
                 sdp_pressure_mbar = 0.0;
             }
+        }
+
+        if (sample_count % (SAMPLE_RATE_HZ / 5) == 0) {
+            int latestHr = 0;
+            int latestRr = 0;
+            if (hr_i2c_ok && hrI2c.getLatestHR(latestHr, latestRr)) {
+                rr_buf[rr_slot] = static_cast<double>(latestRr);
+            } else {
+                rr_buf[rr_slot] = 0.0;
+            }
+            rr_slot = (rr_slot + 1) % 5;
         }
 
         switch (mode) {
             case Mode::PRINT:
                 print_sample(s);
-                if (sample_count % SAMPLE_RATE_HZ == 0) {
+                printf("RR: %.1f", rr_buf[rr_slot]);
+                if (sample_count % SAMPLE_RATE_HZ == 0 && sdp_ok) {
                     printf("SDP800 pressure: %.3f mbar\n", sdp_pressure_mbar);
                 }
                 break;
@@ -232,16 +245,7 @@ int main(int argc, char* argv[]) {
                 ch1_raw_buf[buf_idx] = ch1;
                 flow_buf[buf_idx] = sdp_pressure_mbar;
 
-                if (sample_count % (SAMPLE_RATE_HZ / 5) == 0) {
-                    int latestHr = 0;
-                    int latestRr = 0;
-                    if (hr_i2c_ok && hrI2c.getLatestHR(latestHr, latestRr)) {
-                        rr_buf[rr_slot] = static_cast<double>(latestRr);
-                    } else {
-                        rr_buf[rr_slot] = 0.0;
-                    }
-                    rr_slot = (rr_slot + 1) % 5;
-                }
+                
 
                 buf_idx++;
                 double time_to_recalibrate = 10 * 60; // 10 minutes
