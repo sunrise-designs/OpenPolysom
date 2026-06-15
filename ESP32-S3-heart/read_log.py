@@ -1,7 +1,7 @@
 import serial, sys, time, struct
 import matplotlib.pyplot as plt
 
-PORT = '/dev/ttyACM0'   # Linux default. Mac: /dev/cu.usbmodem*, Windows: COM3 etc.
+PORT = 'COM4'   # Linux default. Mac: /dev/cu.usbmodem*, Windows: COM3 etc.
 BAUD = 115200
 OUT  = 'biometric.bin'
 
