@@ -305,6 +305,35 @@ void loop() {
     }
   }
 
+  // --- Serial dump command ('D' + Enter → streams full log as hex) ---
+  if (Serial.available()) {
+    char cmd = Serial.read();
+    if (cmd == 'D') {
+      if (loggingActive && logFile) {
+        logFile.flush();
+        logFile.close();
+        loggingActive = false;
+      }
+      File rf = LittleFS.open(LOG_FILE, FILE_READ);
+      Serial.printf("DUMP_START:%lu\n", rf ? rf.size() : 0UL);
+      if (rf) {
+        uint8_t buf[64];
+        int n;
+        while ((n = rf.read(buf, sizeof(buf))) > 0) {
+          for (int i = 0; i < n; i++) Serial.printf("%02X", buf[i]);
+        }
+        rf.close();
+      }
+      Serial.print("\nDUMP_END\n");
+      // Reopen for append
+      logFile = LittleFS.open(LOG_FILE, FILE_APPEND);
+      if (logFile) {
+        recordCount   = logFile.size() / 5;
+        loggingActive = (recordCount < MAX_RECORDS);
+      }
+    }
+  }
+
   // Yield to RTOS tasks (BLE stack, IDLE)
   delay(1);
 }
