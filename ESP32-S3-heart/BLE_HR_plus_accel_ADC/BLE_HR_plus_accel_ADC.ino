@@ -5,6 +5,7 @@
 #include <BLEUtils.h>
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
+#include "esp_sleep.h"
 
 // --- Configuration ---
 #define I2C_SLAVE_ADDR 0x30
@@ -16,11 +17,16 @@
 #define ACCEL_PIN_Z 4      // GPIO4 = ADC1_CH3 — ADXL335 Z
 #define SAMPLE_RATE_HZ 100
 #define ACCEL_RATE_HZ  50
-#define BLE_RESCAN_INTERVAL_MS 10000
+#define BLE_RESCAN_INTERVAL_MS  10000
+#define MAX_SCAN_RETRIES        10
+#define SLEEP_DURATION_US       (10ULL * 60ULL * 1000000ULL)  // 10 minutes
 
 // --- BLE UUIDs (Bluetooth SIG standard) ---
 static BLEUUID serviceUUID((uint16_t)0x180D);  // Heart Rate Service
 static BLEUUID charUUID((uint16_t)0x2A37);     // Heart Rate Measurement
+
+// --- Sleep State (survives deep sleep via RTC memory) ---
+RTC_DATA_ATTR bool wokeFromSleep = false;
 
 // --- BLE State ---
 // Written from BLE scan task / BLE connect task, read in main loop — must be volatile
@@ -30,10 +36,13 @@ static volatile boolean bleConnecting = false;  // true while connect task is ru
 static BLEAdvertisedDevice* myDevice  = nullptr;
 static BLEClient*           pClient   = nullptr;
 
+static int scanAttempts = 0;
+
 // --- Sensor Data ---
 volatile uint16_t latestAdcValue  = 0;
-// Magnitude of raw 12-bit X/Y/Z: max sqrt(4095^2 * 3) ~= 7092, fits uint16_t
-volatile uint16_t latestMagnitude = 0;
+volatile uint16_t latestAccelX    = 0;
+volatile uint16_t latestAccelY    = 0;
+volatile uint16_t latestAccelZ    = 0;
 // RR interval in ms (BLE 1/1024 s units → ms). Typical range 300–2000 ms.
 volatile uint16_t latestRR_ms     = 0;
 
@@ -43,6 +52,15 @@ unsigned long lastScanTime        = 0;
 
 const unsigned long ecgInterval   = 1000 / SAMPLE_RATE_HZ; // 10ms
 const unsigned long accelInterval = 1000 / ACCEL_RATE_HZ;  // 20ms
+
+// --- Deep Sleep ---
+static void enterDeepSleep() {
+  Serial.println("Entering deep sleep for 10 minutes...");
+  Serial.flush();
+  wokeFromSleep = true;
+  esp_sleep_enable_timer_wakeup(SLEEP_DURATION_US);
+  esp_deep_sleep_start();
+}
 
 // --- BLE Notification Callback ---
 static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic,
@@ -126,6 +144,8 @@ bool connectToServer() {
 void bleConnectTask(void* pvParameters) {
   if (connectToServer()) {
     Serial.println("Connected. Subscribed to HR notifications.");
+    scanAttempts   = 0;
+    wokeFromSleep  = false;
   } else {
     Serial.println("Failed to connect. Will retry.");
   }
@@ -146,12 +166,13 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
 };
 
 void startBLEScan() {
+  scanAttempts++;
   BLEScan* pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setInterval(1349);
   pBLEScan->setWindow(449);
   pBLEScan->setActiveScan(true);
-  Serial.println("Scanning for Heart Rate sensor...");
+  Serial.printf("Scanning for Heart Rate sensor (attempt %d)...\n", scanAttempts);
   pBLEScan->start(5, false);
   lastScanTime = millis();
 }
@@ -179,6 +200,11 @@ void setup() {
 
   // BLE
   BLEDevice::init("ESP32_HRM_Client");
+
+  if (wokeFromSleep) {
+    Serial.println("Woke from deep sleep. Single reconnect attempt.");
+  }
+
   startBLEScan();
 
   Serial.println("System Initialized at 80MHz");
@@ -197,13 +223,9 @@ void loop() {
   if (currentTime - lastAccelSampleTime >= accelInterval) {
     lastAccelSampleTime = currentTime;
 
-    uint16_t x = analogRead(ACCEL_PIN_X);
-    uint16_t y = analogRead(ACCEL_PIN_Y);
-    uint16_t z = analogRead(ACCEL_PIN_Z);
-
-    // Raw magnitude — no offset removal, no normalisation
-    float mag = sqrtf((float)x * x + (float)y * y + (float)z * z);
-    latestMagnitude = (uint16_t)mag;
+    latestAccelX = analogRead(ACCEL_PIN_X);
+    latestAccelY = analogRead(ACCEL_PIN_Y);
+    latestAccelZ = analogRead(ACCEL_PIN_Z);
   }
 
   // --- BLE Connection Management ---
@@ -217,7 +239,12 @@ void loop() {
   // Rescan if not connected and no connection attempt is in progress
   if (!connected && !doConnect && !bleConnecting &&
       (currentTime - lastScanTime >= BLE_RESCAN_INTERVAL_MS)) {
-    startBLEScan();
+    int maxAttempts = wokeFromSleep ? 1 : MAX_SCAN_RETRIES;
+    if (scanAttempts >= maxAttempts) {
+      enterDeepSleep();
+    } else {
+      startBLEScan();
+    }
   }
 
   // Yield to RTOS tasks (BLE stack, IDLE)
@@ -225,18 +252,24 @@ void loop() {
 }
 
 // --- I2C Request Handler ---
-// ISR context. Sends 6 bytes: [ECG_H, ECG_L, MAG_H, MAG_L, RR_H, RR_L]
+// ISR context. Sends 10 bytes: [ECG_H, ECG_L, X_H, X_L, Y_H, Y_L, Z_H, Z_L, RR_H, RR_L]
 void onRequest() {
-  uint8_t buffer[6];
+  uint8_t buffer[10];
 
-  buffer[0] = (latestAdcValue  >> 8) & 0xFF;
-  buffer[1] =  latestAdcValue        & 0xFF;
+  buffer[0] = (latestAdcValue >> 8) & 0xFF;
+  buffer[1] =  latestAdcValue       & 0xFF;
 
-  buffer[2] = (latestMagnitude >> 8) & 0xFF;
-  buffer[3] =  latestMagnitude       & 0xFF;
+  buffer[2] = (latestAccelX >> 8) & 0xFF;
+  buffer[3] =  latestAccelX       & 0xFF;
 
-  buffer[4] = (latestRR_ms    >> 8) & 0xFF;
-  buffer[5] =  latestRR_ms          & 0xFF;
+  buffer[4] = (latestAccelY >> 8) & 0xFF;
+  buffer[5] =  latestAccelY       & 0xFF;
 
-  Wire.write(buffer, 6);
+  buffer[6] = (latestAccelZ >> 8) & 0xFF;
+  buffer[7] =  latestAccelZ       & 0xFF;
+
+  buffer[8] = (latestRR_ms >> 8) & 0xFF;
+  buffer[9] =  latestRR_ms       & 0xFF;
+
+  Wire.write(buffer, 10);
 }
