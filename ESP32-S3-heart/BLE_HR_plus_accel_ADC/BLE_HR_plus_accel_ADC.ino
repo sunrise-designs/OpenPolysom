@@ -60,6 +60,7 @@ unsigned long lastEcgSampleTime   = 0;
 unsigned long lastAccelSampleTime = 0;
 unsigned long lastScanTime        = 0;
 unsigned long lastLogMillis       = 0;
+unsigned long lastPrintMillis     = 0;
 
 static File             logFile;
 static uint32_t         recordCount   = 0;
@@ -261,6 +262,12 @@ void loop() {
     latestAccelX = analogRead(ACCEL_PIN_X);
     latestAccelY = analogRead(ACCEL_PIN_Y);
     latestAccelZ = analogRead(ACCEL_PIN_Z);
+  }
+
+  // --- 1 Hz ADC print ---
+  if (!dumping && (currentTime - lastPrintMillis >= 1000)) {
+    lastPrintMillis = currentTime;
+    Serial.printf("X: %d  Y: %d  Z: %d\n", latestAccelX, latestAccelY, latestAccelZ);
   }
 
   // --- BLE Connection Management ---
