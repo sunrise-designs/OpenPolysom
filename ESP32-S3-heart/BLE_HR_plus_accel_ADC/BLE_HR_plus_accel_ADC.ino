@@ -309,7 +309,21 @@ void loop() {
   // --- Serial dump command ('D' + Enter → streams full log as hex) ---
   if (Serial.available()) {
     char cmd = Serial.read();
-    if (cmd == 'D') {
+    if (cmd == 'E') {
+      if (loggingActive && logFile) {
+        logFile.close();
+        loggingActive = false;
+      }
+      LittleFS.remove(LOG_FILE);
+      logFile = LittleFS.open(LOG_FILE, FILE_APPEND);
+      if (logFile) {
+        recordCount   = 0;
+        loggingActive = true;
+        Serial.println("Log erased. Recording restarted.");
+      } else {
+        Serial.println("Log erase failed.");
+      }
+    } else if (cmd == 'D') {
       dumping = true;
       if (loggingActive && logFile) {
         logFile.flush();
