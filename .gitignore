@@ -13,4 +13,5 @@ patient.cfg
 # Directories
 .venv/
 build/
-biometric.bin
+*.bin
+*.html
