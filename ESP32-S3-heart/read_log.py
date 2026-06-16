@@ -45,6 +45,20 @@ def dump_from_device(port, baud, out):
     return data
 
 
+def erase_device(port, baud):
+    print(f"Opening {port} at {baud} baud...")
+    ser = serial.Serial(port, baud, timeout=10)
+    time.sleep(2)  # wait for ESP32 to finish booting after port open resets it
+
+    ser.reset_input_buffer()
+    ser.write(b'E\n')
+
+    line = ser.readline().decode(errors='ignore').strip()
+    print(line if line else "(no response)")
+
+    ser.close()
+
+
 def load_from_file(path):
     with open(path, 'rb') as f:
         data = f.read()
@@ -105,7 +119,12 @@ def main():
     parser = argparse.ArgumentParser(description='Dump biometric log from ESP32 device and plot it.')
     parser.add_argument('port', nargs='?', default=PORT, help=f'Serial port (default: {PORT})')
     parser.add_argument('-f', '--file', help='Re-create the chart from a previously saved .bin file instead of reading from the device')
+    parser.add_argument('-e', '--erase', action='store_true', help='Erase the log on the device and exit (sends the "E" command)')
     args = parser.parse_args()
+
+    if args.erase:
+        erase_device(args.port, BAUD)
+        return
 
     if args.file:
         data = load_from_file(args.file)
