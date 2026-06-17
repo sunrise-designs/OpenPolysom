@@ -1,52 +1,64 @@
-# Plan: Accelerometer Baseline Removal for PLMD Analysis
+# Plan: Accelerometer Baseline Removal + AASM PLM Counting for PLMD Analysis
 
 ## Context
-The binary log records accelerometer (x/y/z) + RR data at 10 Hz. For PLMD detection, we need to see transient leg jerks while suppressing slow baseline drift and sudden step changes (e.g., body repositioning). Rolling median filter subtraction is the standard technique in actigraphy/PLMD research: the long-window median captures the slowly-varying baseline without being pulled by spikes, so subtracting it leaves only the transient content intact.
+The binary log records accelerometer (x/y/z) + RR data at 10 Hz. Two capabilities:
+1. **Baseline removal** (already implemented): rolling median subtraction to strip step changes while preserving jerks.
+2. **PLM counting** (this task): count periodic limb movements per AASM scoring rules and report total count + PLMI (jerks/hour).
 
-## Algorithm: Rolling Median Subtraction
-**Why this over a high-pass Butterworth filter:** A Butterworth HPF rings at step discontinuities, creating false spike-like artifacts — exactly what we want to avoid. Median filters are edge-preserving and are widely used in PLMD actigraphy literature (e.g., Cole-Kripke, Sadeh, and subsequent PLMD scoring algorithms all use median-based activity normalization).
+---
 
-- Compute a rolling median of each accel channel with a configurable window (default **30 s = 300 samples** at 10 Hz — long enough to span full PLMD cycles of 20–40 s, short enough to track postural drift).
-- Subtract the rolling median from the raw signal → zero-mean, spike-preserving residual.
-- Re-center at **128** (midpoint of uint8 range) so the output can be repacked into the same 5-byte record format.
-- Clamp to **[0, 255]** and write as uint8. RR values are passed through unchanged.
+## New Function: `count_plm(data, threshold=8, fs=10)`
 
-Uses `scipy.ndimage.median_filter` (mode=`'reflect'` for edge handling, which avoids the one-sided lag a causal filter would introduce).
+### AASM PLM Scoring Rules (AASM Scoring Manual v2.6)
+These are the published criteria the function must implement:
+
+| Criterion | Rule |
+|---|---|
+| **LM amplitude** | Signal deviation ≥ threshold above baseline |
+| **LM min duration** | ≥ 0.5 s (5 samples @ 10 Hz) |
+| **LM max duration** | ≤ 10 s (100 samples @ 10 Hz) — longer events are posture changes, not jerks |
+| **Inter-movement interval** | Onset-to-onset gap of **5–90 s** for two LMs to belong to the same series |
+| **PLM series** | ≥ 4 consecutive LMs meeting the interval rule |
+| **PLMI** | Total PLMs (in series) ÷ recording hours. Clinical threshold: ≥ 15/hour (adults) |
+
+### Algorithm Steps
+
+1. **Baseline removal** — apply `remove_baseline()` internally (re-centered at 128) so the function works on either raw or pre-filtered data.
+2. **Vector magnitude** — `vm = sqrt((ax-128)² + (ay-128)² + (az-128)²)` per sample. This combines all three channels into a single activity signal.
+3. **LM detection** — find contiguous runs where `vm >= threshold`. Record onset index for each run. Discard runs shorter than 5 samples (< 0.5 s) or longer than 100 samples (> 10 s).
+4. **PLM series grouping** — walk through LM onsets in order; group consecutive pairs whose onset-to-onset gap is 5–90 s. A group of ≥ 4 qualifies as a PLM series; all its LMs are counted as PLMs.
+5. **Output**:
+   - Recording duration in hours
+   - Total LMs detected (all events passing duration filter)
+   - Total PLMs (LMs in qualifying series)
+   - PLMI with reference to the ≥ 15/h diagnostic threshold
+
+### CLI
+Add `-c` / `--count` flag and `--threshold` option to `main()`:
+- `--count`: run PLM counting on the loaded data, print results, then exit
+- `--threshold`: amplitude threshold in accel units (default: 8)
+
+Can be combined with `-f` to specify an input file (use pre-filtered `.bin` for best results).
 
 ## Files to Modify
-**`ESP32-S3-heart/read_log.py`** — single file, three changes:
+**`ESP32-S3-heart/read_log.py`** — add `count_plm()` function and two CLI args (`-c`/`--count`, `--threshold`).
 
-1. **Add import** at top:
-   ```python
-   import numpy as np
-   from scipy.ndimage import median_filter
-   ```
-
-2. **Add function** `remove_baseline(data, window_sec=30, fs=10)`:
-   - Parse all records (same logic as `plot()`).
-   - Build numpy arrays for accel_x, accel_y, accel_z.
-   - Apply `median_filter(channel, size=window_sec * fs)` per channel.
-   - Subtract median, add 128, clip to [0, 255], cast to uint8.
-   - Repack as 5-byte records: `bytes([ax, ay, az]) + struct.pack('<H', rr)`.
-   - Return the new binary blob.
-
-3. **Add CLI argument** in `main()`:
-   ```
-   -b / --baseline   Remove baseline from .bin file and write filtered output.
-                     Takes the input path (from -f/--file or default OUT).
-                     Writes to <stem>_filtered.bin.
-   --window          Median window in seconds (default: 30).
-   ```
-   When `--baseline` is passed: load the file, call `remove_baseline()`, write `_filtered.bin`, print confirmation, exit (no plotting). Can be combined with `-f` to specify the input file.
+No new imports needed (numpy already imported).
 
 ## Verification
 ```
-# Filter an existing binary log:
-python read_log.py -f biometric.bin -b
+# Count PLMs from filtered binary (recommended):
+python read_log.py -f biometric_filtered.bin -c
 
-# Plot the filtered output to compare visually:
-python read_log.py -f biometric_filtered.bin
+# Count PLMs from raw binary (baseline removal applied internally):
+python read_log.py -f biometric.bin -c
 
-# Check that step changes are gone and spikes are preserved by comparing
-# the two HTML plots side-by-side.
+# Adjust threshold:
+python read_log.py -f biometric_filtered.bin -c --threshold 12
+
+# Expected output:
+# Recording duration: X.XX hours
+# LMs detected: N
+# PLMs (in series of ≥4, 5–90 s apart): M
+# PLMI: M.M /hour  [AASM diagnostic threshold: ≥15/hour for adults]
 ```
