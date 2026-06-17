@@ -81,7 +81,18 @@ def count_plm(data, threshold=8, fs=10):
 
     return {'lm_events': lm_events, 'plm_groups': plm_groups,
             'total_lms': total_lms, 'total_plms': total_plms,
-            'plmi': plmi, 'total_hours': total_hours}
+            'plmi': plmi, 'total_hours': total_hours,
+            'vm': list(vm)}
+
+
+def accel_magnitude(data, window_sec=30, fs=10):
+    filtered = remove_baseline(data, window_sec=window_sec, fs=fs)
+    records = [(filtered[i], filtered[i+1], filtered[i+2])
+               for i in range(0, len(filtered) - 4, 5)]
+    ax = np.array([r[0] for r in records], dtype=float) - 128
+    ay = np.array([r[1] for r in records], dtype=float) - 128
+    az = np.array([r[2] for r in records], dtype=float) - 128
+    return list(np.sqrt(ax**2 + ay**2 + az**2))
 
 
 def _rmssd(arr):

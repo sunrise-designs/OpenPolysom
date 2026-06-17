@@ -16,3 +16,4 @@ build/
 *.bin
 *.html
 *.pyc
+*pdf

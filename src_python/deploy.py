@@ -23,14 +23,18 @@ def deploy_to_netlify(html_path=PLOTLY_HTML_OUT):
         print('Error: add a "token" key to netlify.json.', file=sys.stderr)
         sys.exit(1)
 
-    # Build zip in memory — the file is always named index.html inside the archive.
-    # _headers tells Netlify to serve it as text/html; without it zip deploys may
-    # default to text/plain and the browser shows source instead of rendering.
-    html_bytes = Path(html_path).read_bytes()
-    headers_file = '/index.html\n  Content-Type: text/html; charset=utf-8\n'
+    # Build zip in memory.
+    # _headers tells Netlify to serve HTML files as text/html; without it zip
+    # deploys may default to text/plain and the browser shows source instead of rendering.
+    _aasm_path = _DIR.parent / 'doc' / 'AASM-Manual-2012.html'
+    headers_file = (
+        '/index.html\n  Content-Type: text/html; charset=utf-8\n'
+        '/AASM-Manual-2012.html\n  Content-Type: text/html; charset=utf-8\n'
+    )
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr('index.html', html_bytes)
+        zf.writestr('index.html', Path(html_path).read_bytes())
+        zf.writestr('AASM-Manual-2012.html', _aasm_path.read_bytes())
         zf.writestr('_headers', headers_file)
     buf.seek(0)
 
