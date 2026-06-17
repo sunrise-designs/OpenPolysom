@@ -1,11 +1,14 @@
 import argparse
 import serial, time, struct
+from pathlib import Path
+import numpy as np
+from scipy.ndimage import median_filter
 import matplotlib.pyplot as plt
 import mpld3
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-PORT = 'COM16'   # Linux default. Mac: /dev/cu.usbmodem*, Windows: COM3 etc.
+PORT = 'COM4'   # Linux default. Mac: /dev/cu.usbmodem*, Windows: COM3 etc.
 BAUD = 115200
 OUT  = 'biometric.bin'
 HTML_OUT = 'biometric.html'
@@ -82,6 +85,27 @@ def save_plotly_html(t, rr, accel_x, accel_y, accel_z):
     print(f"Saved interactive chart to {PLOTLY_HTML_OUT}")
 
 
+def remove_baseline(data, window_sec=30, fs=10):
+    records = [(data[i], data[i+1], data[i+2], struct.unpack_from('<H', data, i+3)[0])
+               for i in range(0, len(data) - 4, 5)]
+
+    channels = [np.array([r[c] for r in records], dtype=float) for c in range(3)]
+    rr_vals  = [r[3] for r in records]
+
+    window = int(window_sec * fs)
+    # reflect mode avoids one-sided lag artifacts at the edges
+    filtered = [ch - median_filter(ch, size=window, mode='reflect') + 128.0
+                for ch in channels]
+
+    out = bytearray()
+    for i, rr in enumerate(rr_vals):
+        ax = int(np.clip(round(filtered[0][i]), 0, 255))
+        ay = int(np.clip(round(filtered[1][i]), 0, 255))
+        az = int(np.clip(round(filtered[2][i]), 0, 255))
+        out += bytes([ax, ay, az]) + struct.pack('<H', rr)
+    return bytes(out)
+
+
 def plot(data):
     records = [(data[i], data[i+1], data[i+2], struct.unpack_from('<H', data, i+3)[0])
                for i in range(0, len(data) - 4, 5)]
@@ -120,6 +144,8 @@ def main():
     parser.add_argument('port', nargs='?', default=PORT, help=f'Serial port (default: {PORT})')
     parser.add_argument('-f', '--file', help='Re-create the chart from a previously saved .bin file instead of reading from the device')
     parser.add_argument('-e', '--erase', action='store_true', help='Erase the log on the device and exit (sends the "E" command)')
+    parser.add_argument('-b', '--baseline', action='store_true', help='Remove baseline from accelerometer channels and write a new <stem>_filtered.bin file, then exit')
+    parser.add_argument('--window', type=float, default=30.0, help='Median filter window in seconds for baseline removal (default: 30)')
     args = parser.parse_args()
 
     if args.erase:
@@ -130,6 +156,14 @@ def main():
         data = load_from_file(args.file)
     else:
         data = dump_from_device(args.port, BAUD, OUT)
+
+    if args.baseline:
+        src = Path(args.file) if args.file else Path(OUT)
+        out_path = src.with_stem(src.stem + '_filtered')
+        filtered = remove_baseline(data, window_sec=args.window)
+        out_path.write_bytes(filtered)
+        print(f"Saved baseline-removed data to {out_path}")
+        return
 
     plot(data)
 
