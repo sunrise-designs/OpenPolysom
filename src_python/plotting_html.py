@@ -134,5 +134,11 @@ def save_html(t, rr, accel_mag,
     height = 700 if has_hrv else 550
     fig.update_layout(title=title, showlegend=False, height=height, margin=dict(t=140))
 
-    fig.write_html(PLOTLY_HTML_OUT, include_plotlyjs=include_plotlyjs)
+    html = fig.to_html(include_plotlyjs=include_plotlyjs)
+    html = html.replace(
+        '</head>',
+        '<style>* { user-select: text !important; -webkit-user-select: text !important; }</style></head>',
+        1,
+    )
+    Path(PLOTLY_HTML_OUT).write_text(html, encoding='utf-8')
     print(f"Saved interactive chart to {PLOTLY_HTML_OUT}")
