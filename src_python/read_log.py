@@ -7,6 +7,7 @@ from pathlib import Path
 from device import dump_from_device, erase_device
 from signal_processing import remove_baseline, count_plm, compute_hrv, accel_magnitude
 from plotting import save_plotly_html, plot
+from plotting_echarts import save_echarts_html
 
 PORT = 'COM4'
 BAUD = 115200
@@ -46,6 +47,8 @@ def main():
     parser.add_argument('--threshold', type=float, default=8.0, help='Accelerometer amplitude threshold for LM detection (default: 8)')
     parser.add_argument('--skip', type=int, default=700, help='Number of leading samples to ignore (default: 700, file is not modified)')
     parser.add_argument('--ignore_last', type=int, default=0, help='Number of trailing samples to ignore (default: 0, file is not modified)')
+    parser.add_argument('--chart', choices=['echarts', 'plotly'], default='echarts',
+                        help='HTML chart library for the output report (default: echarts)')
     parser.add_argument('--plotlyjs', choices=['cdn', 'embed', 'omit'], default='cdn',
                         help='How to include Plotly.js in the HTML: cdn (default), embed (self-contained), omit (fragment only)')
     args = parser.parse_args()
@@ -92,15 +95,25 @@ def main():
         result.update({'hrv_overall': hrv_overall, 'hrv_t': hrv_t, 'hrv_rmssd': hrv_rmssd})
         print(f"HRV (RMSSD)        : {hrv_overall:.1f} ms")
         raw = ([r[0] for r in records], [r[1] for r in records], [r[2] for r in records])
-        save_plotly_html(
-            t, rr_list, result['vm'],
-            lm_events=result['lm_events'],
-            plm_groups=result['plm_groups'],
-            stats=result,
-            recording_meta=recording_meta,
-            raw_channels=raw,
-            include_plotlyjs=_plotlyjs,
-        )
+        if args.chart == 'echarts':
+            save_echarts_html(
+                t, rr_list, result['vm'],
+                lm_events=result['lm_events'],
+                plm_groups=result['plm_groups'],
+                stats=result,
+                recording_meta=recording_meta,
+                raw_channels=[('Accel X', raw[0]), ('Accel Y', raw[1]), ('Accel Z', raw[2])],
+            )
+        else:
+            save_plotly_html(
+                t, rr_list, result['vm'],
+                lm_events=result['lm_events'],
+                plm_groups=result['plm_groups'],
+                stats=result,
+                recording_meta=recording_meta,
+                raw_channels=raw,
+                include_plotlyjs=_plotlyjs,
+            )
         return
 
     records = [(data[i], data[i+1], data[i+2], struct.unpack_from('<H', data, i+3)[0])
