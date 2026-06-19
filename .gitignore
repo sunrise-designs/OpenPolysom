@@ -20,3 +20,7 @@ build/
 *pdf
 *.zarr/
 src_web/node_modules/
+
+# Quartz wiki build artifacts (web/build.sh) — never committed
+/.quartz/
+/public/
