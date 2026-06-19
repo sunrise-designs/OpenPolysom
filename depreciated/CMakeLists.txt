@@ -17,9 +17,9 @@ add_custom_command(
     OUTPUT  "${VENV_DIR}/.stamp"
     COMMAND ${Python3_EXECUTABLE} -m venv "${VENV_DIR}"
     COMMAND ${VENV_PIP} install --upgrade pip setuptools wheel
-    COMMAND ${VENV_PIP} install -r "${CMAKE_SOURCE_DIR}/python/requirements.txt"
+    COMMAND ${VENV_PIP} install -r "${CMAKE_SOURCE_DIR}/../python/requirements.txt"
     COMMAND ${CMAKE_COMMAND} -E touch "${VENV_DIR}/.stamp"
-    DEPENDS "${CMAKE_SOURCE_DIR}/python/requirements.txt"
+    DEPENDS "${CMAKE_SOURCE_DIR}/../python/requirements.txt"
     COMMENT "Setting up Python venv and installing dependencies"
 )
 
@@ -44,13 +44,13 @@ if(NOT GIT_HASH)
 endif()
 
 add_executable(main
-    src/main.cpp
-    src/patient.cpp
-    src/hr_receiver.cpp
-    src/hr_i2c.cpp
-    src/sdp800.cpp
-    src/Seeed_LDC1612.cpp
-    src/edflib.c
+    rpi_src/main.cpp
+    rpi_src/patient.cpp
+    rpi_src/hr_receiver.cpp
+    rpi_src/hr_i2c.cpp
+    rpi_src/sdp800.cpp
+    rpi_src/Seeed_LDC1612.cpp
+    rpi_src/edflib.c
 )
 
 target_compile_options(main PRIVATE -Wall -Wextra -pthread)
@@ -60,7 +60,7 @@ target_compile_definitions(main PRIVATE
 )
 
 # Special compile definitions for edflib.c
-set_source_files_properties(src/edflib.c PROPERTIES
+set_source_files_properties(rpi_src/edflib.c PROPERTIES
     COMPILE_DEFINITIONS "_LARGEFILE64_SOURCE;_LARGEFILE_SOURCE"
 )
 
