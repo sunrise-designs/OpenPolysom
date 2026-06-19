@@ -1,7 +1,7 @@
 import json
 import shutil
+import socket
 import subprocess
-import threading
 import webbrowser
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -50,7 +50,7 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
     meta_path = Path(str(stem) + '_meta.json')
 
     # ── Zarr store (v2 format for zarr.js compatibility) ───────────────────────
-    # zarr 3.x rmtree fails on Windows if the dir already exists — delete first
+    # zarr 3.x rmtree fails on Windows if the dir already exists — delete first.
     if zarr_path.exists():
         shutil.rmtree(zarr_path)
     root = zarr.open_group(str(zarr_path), mode='w', zarr_format=2)
@@ -66,8 +66,12 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
         'hrv_rmssd': np.asarray(hrv_rmssd, dtype=np.float32) if hrv_rmssd is not None and len(hrv_rmssd) > 0 else np.array([], dtype=np.float32),
     }
     for name, data in arrays.items():
-        arr = root.create_array(name, shape=data.shape, dtype=data.dtype, chunks=True)
-        arr[...] = data
+        # Single chunk per array: zarr 3.x has async overhead per chunk, so
+        # writing the whole array as one chunk keeps write time O(1) in calls.
+        arr = root.create_array(name, shape=data.shape or (0,), dtype=data.dtype,
+                                chunks=data.shape or (1,))
+        if data.size > 0:
+            arr[...] = data
 
     print(f"Saved Zarr store to {zarr_path}")
 
@@ -97,46 +101,40 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
 
 
 def serve_and_open(output_dir, meta_filename, src_web_dir=None):
-    """Start a local HTTP server rooted at output_dir and open the viewer."""
+    """Start a local HTTP server and open the viewer in the browser.
+
+    Blocks until Ctrl-C — run this as the last step in the script.
+    """
     if src_web_dir is None:
         src_web_dir = Path(__file__).parent.parent / 'src_web'
 
-    # Serve from output_dir; the viewer assets (index.html, dist/chart.js)
-    # are symlinked / copied there by the caller, or we serve from src_web.
-    # Strategy: serve src_web as root, with output_dir as a secondary path.
-    # Simplest: serve output_dir and copy/reference index.html from src_web.
-    # We use a custom handler that looks in two directories.
-    index_src = src_web_dir / 'index.html'
+    index_src    = src_web_dir / 'index.html'
     chart_js_src = src_web_dir / 'dist' / 'chart.js'
 
     class DualDirHandler(SimpleHTTPRequestHandler):
         def translate_path(self, path):
-            # Strip query string
-            path = path.split('?', 1)[0]
-            path = path.lstrip('/')
+            path = path.split('?', 1)[0].lstrip('/')
             if not path or path == 'index.html':
                 return str(index_src)
             if path in ('dist/chart.js', 'chart.js'):
                 return str(chart_js_src)
-            # Everything else (zarr chunks, meta JSON) from output_dir
             return str(Path(output_dir) / path)
 
         def log_message(self, fmt, *args):
-            pass  # suppress request logging
+            pass  # suppress per-request noise
 
-    import socket
     with socket.socket() as s:
         s.bind(('', 0))
         port = s.getsockname()[1]
 
     server = HTTPServer(('localhost', port), DualDirHandler)
-    t = threading.Thread(target=server.serve_forever, daemon=True)
-    t.start()
-
     url = f'http://localhost:{port}/index.html?meta={meta_filename}'
     print(f"Serving at {url}  (Ctrl-C to stop)")
     webbrowser.open(url)
+
     try:
-        t.join()
+        server.serve_forever()   # blocks main thread; Ctrl-C raises KeyboardInterrupt
     except KeyboardInterrupt:
-        server.shutdown()
+        pass
+    finally:
+        server.server_close()
