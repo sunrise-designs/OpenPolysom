@@ -7,7 +7,7 @@ from pathlib import Path
 from device import dump_from_device, erase_device
 from signal_processing import remove_baseline, count_plm, compute_hrv, accel_magnitude
 from plotting import save_plotly_html, plot
-from plotting_echarts import save_echarts_html
+from export_zarr import save_zarr_json, serve_and_open
 
 PORT = 'COM4'
 BAUD = 115200
@@ -96,14 +96,14 @@ def main():
         print(f"HRV (RMSSD)        : {hrv_overall:.1f} ms")
         raw = ([r[0] for r in records], [r[1] for r in records], [r[2] for r in records])
         if args.chart == 'echarts':
-            save_echarts_html(
-                t, rr_list, result['vm'],
-                lm_events=result['lm_events'],
-                plm_groups=result['plm_groups'],
+            zarr_path, meta_path = save_zarr_json(
+                src_path.stem,
+                t, rr_list, raw, result['vm'],
+                hrv_t=result['hrv_t'], hrv_rmssd=result['hrv_rmssd'],
                 stats=result,
                 recording_meta=recording_meta,
-                raw_channels=[('Accel X', raw[0]), ('Accel Y', raw[1]), ('Accel Z', raw[2])],
             )
+            serve_and_open(src_path.parent, meta_path.name)
         else:
             save_plotly_html(
                 t, rr_list, result['vm'],

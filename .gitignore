@@ -17,3 +17,5 @@ build/
 *.html
 *.pyc
 *pdf
+*.zarr/
+src_web/node_modules/
