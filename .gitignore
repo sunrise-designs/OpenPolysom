@@ -14,6 +14,7 @@ patient.cfg
 .venv/
 build/
 *.bin
+!biometric_filtered.bin
 *.html
 *.pyc
 *pdf
