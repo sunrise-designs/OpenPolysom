@@ -1,34 +1,51 @@
-import { openArray, HTTPStore, NestedArray } from 'zarr';
-import type { TypedArray } from 'zarr';
-import type { ZarrData, SidecarMeta } from './types';
+import * as zarr from 'zarrita';
+import type { Meta, EventsDoc, ZarrData } from './types';
 
-export async function loadMeta(metaUrl: string): Promise<SidecarMeta> {
-  const resp = await fetch(metaUrl);
-  if (!resp.ok) throw new Error(`Failed to fetch meta: ${metaUrl} (${resp.status})`);
-  return resp.json() as Promise<SidecarMeta>;
+/** Fetch + parse a JSON sidecar. */
+async function loadJson<T>(url: string): Promise<T> {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Failed to fetch ${url} (${resp.status})`);
+  return (await resp.json()) as T;
 }
 
-async function loadTypedArray<T extends TypedArray>(store: HTTPStore, name: string): Promise<T> {
-  const arr = await openArray({ store, path: name, mode: 'r' });
-  const result = await arr.get();
-  if (typeof result === 'number') throw new Error(`Expected array at '${name}', got scalar`);
-  return (result as NestedArray<T>).data;
+export const loadMeta = (url: string): Promise<Meta> => loadJson<Meta>(url);
+export const loadEvents = (url: string): Promise<EventsDoc> => loadJson<EventsDoc>(url);
+
+/** Browser store: read the Zarr boundary directly over HTTP. */
+export const httpStore = (baseUrl: string): zarr.FetchStore => new zarr.FetchStore(baseUrl);
+
+/** Read one whole 1-D array from the working store. */
+async function readArray(root: zarr.Location<zarr.Readable>, name: string): Promise<zarr.TypedArray<zarr.NumberDataType>> {
+  const arr = await zarr.open(root.resolve(name), { kind: 'array' });
+  const chunk = await zarr.get(arr as zarr.Array<zarr.NumberDataType, zarr.Readable>);
+  return chunk.data;
 }
 
-/** Fetch all Zarr arrays for a recording, given the base URL of the .zarr directory. */
-export async function loadZarr(zarrBaseUrl: string): Promise<ZarrData> {
-  const store = new HTTPStore(zarrBaseUrl);
-
-  const [t, rr, accel_x, accel_y, accel_z, accel_mag, hrv_t, hrv_rmssd] = await Promise.all([
-    loadTypedArray<Float32Array>(store, 't'),
-    loadTypedArray<Float32Array>(store, 'rr'),
-    loadTypedArray<Uint8Array>(store, 'accel_x'),
-    loadTypedArray<Uint8Array>(store, 'accel_y'),
-    loadTypedArray<Uint8Array>(store, 'accel_z'),
-    loadTypedArray<Float32Array>(store, 'accel_mag'),
-    loadTypedArray<Float32Array>(store, 'hrv_t'),
-    loadTypedArray<Float32Array>(store, 'hrv_rmssd'),
+/**
+ * Decode the dense signals from the working store via zarrita (Zarr v2 + Blosc,
+ * decoded out of the box). The store is injected so the browser passes a
+ * `FetchStore` and tests pass a filesystem-backed store.
+ */
+export async function loadZarr(store: zarr.Readable): Promise<ZarrData> {
+  const root = zarr.root(store);
+  const [t, accelX, accelY, accelZ, accelMag, rr, hrvT, hrvRmssd] = await Promise.all([
+    readArray(root, 't'),
+    readArray(root, 'accel_x'),
+    readArray(root, 'accel_y'),
+    readArray(root, 'accel_z'),
+    readArray(root, 'accel_mag'),
+    readArray(root, 'rr'),
+    readArray(root, 'hrv_t'),
+    readArray(root, 'hrv_rmssd'),
   ]);
-
-  return { t, rr, accel_x, accel_y, accel_z, accel_mag, hrv_t, hrv_rmssd };
+  return {
+    t: t as Float64Array,
+    accel_x: accelX as Uint8Array,
+    accel_y: accelY as Uint8Array,
+    accel_z: accelZ as Uint8Array,
+    accel_mag: accelMag as Float32Array,
+    rr: rr as Float32Array,
+    hrv_t: hrvT as Float64Array,
+    hrv_rmssd: hrvRmssd as Float32Array,
+  };
 }

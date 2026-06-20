@@ -2,7 +2,7 @@
 title: Decision Log
 domain: state
 status: living
-updated: 2026-06-19
+updated: 2026-06-20
 summary: The settled architecture decisions for ProtoSom Component 2 and the open forks still owed to Leon and Dmitry.
 ---
 
@@ -35,6 +35,7 @@ Each is considered closed for the PoC. Reopen only by editing this page with a d
 | S7 | **Retire the legacy 5-byte `.bin`** (3×uint8 accel + uint16 RR @10 Hz). | Superseded by EDF+ as the raw anchor; only the committed anonymous `biometric_filtered.bin` still uses it, kept as sample data via the `.gitignore` exception. |
 | S8 | **Drop the proposed "proprietary binary" capture format.** | EDF+ (biosignals) + FLAC (audio) cover the raw anchor with standard, tooling-supported formats; a bespoke format adds no value and harms auditability. |
 | S9 | **Clinical EDF+/BDF+ export, regenerated on demand, never stored.** | EDFBrowser interop without a third persisted copy; the export scrubs the EDF+ header (patient name/DOB) for a de-identified shareable file. May be owned by C++ ingest. |
+| S10 | **Cross-platform: the TS web app is the single core — installable PWA now, webview-wrap later (Capacitor = mobile, Tauri 2 = desktop/air-gapped). NOT React Native or non-JS (Flutter/KMP/.NET MAUI).** (decided 2026-06-20) | A stack survey confirmed RN's Hermes engine has **no production WebAssembly** ([Polygen is build-time `wasm2c` only](https://github.com/callstackincubator/polygen)) — breaking zarrita's Blosc decode — and RN-native can't render ECharts (canvas), so RN/non-JS would force rewriting the charts **and** the Zarr boundary (the two crown jewels). Webview wrappers reuse ~100% of the TS + ECharts + zarrita stack; [Tauri 2](https://v2.tauri.app/)'s Rust shell can also spawn the C++ ingest / Python processing per the on-demand model. Shipped now as an installable, offline-capable PWA. |
 
 Canonical terms used throughout the wiki: **raw anchor**, **working store**, **derived layer**,
 **clinical export**, **C++ ingest**, **Python processing**, **the TS web app**, **the slicing
@@ -58,7 +59,7 @@ Nothing here should be treated as decided by downstream wiki pages.
 | O7 | **Charting library** | ECharts (canvas + LTTB, works today) **vs** uPlot (MIT, ~50KB, lighter). See [viewer](../knowledge/viewer.md). | Leon |
 | O8 | **ML approach + timeline** | Where ML enters (snore VOTE/MFCC classification, apnea/hypopnea detection, airPLS baseline) and when — model choice, training data, validation. | Dmitry |
 | O9 | **PII de-identification policy** | Exact rules for what the [clinical export](../knowledge/data-formats.md) scrubs and how PII is kept in a separable block. `.gitignore` already excludes PII; this is the operational policy, not the repo hygiene. | Leon + Dmitry |
-| O10 | **Slicing-server timing** | Read Zarr browser-direct (works at PoC scale — whole tiny recording loads) **vs** stand up the thin TS slicing server (`/window`, `/spectrogram`, `/meta`, `/events`) — same reading code, moved to a server. Decide the trigger threshold. | Leon |
+| O10 | **Slicing-server timing** — **DECIDED 2026-06-21: defer.** Stay **browser-direct** (only ever one night on screen at a time). The lever for scale is **decimation pyramids** (precomputed coarse min/max levels — browser-direct, or a Tauri Rust sidecar), not a slicing server. **Trigger to revisit:** the high-rate channels (ECG 100 Hz, future EEG 256 Hz) and especially the **snore spectrogram (~1.85 GB/night, can't be loaded whole)**. Any future server is a **thin, separate, optional** TS data API (`/window`, `/spectrogram`, `/meta`, `/events`) — the frontend stays a static, browser-direct, offline/PWA/webview-wrappable bundle. **Not Next.js / SSR** (conflicts with S10). | Leon |
 | O11 | **Entry-point UX** | How a user launches a recording end-to-end (batch run? TS app invokes C++ ingest / triggers Python re-processing as subprocesses?) and what the first-run experience is. | Leon |
 
 ---
