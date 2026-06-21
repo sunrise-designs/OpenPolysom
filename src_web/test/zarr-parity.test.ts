@@ -17,7 +17,7 @@ describe('Zarr boundary read parity (zarr-python -> zarrita.js)', () => {
   it('decodes a Blosc(zstd,shuffle) float32 array including the NaN fill path', async () => {
     const store = new FsStore(fixture);
     const arrNode = await zarr.open(zarr.root(store).resolve('f32'), { kind: 'array' });
-    const chunk = await zarr.get(arrNode as zarr.Array<zarr.NumberDataType, zarr.Readable>);
+    const chunk = await zarr.get(arrNode as zarr.Array<zarr.NumberDataType>);
     const out = Array.from(chunk.data);
 
     expect(out.length).toBe(8);
@@ -29,7 +29,7 @@ describe('Zarr boundary read parity (zarr-python -> zarrita.js)', () => {
   it('decodes a Blosc(zstd,shuffle) uint8 array', async () => {
     const store = new FsStore(fixture);
     const arrNode = await zarr.open(zarr.root(store).resolve('u8'), { kind: 'array' });
-    const chunk = await zarr.get(arrNode as zarr.Array<zarr.NumberDataType, zarr.Readable>);
+    const chunk = await zarr.get(arrNode as zarr.Array<zarr.NumberDataType>);
 
     expect(Array.from(chunk.data)).toEqual([10, 20, 30, 40, 50, 60, 70, 80]);
   });

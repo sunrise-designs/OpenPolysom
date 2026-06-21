@@ -4,7 +4,7 @@ import type { Meta, EventsDoc, ZarrData } from './types';
 /** Fetch + parse a JSON sidecar. */
 async function loadJson<T>(url: string): Promise<T> {
   const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`Failed to fetch ${url} (${resp.status})`);
+  if (!resp.ok) throw new Error(`Failed to fetch ${url} (${String(resp.status)})`);
   return (await resp.json()) as T;
 }
 
@@ -17,7 +17,7 @@ export const httpStore = (baseUrl: string): zarr.FetchStore => new zarr.FetchSto
 /** Read one whole 1-D array from the working store. */
 async function readArray(root: zarr.Location<zarr.Readable>, name: string): Promise<zarr.TypedArray<zarr.NumberDataType>> {
   const arr = await zarr.open(root.resolve(name), { kind: 'array' });
-  const chunk = await zarr.get(arr as zarr.Array<zarr.NumberDataType, zarr.Readable>);
+  const chunk = await zarr.get(arr as zarr.Array<zarr.NumberDataType>);
   return chunk.data;
 }
 

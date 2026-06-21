@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Polyglot repo: the TS project lives in src_web/. Git runs hooks from the repo
+# root, so cd in first. Lint-staged auto-fixes staged TS; tsc type-checks the project.
+cd src_web && pnpm exec lint-staged && pnpm exec tsc --noEmit

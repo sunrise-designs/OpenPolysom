@@ -28,12 +28,11 @@ function createFullscreen(zarr: ZarrData, events: EventsDoc): (index: number) =>
   const closeBtn = overlay.querySelector<HTMLElement>('.fs-close');
   if (canvas === null || closeBtn === null) return () => undefined;
 
-  // eslint-disable-next-line functional/no-let -- imperative shell: full-screen chart lifecycle
+   
   let fsChart: echarts.ECharts | undefined;
 
   const close = (): void => {
-    const orientation = screen.orientation as ScreenOrientation & { unlock?: () => void };
-    try { orientation.unlock?.(); } catch { /* unsupported */ }
+    try { screen.orientation.unlock(); } catch { /* unsupported */ }
     if (document.fullscreenElement !== null) void document.exitFullscreen().catch(() => undefined);
     overlay.classList.remove('open');
     fsChart?.dispose();
@@ -48,12 +47,13 @@ function createFullscreen(zarr: ZarrData, events: EventsDoc): (index: number) =>
 
   return (index: number): void => {
     overlay.classList.add('open');
-    fsChart = echarts.init(canvas, null, { renderer: 'canvas' });
-    fsChart.setOption(buildSingleChannelOption(zarr, events, index));
+    const chart = echarts.init(canvas, null, { renderer: 'canvas' });
+    fsChart = chart;
+    chart.setOption(buildSingleChannelOption(zarr, events, index));
     void (async (): Promise<void> => {
       try { await overlay.requestFullscreen(); } catch { /* unsupported */ }
       try { await screen.orientation.lock('landscape'); } catch { /* unsupported (e.g. iOS) */ }
-      fsChart?.resize();
+      chart.resize();
     })();
   };
 }

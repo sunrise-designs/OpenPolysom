@@ -52,11 +52,11 @@ export interface Provenance {
 
 export interface Layers {
   readonly raw: {
-    readonly biosignals: ReadonlyArray<{
+    readonly biosignals: readonly {
       readonly path: string;
       readonly format: string;
       readonly hash: Hash;
-    }>;
+    }[];
   };
   readonly working: { readonly path: string; readonly zarr_format: number };
 }
@@ -78,13 +78,13 @@ export interface Event {
   readonly type: string;
   readonly onset_s: number;
   readonly duration_s: number;
-  readonly channels?: ReadonlyArray<string>;
+  readonly channels?: readonly string[];
 }
 
 export interface EventGroup {
   readonly id: string;
   readonly type: string;
-  readonly member_ids: ReadonlyArray<string>;
+  readonly member_ids: readonly string[];
   readonly onset_s: number;
   readonly duration_s: number;
   readonly params?: Readonly<Record<string, unknown>>;
@@ -92,15 +92,15 @@ export interface EventGroup {
 
 export interface Scoring {
   readonly scoring_id: string;
-  readonly events: ReadonlyArray<Event>;
-  readonly groups: ReadonlyArray<EventGroup>;
+  readonly events: readonly Event[];
+  readonly groups: readonly EventGroup[];
 }
 
 export interface EventsDoc {
   readonly schema: string;
   readonly schema_version: string;
   readonly recording_id: string;
-  readonly scorings: ReadonlyArray<Scoring>;
+  readonly scorings: readonly Scoring[];
 }
 
 // ── Zarr working store (decoded) ─────────────────────────────────────────────

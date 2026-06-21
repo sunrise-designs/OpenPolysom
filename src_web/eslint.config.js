@@ -28,4 +28,18 @@ export default tseslint.config(
       '@typescript-eslint/prefer-readonly-parameter-types': 'error',
     },
   },
+  {
+    // Functional core / imperative shell. The strict functional + readonly-parameter
+    // rules hold on the pure core (format / narrative / tokens / types). They are
+    // relaxed on the DOM/ECharts/Zarr I/O edge and tests, where typed-array, DOM and
+    // ECharts-option parameters (and a little local mutation in the chart lifecycle)
+    // are unavoidable.
+    files: ['src/main.ts', 'src/chart.ts', 'src/shell.ts', 'src/zarr_loader.ts', 'test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/prefer-readonly-parameter-types': 'off',
+      'functional/prefer-readonly-type': 'off',
+      'functional/immutable-data': 'off',
+      'functional/no-let': 'off',
+    },
+  },
 );

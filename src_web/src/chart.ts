@@ -29,7 +29,7 @@ const BOTTOM_PCT = 8.5;
 const GAP_PCT = 1.0;
 
 // Single source of truth for the channel order, labels, colours, and data binding.
-const CHANNELS: ReadonlyArray<ChannelSrc> = [
+const CHANNELS: readonly ChannelSrc[] = [
   { name: 'RR · ms', color: COLORS.cardiac, pick: (z) => ({ x: z.t, y: z.rr, overlay: false }) },
   { name: 'Accel mag', color: COLORS.movement, pick: (z) => ({ x: z.t, y: z.accel_mag, overlay: true }) },
   { name: 'HRV · ms', color: COLORS.hrv, pick: (z) => ({ x: z.hrv_t, y: z.hrv_rmssd, overlay: false }) },
@@ -39,19 +39,19 @@ const CHANNELS: ReadonlyArray<ChannelSrc> = [
 ];
 
 /** Static descriptor (name + colour) for rendering bubble headers without data. */
-export const CHANNEL_META: ReadonlyArray<{ readonly name: string; readonly color: string }> =
+export const CHANNEL_META: readonly { readonly name: string; readonly color: string }[] =
   CHANNELS.map((c) => ({ name: c.name, color: c.color }));
 
-const channels = (zarr: ZarrData): ReadonlyArray<ChannelDef> =>
+const channels = (zarr: ZarrData): readonly ChannelDef[] =>
   CHANNELS.map((c) => ({ name: c.name, color: c.color, ...c.pick(zarr) }));
 
-const zipStrided = (x: Float64Array, y: ArrayLike<number>, stride: number): ReadonlyArray<readonly [number, number]> => {
+const zipStrided = (x: Float64Array, y: ArrayLike<number>, stride: number): readonly (readonly [number, number])[] => {
   const n = Math.min(x.length, y.length);
   const count = Math.floor(n / stride);
   return Array.from({ length: count }, (_, i): readonly [number, number] => [x[i * stride] ?? 0, y[i * stride] ?? 0]);
 };
 
-const collectSpans = (events: EventsDoc, type: 'limb_movement' | 'plm_series'): ReadonlyArray<Span> => {
+const collectSpans = (events: EventsDoc, type: 'limb_movement' | 'plm_series'): readonly Span[] => {
   if (type === 'limb_movement') {
     return events.scorings.flatMap((s) =>
       s.events.filter((e) => e.type === 'limb_movement').map((e): Span => ({ start: e.onset_s, end: e.onset_s + e.duration_s })),
@@ -139,7 +139,7 @@ export function buildBubbleOption(zarr: ZarrData, events: EventsDoc, index: numb
     tooltip: {
       ...sharedTooltip(touch),
       formatter: (params: unknown) => {
-        const arr = params as ReadonlyArray<{ value?: readonly [number, number] }>;
+        const arr = params as readonly { value?: readonly [number, number] }[];
         const first = arr[0];
         if (first?.value === undefined) return '';
         return `${ch.name}: ${first.value[1].toFixed(1)}<br><b>${formatElapsed(first.value[0])}</b>`;
@@ -205,7 +205,7 @@ export function buildSingleChannelOption(zarr: ZarrData, events: EventsDoc, inde
       borderColor: COLORS.ring,
       textStyle: { color: COLORS.text, fontSize: 12 },
       formatter: (params: unknown) => {
-        const arr = params as ReadonlyArray<{ value?: readonly [number, number] }>;
+        const arr = params as readonly { value?: readonly [number, number] }[];
         const first = arr[0];
         if (first?.value === undefined) return '';
         return `${ch.name}: ${first.value[1].toFixed(1)}<br><b>${formatElapsed(first.value[0])}</b>`;
@@ -273,9 +273,9 @@ export function buildChartOption(zarr: ZarrData, events: EventsDoc, touch = fals
     tooltip: {
       ...sharedTooltip(touch),
       formatter: (params: unknown) => {
-        const arr = params as ReadonlyArray<{ seriesName?: string; value?: readonly [number, number] }>;
+        const arr = params as readonly { seriesName?: string; value?: readonly [number, number] }[];
         const first = arr[0];
-        if (first === undefined || first.value === undefined) return '';
+        if (first?.value === undefined) return '';
         const lines = arr.filter((p) => p.value !== undefined).map((p) => `${p.seriesName ?? ''}: ${(p.value?.[1] ?? 0).toFixed(1)}`);
         return [...lines, `<b>${formatElapsed(first.value[0])}</b>`].join('<br>');
       },

@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Pre-push: run the full test suite (polyglot repo — TS project in src_web/).
+cd src_web && pnpm run test
