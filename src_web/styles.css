@@ -10,7 +10,7 @@
   --neuro: #8ea2ff; --respir: #f7b267; --hrv: #b388f5;
   --good: #4fd6a3; --good-soft: rgba(79,214,163,.14); --warn: #f5b942; --flag: #ff7a7a;
   --aurora-a: #6ad6c6; --aurora-b: #8ea2ff; --aurora-c: #c79bf0;
-  --radius: 14px; --radius-sm: 10px;
+  --radius: 4px; --radius-sm: 2.5px;
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.55);
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
@@ -144,7 +144,7 @@ header.top { display: flex; align-items: center; gap: 18px; padding: 4px 2px 8px
 .signals { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
 .sig-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 0 2px 2px; }
 .sig-grid { display: flex; flex-direction: column; gap: 12px; }
-.sig-card { padding: 8px 12px 6px; }
+.sig-card { padding: 8px 6px 6px; }
 .sig-head { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-mut); padding: 2px 2px 4px; }
 .sig-plot { width: 100%; height: 150px; }
 @media (max-width: 760px) { .sig-plot { height: 132px; } }

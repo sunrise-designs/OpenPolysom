@@ -135,7 +135,7 @@ export function buildBubbleOption(zarr: ZarrData, events: EventsDoc, index: numb
     backgroundColor: 'transparent',
     animation: false,
     textStyle: { color: COLORS.textMut, fontFamily: 'Inter, system-ui, sans-serif' },
-    grid: { left: 50, right: 14, top: 8, bottom: 22 },
+    grid: { left: 38, right: 8, top: 8, bottom: 22 },
     tooltip: {
       ...sharedTooltip(touch),
       formatter: (params: unknown) => {
