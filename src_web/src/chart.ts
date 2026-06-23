@@ -163,7 +163,10 @@ export function buildBubbleOption(zarr: ZarrData, events: EventsDoc, index: numb
       axisTick: { show: false },
       splitLine: { lineStyle: { color: COLORS.grid, opacity: 0.6 } },
     },
-    dataZoom: touch ? [] : [{ type: 'inside', filterMode: 'none' }],
+    // Desktop: keep the inside-zoom component (connect-synced) but never let it
+    // capture the wheel/drag, so the page scrolls normally when the cursor is
+    // over a chart. Crosshair/tooltip sync is via axisPointer + echarts.connect.
+    dataZoom: touch ? [] : [{ type: 'inside', filterMode: 'none', zoomOnMouseWheel: false, moveOnMouseWheel: false, moveOnMouseMove: false }],
     series: [series],
   };
 }
