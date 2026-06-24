@@ -20,3 +20,10 @@ build/
 *pdf
 *.zarr/
 src_web/node_modules/
+
+# Viewer entry HTML is a tracked source file despite the blanket *.html ignore above
+!src_web/index.html
+
+# Quartz wiki build artifacts (web/build.sh) — never committed
+/.quartz/
+/public/

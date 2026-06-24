@@ -1,0 +1,69 @@
+name: deploy-pages
+
+# Build the Quartz read-site from wiki/ and deploy it to GitHub Pages.
+#
+# Builds on push to main and on pull requests (the build doubles as a check that
+# the wiki still renders). Deploys only on push to main. The site is PUBLIC
+# (GitHub Pages on a public repo) — the wiki is open-source project documentation
+# and contains no PII (see wiki/standards/privacy.md).
+#
+# One-time setup: repo Settings -> Pages -> Build and deployment -> Source:
+# "GitHub Actions". Until that is set, the deploy step has no Pages environment to
+# publish to. Site URL: https://sunrise-designs.github.io/ProtoSom/
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the created-modified-date plugin can read git dates.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Cache the Quartz clone (framework + the pinned community plugins). The
+      # plugin install is the slow step; build.sh reinstalls only when the pin
+      # changes, so a cache hit makes the build fast. Keyed on the build inputs.
+      - name: Cache Quartz clone and plugins
+        uses: actions/cache@v4
+        with:
+          path: .quartz
+          key: quartz-${{ runner.os }}-${{ hashFiles('web/build.sh', 'web/quartz.config.yaml') }}
+
+      - name: Build Quartz site
+        run: bash web/build.sh
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
