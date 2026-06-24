@@ -77,9 +77,18 @@ rsync -a --delete \
 #     relative paths for in-repo and agent reading. Wiki-internal links use a single
 #     ../ (never ../../), so they are untouched; only repo-escaping links are remapped.
 echo "==> Rewriting repo-file links to GitHub URLs (build copy only)"
-GH_BLOB="https://github.com/sunrise-designs/ProtoSom/blob/main"
+GH_BLOB="https://github.com/sunrise-designs/OpenPolysom/blob/main"
 find "$QUARTZ_DIR/content" -name '*.md' -print0 \
   | xargs -0 perl -pi -e "s{\]\(\Q../../\E}{](${GH_BLOB}/}g"
+
+# 4c. The wiki's root file is INDEX.md, but the site root must be a lowercase
+#     index (Quartz slugs are case-sensitive, so INDEX != index). Rewrite link
+#     TARGETS that point at INDEX.md to index.md in the build copy only; prose
+#     mentions of "INDEX" are left untouched. The committed wiki keeps INDEX.md
+#     so its real filename resolves for in-repo and agent reading.
+echo "==> Rewriting INDEX.md link targets to index.md (build copy only)"
+find "$QUARTZ_DIR/content" -name '*.md' -print0 \
+  | xargs -0 perl -pi -e 's{\]\(([^)]*?)INDEX\.md}{]($1index.md}g'
 
 # 5. The site root must be a lowercase index.md; the wiki's entry point is INDEX.md.
 #    Rename it in the build copy only. The committed repo keeps INDEX.md.

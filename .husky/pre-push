@@ -1,3 +1,9 @@
 #!/usr/bin/env sh
-# Pre-push: run the full test suite (polyglot repo — TS project in src_web/).
-cd src_web && pnpm run test
+# Pre-push: run the test suite (polyglot repo — TS project in src_web/), but only
+# when a "test" script and its runner exist; skip gracefully otherwise so a
+# minimal checkout never blocks a push. Package-manager-agnostic.
+cd src_web 2>/dev/null || exit 0
+[ -d node_modules ] || exit 0
+if node -e "process.exit((require('./package.json').scripts||{}).test?0:1)" 2>/dev/null; then
+  npm test || exit 1
+fi
