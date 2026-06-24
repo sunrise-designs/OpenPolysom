@@ -1,6 +1,6 @@
-![ProtoSom](doc/ProtoSom.jpg)
+![OpenPolysom](doc/ProtoSom.jpg)
 
-ProtoSom
+OpenPolysom
 ===========================
 
 This is an open-source Polysomnography (PSG) physical device and analysis software. It performs what is know as a sleep study.
