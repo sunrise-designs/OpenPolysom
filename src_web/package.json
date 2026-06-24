@@ -1,0 +1,16 @@
+{
+  "name": "protosom-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --outfile=dist/chart.js --platform=browser --target=es2020 --minify"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "echarts": "^5.5.0",
+    "zarr": "^0.6.0"
+  }
+}

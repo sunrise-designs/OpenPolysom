@@ -5,7 +5,6 @@ main
 # Data files
 *.csv
 *.edf
-*.json
 
 # Patient data which should stay private and not be committed to the repository
 patient.cfg
@@ -27,3 +26,9 @@ src_web/node_modules/
 # Quartz wiki build artifacts (web/build.sh) — never committed
 /.quartz/
 /public/
+src_python/netlify.json
+src_python/patient.json
+src_python/biometric_filtered.json
+biometric_filtered_meta.json
+biometric_meta.json
+.vscode/c_cpp_properties.json

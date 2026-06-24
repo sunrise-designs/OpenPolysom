@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "Write-Output '{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"additionalContext\": \"CLAUDE.md REMINDER: Before making any code changes, read ALL wiki/*.md files and print the total count as acknowledgement. If you have not done this yet in the current session, stop and do it now.\"}}' ",
+            "shell": "powershell"
+          }
+        ]
+      }
+    ]
+  }
+}

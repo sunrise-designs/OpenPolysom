@@ -1,0 +1,1 @@
+Consult with all the readme files in wiki/ folder before making any code changes. Print out the total number of .md files you read as an acknowledgement of this instruction.
