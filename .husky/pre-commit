@@ -1,4 +1,21 @@
 #!/usr/bin/env sh
-# Polyglot repo: the TS project lives in src_web/. Git runs hooks from the repo
-# root, so cd in first. Lint-staged auto-fixes staged TS; tsc type-checks the project.
-cd src_web && pnpm exec lint-staged && pnpm exec tsc --noEmit
+# Polyglot repo: the TS project lives in src_web/ (git runs hooks from the repo
+# root, so cd in first). Each check runs only when its tooling is installed and
+# skips gracefully otherwise, so a minimal checkout never blocks a commit. If the
+# lint tooling is (re)added to src_web/package.json, lint-staged activates again
+# automatically. Package-manager-agnostic: calls the local binaries directly.
+cd src_web 2>/dev/null || exit 0
+[ -d node_modules ] || exit 0
+
+# Type-check the project when TypeScript is available.
+if [ -f tsconfig.json ] && [ -x node_modules/.bin/tsc ]; then
+  node_modules/.bin/tsc --noEmit || exit 1
+fi
+
+# Lint + auto-fix staged files only when lint-staged is BOTH installed and
+# configured (a "lint-staged" key in package.json). The binary can linger in
+# node_modules from a previous setup, so the config check is what gates it.
+if [ -x node_modules/.bin/lint-staged ] \
+   && node -e "process.exit(require('./package.json')['lint-staged']?0:1)" 2>/dev/null; then
+  node_modules/.bin/lint-staged || exit 1
+fi
