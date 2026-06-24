@@ -1,189 +1,292 @@
-import type { ZarrData, SidecarMeta } from './types';
+import type { EChartsOption } from 'echarts';
+import type { ZarrData, EventsDoc } from './types';
+import { COLORS } from './tokens';
+import { formatElapsed } from './format';
 
-const BASE_MS = 0; // seconds → ms offset from unix epoch for ECharts time axis
-
-function toMs(f32: Float32Array | Uint8Array): Float64Array {
-  const out = new Float64Array(f32.length);
-  for (let i = 0; i < f32.length; i++) out[i] = BASE_MS + f32[i] * 1000;
-  return out;
+/** One resolved signal channel (descriptor + data). */
+interface ChannelDef {
+  readonly name: string;
+  readonly color: string;
+  readonly x: Float64Array;
+  readonly y: ArrayLike<number>;
+  readonly overlay: boolean;
 }
 
-function zip(xMs: Float64Array, y: Float32Array | Uint8Array): [number, number][] {
-  const n = Math.min(xMs.length, y.length);
-  const d: [number, number][] = new Array(n);
-  for (let i = 0; i < n; i++) d[i] = [xMs[i], y[i]];
-  return d;
+interface ChannelSrc {
+  readonly name: string;
+  readonly color: string;
+  readonly pick: (z: ZarrData) => { readonly x: Float64Array; readonly y: ArrayLike<number>; readonly overlay: boolean };
 }
 
-function formatTime(ms: number): string {
-  return new Date(ms).toISOString().substring(11, 19);
+interface Span {
+  readonly start: number;
+  readonly end: number;
 }
 
-function buildTitle(meta: SidecarMeta): string {
-  const p = meta.patient;
-  let title = p
-    ? `Biometric log &nbsp;|&nbsp; <b>${p.name}</b> &nbsp; DOB: ${p.dob} &nbsp; NHS: ${p.nhs_number}`
-    : 'Biometric log';
+// Stacked-layout constants (kept for the legacy stacked view + click hit-test).
+const TOP_PCT = 2.5;
+const BOTTOM_PCT = 8.5;
+const GAP_PCT = 1.0;
 
-  const r = meta.recording;
-  if (r) {
-    title += `<br><small>Date: ${r.date} &nbsp;|&nbsp; Legs: ${r.legs} &nbsp;|&nbsp; ${r.start_time} – ${r.end_time}</small>`;
+// Single source of truth for the channel order, labels, colours, and data binding.
+const CHANNELS: readonly ChannelSrc[] = [
+  { name: 'RR · ms', color: COLORS.cardiac, pick: (z) => ({ x: z.t, y: z.rr, overlay: false }) },
+  { name: 'Accel mag', color: COLORS.movement, pick: (z) => ({ x: z.t, y: z.accel_mag, overlay: true }) },
+  { name: 'HRV · ms', color: COLORS.hrv, pick: (z) => ({ x: z.hrv_t, y: z.hrv_rmssd, overlay: false }) },
+  { name: 'Accel X', color: COLORS.movement, pick: (z) => ({ x: z.t, y: z.accel_x, overlay: false }) },
+  { name: 'Accel Y', color: COLORS.movement2, pick: (z) => ({ x: z.t, y: z.accel_y, overlay: false }) },
+  { name: 'Accel Z', color: COLORS.movement3, pick: (z) => ({ x: z.t, y: z.accel_z, overlay: false }) },
+];
+
+/** Static descriptor (name + colour) for rendering bubble headers without data. */
+export const CHANNEL_META: readonly { readonly name: string; readonly color: string }[] =
+  CHANNELS.map((c) => ({ name: c.name, color: c.color }));
+
+const channels = (zarr: ZarrData): readonly ChannelDef[] =>
+  CHANNELS.map((c) => ({ name: c.name, color: c.color, ...c.pick(zarr) }));
+
+const zipStrided = (x: Float64Array, y: ArrayLike<number>, stride: number): readonly (readonly [number, number])[] => {
+  const n = Math.min(x.length, y.length);
+  const count = Math.floor(n / stride);
+  return Array.from({ length: count }, (_, i): readonly [number, number] => [x[i * stride] ?? 0, y[i * stride] ?? 0]);
+};
+
+const collectSpans = (events: EventsDoc, type: 'limb_movement' | 'plm_series'): readonly Span[] => {
+  if (type === 'limb_movement') {
+    return events.scorings.flatMap((s) =>
+      s.events.filter((e) => e.type === 'limb_movement').map((e): Span => ({ start: e.onset_s, end: e.onset_s + e.duration_s })),
+    );
   }
+  return events.scorings.flatMap((s) =>
+    s.groups.filter((g) => g.type === 'plm_series').map((g): Span => ({ start: g.onset_s, end: g.onset_s + g.duration_s })),
+  );
+};
 
-  const s = meta.stats;
-  const hrv = (s.hrv_overall != null && !isNaN(s.hrv_overall))
-    ? ` &nbsp;|&nbsp; HRV (RMSSD): ${s.hrv_overall.toFixed(1)} ms` : '';
-  title += `<br><small>LMs: ${s.total_lms} &nbsp;|&nbsp; PLMs: ${s.total_plms} &nbsp;|&nbsp; PLMI: ${s.plmi.toFixed(1)} /hour${hrv}</small>`;
-
-  title += ` &nbsp;|&nbsp; <small>@ ${meta.git_hash}</small>`;
-  return title;
-}
-
-export function buildChartOption(zarr: ZarrData, meta: SidecarMeta): object {
-  // Step-compress RR: keep only transition points
-  const rrF32 = zarr.rr;
-  const tMs = toMs(zarr.t);
-  const transitions: number[] = [0];
-  for (let i = 1; i < rrF32.length; i++) {
-    if (rrF32[i] !== rrF32[i - 1]) transitions.push(i);
-  }
-  transitions.push(rrF32.length - 1);
-
-  const rrTMs = new Float64Array(transitions.map(i => tMs[i]));
-  const rrVals = new Float32Array(transitions.map(i => rrF32[i]));
-
-  // Accel: every 3rd sample (~3.3 Hz)
-  const stride = 3;
-  const accLen = Math.floor(zarr.accel_mag.length / stride);
-  const accTMs = new Float64Array(accLen);
-  const accVals = new Float32Array(accLen);
-  for (let i = 0; i < accLen; i++) {
-    accTMs[i] = tMs[i * stride];
-    accVals[i] = zarr.accel_mag[i * stride];
-  }
-
-  const hasHrv = zarr.hrv_t.length > 1;
-  const hrvTMs = hasHrv ? toMs(zarr.hrv_t) : new Float64Array(0);
-
-  const rawChannels: { name: string; t: Float64Array; v: Float32Array | Uint8Array }[] = [
-    { name: 'Accel X', t: tMs, v: zarr.accel_x },
-    { name: 'Accel Y', t: tMs, v: zarr.accel_y },
-    { name: 'Accel Z', t: tMs, v: zarr.accel_z },
-  ];
-
-  const nExtra = rawChannels.length;
-  const nRows = 2 + (hasHrv ? 1 : 0) + nExtra;
-  const rowH = (85 / nRows).toFixed(1);
-
-  const grids: object[] = [];
-  const xAxes: object[] = [];
-  const yAxes: object[] = [];
-  const series: object[] = [];
-
-  const yNames = ['RR (ms)', 'Accel magnitude'];
-  if (hasHrv) yNames.push('HRV RMSSD (ms)');
-  rawChannels.forEach(ch => yNames.push(ch.name));
-
-  for (let r = 0; r < nRows; r++) {
-    const top = (5 + r * (parseFloat(rowH) + 2)).toFixed(1);
-    grids.push({ left: 70, right: 20, top: `${top}%`, height: `${rowH}%` });
-    xAxes.push({
-      gridIndex: r, type: 'time',
-      axisLabel: {
-        show: r === nRows - 1,
-        formatter: (v: number) => formatTime(v),
-        fontSize: 10,
-      },
-      splitLine: { show: false },
-      axisLine: { lineStyle: { color: '#444' } },
-    });
-    yAxes.push({
-      gridIndex: r, type: 'value',
-      name: yNames[r], nameLocation: 'middle', nameGap: 55,
-      nameTextStyle: { fontSize: 11, color: '#aaa' },
-      splitLine: { lineStyle: { color: '#222' } },
-      axisLabel: { fontSize: 10 },
-    });
-  }
-
-  // LM / PLM markArea data on the accel subplot
-  const lmMark = meta.lm_events.map(([a, b]) => [
-    { xAxis: BASE_MS + a * 1000, itemStyle: { color: 'rgba(0,180,0,0.25)' }, label: { show: false } },
-    { xAxis: BASE_MS + b * 1000 },
+const overlayMarkArea = (events: EventsDoc): unknown[] => {
+  const lm = collectSpans(events, 'limb_movement').map((s) => [
+    { xAxis: s.start, itemStyle: { color: 'rgba(79,214,163,0.16)', borderColor: COLORS.evtLm, borderWidth: 1, opacity: 0.5 } },
+    { xAxis: s.end },
   ]);
-  const plmMark = meta.plm_groups.map(grp => [
+  const plm = collectSpans(events, 'plm_series').map((s) => [
     {
-      xAxis: BASE_MS + grp[0][0] * 1000,
-      itemStyle: { color: 'rgba(220,0,0,0.10)', borderColor: '#dd0000', borderWidth: 1.5 },
-      label: { show: true, position: 'insideTopLeft', formatter: 'PLM', fontSize: 9, color: '#dd0000' },
+      xAxis: s.start,
+      itemStyle: { color: 'rgba(95,208,196,0.10)', borderColor: COLORS.evtPlm, borderWidth: 1.3, borderType: 'dashed' as const },
+      label: { show: true, position: 'insideTopLeft' as const, formatter: 'PLM', fontSize: 9, color: COLORS.evtPlm },
     },
-    { xAxis: BASE_MS + grp[grp.length - 1][1] * 1000 },
+    { xAxis: s.end },
   ]);
+  return [...lm, ...plm];
+};
 
-  series.push({
-    name: 'RR (ms)', type: 'line', xAxisIndex: 0, yAxisIndex: 0,
-    data: zip(rrTMs, rrVals), step: 'end',
-    showSymbol: false, animation: false,
-    lineStyle: { color: '#ff4444', width: 1 },
-    large: true, largeThreshold: 2000,
-    sampling: 'lttb',
-  });
+const tMaxOf = (zarr: ZarrData): number => (zarr.t.length > 0 ? (zarr.t[zarr.t.length - 1] ?? 0) : 0);
+const strideFor = (name: string): number => (name.startsWith('Accel ') && name !== 'Accel mag' ? 3 : 1);
 
-  series.push({
-    name: 'Accel magnitude', type: 'line', xAxisIndex: 1, yAxisIndex: 1,
-    data: zip(accTMs, accVals),
-    showSymbol: false, animation: false,
-    lineStyle: { color: '#4488ff', width: 1 },
-    large: true, largeThreshold: 5000,
-    sampling: 'lttb',
-    markArea: { silent: true, data: [...lmMark, ...plmMark] },
-  });
+export function channelCount(zarr: ZarrData): number {
+  return channels(zarr).length;
+}
 
-  let si = 2;
-  if (hasHrv) {
-    series.push({
-      name: 'HRV RMSSD (ms)', type: 'line', xAxisIndex: si, yAxisIndex: si,
-      data: zip(hrvTMs, zarr.hrv_rmssd),
-      showSymbol: false, animation: false,
-      lineStyle: { color: '#cc66ff', width: 1.5 },
-      large: true, largeThreshold: 2000,
-      sampling: 'lttb',
-    });
-    si++;
-  }
+/** Stacked view only: which row a vertical pixel falls in; -1 if outside the rows. */
+export function channelIndexAtY(yPx: number, heightPx: number, count: number): number {
+  if (heightPx <= 0 || count <= 0) return -1;
+  const rowH = (100 - TOP_PCT - BOTTOM_PCT - GAP_PCT * (count - 1)) / count;
+  const yPct = (yPx / heightPx) * 100;
+  const tops = Array.from({ length: count }, (_, r) => TOP_PCT + r * (rowH + GAP_PCT));
+  return tops.findIndex((top) => yPct >= top && yPct <= top + rowH);
+}
 
-  const chColors = ['#00ffcc', '#ffaa00', '#ff66cc'];
-  rawChannels.forEach((ch, ci) => {
-    series.push({
-      name: ch.name, type: 'line', xAxisIndex: si + ci, yAxisIndex: si + ci,
-      data: zip(ch.t, ch.v),
-      showSymbol: false, animation: false,
-      lineStyle: { color: chColors[ci % chColors.length], width: 1 },
-      large: true, largeThreshold: 5000,
-      sampling: 'lttb',
-    });
-  });
+const sharedTooltip = (touch: boolean): Record<string, unknown> =>
+  touch
+    ? { show: false }
+    : {
+        trigger: 'axis',
+        axisPointer: { animation: false, type: 'cross', lineStyle: { color: COLORS.movement } },
+        backgroundColor: COLORS.surface2,
+        borderColor: COLORS.ring,
+        textStyle: { color: COLORS.text, fontSize: 11 },
+      };
 
-  const zIdxs = Array.from({ length: nRows }, (_, i) => i);
+/**
+ * One channel in its own card ("bubble") — compact, with y-axis + time axis.
+ * Pure. On touch the tooltip + inside-zoom are dropped so swipes scroll; charts
+ * share a group so echarts.connect() keeps them zoom/cursor-synced.
+ */
+export function buildBubbleOption(zarr: ZarrData, events: EventsDoc, index: number, touch = false): EChartsOption {
+  const rows = channels(zarr);
+  const ch = rows[index];
+  if (ch === undefined) return {};
+  const tMax = tMaxOf(zarr);
+
+  const series = {
+    name: ch.name,
+    type: 'line' as const,
+    data: zipStrided(ch.x, ch.y, strideFor(ch.name)) as unknown as number[][],
+    showSymbol: false,
+    animation: false,
+    lineStyle: { color: ch.color, width: 1.1 },
+    large: true,
+    largeThreshold: 2000,
+    sampling: 'lttb' as const,
+    ...(ch.overlay
+      ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events) as unknown as never } }
+      : {}),
+  };
 
   return {
-    backgroundColor: '#111',
+    backgroundColor: 'transparent',
     animation: false,
+    textStyle: { color: COLORS.textMut, fontFamily: 'Inter, system-ui, sans-serif' },
+    grid: { left: 38, right: 8, top: 8, bottom: 22 },
     tooltip: {
-      trigger: 'axis',
-      axisPointer: { animation: false, type: 'cross' },
-      formatter: (params: { seriesName: string; value: [number, number] }[]) => {
-        if (!params.length) return '';
-        const ts = formatTime(params[0].value[0]);
-        return params.map(p => `${p.seriesName}: ${Number(p.value[1]).toFixed(1)}`).join('<br>') + `<br><b>${ts}</b>`;
+      ...sharedTooltip(touch),
+      formatter: (params: unknown) => {
+        const arr = params as readonly { value?: readonly [number, number] }[];
+        const first = arr[0];
+        if (first?.value === undefined) return '';
+        return `${ch.name}: ${first.value[1].toFixed(1)}<br><b>${formatElapsed(first.value[0])}</b>`;
       },
     },
-    dataZoom: [
-      { type: 'inside', xAxisIndex: zIdxs, filterMode: 'none' },
-      { type: 'slider',  xAxisIndex: zIdxs, filterMode: 'none', bottom: 5, height: 22 },
-    ],
-    grid: grids, xAxis: xAxes, yAxis: yAxes, series,
+    xAxis: {
+      type: 'value',
+      min: 0,
+      max: tMax,
+      axisLabel: { formatter: (v: number) => formatElapsed(v), fontSize: 9, color: COLORS.textDim },
+      axisLine: { lineStyle: { color: COLORS.grid } },
+      axisTick: { show: false },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      scale: true,
+      splitNumber: 2,
+      axisLabel: { fontSize: 9, color: COLORS.textDim, hideOverlap: true },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: COLORS.grid, opacity: 0.6 } },
+    },
+    // Desktop: keep the inside-zoom component (connect-synced) but never let it
+    // capture the wheel/drag, so the page scrolls normally when the cursor is
+    // over a chart. Crosshair/tooltip sync is via axisPointer + echarts.connect.
+    dataZoom: touch ? [] : [{ type: 'inside', filterMode: 'none', zoomOnMouseWheel: false, moveOnMouseWheel: false, moveOnMouseMove: false }],
+    series: [series],
   };
 }
 
-export { buildTitle };
+/**
+ * One channel filling the whole canvas — mobile full-screen (landscape) view.
+ */
+export function buildSingleChannelOption(zarr: ZarrData, events: EventsDoc, index: number): EChartsOption {
+  const rows = channels(zarr);
+  const ch = rows[index];
+  if (ch === undefined) return {};
+  const tMax = tMaxOf(zarr);
+
+  const oneSeries = {
+    name: ch.name,
+    type: 'line' as const,
+    data: zipStrided(ch.x, ch.y, 1) as unknown as number[][],
+    showSymbol: false,
+    animation: false,
+    lineStyle: { color: ch.color, width: 1.2 },
+    large: true,
+    largeThreshold: 2000,
+    sampling: 'lttb' as const,
+    ...(ch.overlay
+      ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events) as unknown as never } }
+      : {}),
+  };
+
+  return {
+    backgroundColor: 'transparent',
+    animation: false,
+    textStyle: { color: COLORS.textMut, fontFamily: 'Inter, system-ui, sans-serif' },
+    title: { text: ch.name, left: 16, top: 10, textStyle: { color: ch.color, fontSize: 14, fontWeight: 600 } },
+    grid: { left: 64, right: 28, top: 48, bottom: 70 },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { animation: false, type: 'cross', lineStyle: { color: COLORS.movement } },
+      backgroundColor: COLORS.surface2,
+      borderColor: COLORS.ring,
+      textStyle: { color: COLORS.text, fontSize: 12 },
+      formatter: (params: unknown) => {
+        const arr = params as readonly { value?: readonly [number, number] }[];
+        const first = arr[0];
+        if (first?.value === undefined) return '';
+        return `${ch.name}: ${first.value[1].toFixed(1)}<br><b>${formatElapsed(first.value[0])}</b>`;
+      },
+    },
+    xAxis: {
+      type: 'value',
+      min: 0,
+      max: tMax,
+      axisLabel: { formatter: (v: number) => formatElapsed(v), fontSize: 11, color: COLORS.textDim },
+      axisLine: { lineStyle: { color: COLORS.grid } },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      scale: true,
+      axisLabel: { fontSize: 11, color: COLORS.textDim },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: COLORS.grid, opacity: 0.6 } },
+    },
+    dataZoom: [
+      { type: 'inside', filterMode: 'none' },
+      { type: 'slider', filterMode: 'none', bottom: 14, height: 24, backgroundColor: COLORS.bg, borderColor: COLORS.ring, fillerColor: 'rgba(95,208,196,0.14)', handleStyle: { color: COLORS.movement }, textStyle: { color: COLORS.textDim }, labelFormatter: (v: number) => formatElapsed(v) },
+    ],
+    series: [oneSeries],
+  };
+}
+
+/**
+ * Legacy stacked multi-grid view (kept for easy revert from the bubble layout).
+ */
+export function buildChartOption(zarr: ZarrData, events: EventsDoc, touch = false): EChartsOption {
+  const rows = channels(zarr);
+  const nRows = rows.length;
+  const tMax = tMaxOf(zarr);
+  const rowH = (100 - TOP_PCT - BOTTOM_PCT - GAP_PCT * (nRows - 1)) / nRows;
+
+  const grid = rows.map((_, r) => ({ left: 62, right: 14, top: `${String(TOP_PCT + r * (rowH + GAP_PCT))}%`, height: `${String(rowH)}%` }));
+  const xAxis = rows.map((_, r) => ({
+    gridIndex: r, type: 'value' as const, min: 0, max: tMax,
+    axisLabel: { show: r === nRows - 1, formatter: (v: number) => formatElapsed(v), fontSize: 10, color: COLORS.textDim },
+    axisLine: { lineStyle: { color: COLORS.grid } }, axisTick: { show: false }, splitLine: { show: false },
+  }));
+  const yAxis = rows.map((ch, r) => ({
+    gridIndex: r, type: 'value' as const, scale: true, splitNumber: 2, name: ch.name,
+    nameLocation: 'middle' as const, nameRotate: 90, nameGap: 46,
+    nameTextStyle: { fontSize: 10.5, color: ch.color, fontWeight: 600 as const },
+    axisLabel: { show: true, fontSize: 9, color: COLORS.textDim, hideOverlap: true, showMaxLabel: false },
+    axisLine: { show: false }, axisTick: { show: false }, splitLine: { lineStyle: { color: COLORS.grid, opacity: 0.6 } },
+  }));
+  const mark = overlayMarkArea(events);
+  const series = rows.map((ch, r) => ({
+    name: ch.name, type: 'line' as const, xAxisIndex: r, yAxisIndex: r,
+    data: zipStrided(ch.x, ch.y, strideFor(ch.name)) as unknown as number[][],
+    showSymbol: false, animation: false, lineStyle: { color: ch.color, width: 1.1 },
+    large: true, largeThreshold: 2000, sampling: 'lttb' as const,
+    ...(ch.overlay ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: mark as unknown as never } } : {}),
+  }));
+  const allGridIdx = rows.map((_, i) => i);
+
+  return {
+    backgroundColor: 'transparent', animation: false,
+    textStyle: { color: COLORS.textMut, fontFamily: 'Inter, system-ui, sans-serif' },
+    tooltip: {
+      ...sharedTooltip(touch),
+      formatter: (params: unknown) => {
+        const arr = params as readonly { seriesName?: string; value?: readonly [number, number] }[];
+        const first = arr[0];
+        if (first?.value === undefined) return '';
+        const lines = arr.filter((p) => p.value !== undefined).map((p) => `${p.seriesName ?? ''}: ${(p.value?.[1] ?? 0).toFixed(1)}`);
+        return [...lines, `<b>${formatElapsed(first.value[0])}</b>`].join('<br>');
+      },
+    },
+    dataZoom: [
+      ...(touch ? [] : [{ type: 'inside' as const, xAxisIndex: allGridIdx, filterMode: 'none' as const }]),
+      { type: 'slider', xAxisIndex: allGridIdx, filterMode: 'none', bottom: 6, height: 20, backgroundColor: COLORS.bg, borderColor: COLORS.ring, fillerColor: 'rgba(95,208,196,0.14)', handleStyle: { color: COLORS.movement }, textStyle: { color: COLORS.textDim, fontSize: 10 }, labelFormatter: (v: number) => formatElapsed(v) },
+    ],
+    grid, xAxis, yAxis, series,
+  };
+}
