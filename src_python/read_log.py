@@ -7,7 +7,7 @@ from pathlib import Path
 from device import dump_from_device, erase_device
 from signal_processing import remove_baseline, count_plm, compute_hrv, accel_magnitude
 from plotting import save_plotly_html, plot
-from export_zarr import save_zarr_json, serve_and_open
+from export_zarr import save_zarr_json
 
 PORT = 'COM4'
 BAUD = 115200
@@ -103,7 +103,7 @@ def main():
                 stats=result,
                 recording_meta=recording_meta,
             )
-            serve_and_open(src_path.parent, meta_path.name)
+            print(f"To view: python src_python/serve.py --meta {meta_path}")
         else:
             save_plotly_html(
                 t, rr_list, result['vm'],
