@@ -6,7 +6,7 @@
 # upstream v5 default with a few changes:
 #   - markdownLinkResolution: relative (crawl-links) so the wiki's relative .md
 #     links resolve; Obsidian [[wikilinks]] still work too.
-#   - baseUrl set to the GitHub Pages project URL (served under /ProtoSom/).
+#   - baseUrl set to the GitHub Pages project URL (served under /OpenPolysom/).
 #   - analytics: null; og-image disabled (avoids the heavy image-render step).
 # The plugin SET is unchanged from upstream so quartz.lock.json keeps every plugin
 # pinned to a commit and `npx quartz plugin install` stays reproducible. Only
@@ -18,11 +18,14 @@ configuration:
   enablePopovers: true
   analytics: null
   locale: en-US
-  # GitHub Pages project site: served under the /ProtoSom/ subpath. Quartz v5
-  # prefers relative URLs, so internal links work under the subpath; this baseUrl
-  # sets the canonical host for the sitemap/RSS. If subpath asset resolution ever
-  # misbehaves, the fix is a custom domain or an org <name>.github.io repo.
-  baseUrl: sunrise-designs.github.io/ProtoSom
+  # GitHub Pages project site: served under the /OpenPolysom/ subpath (the repo
+  # name). This path MUST match the repo name: it sets the SPA basepath and the
+  # explorer/graph/search link prefix, so a mismatch 404s every in-site link.
+  # Quartz v5 prefers relative URLs, so internal links work under the subpath;
+  # this baseUrl also sets the canonical host for the sitemap/RSS. If subpath
+  # asset resolution ever misbehaves, the fix is a custom domain or an org
+  # <name>.github.io repo.
+  baseUrl: sunrise-designs.github.io/OpenPolysom
   ignorePatterns:
     - private
     - templates
@@ -218,7 +221,7 @@ plugins:
     enabled: true
     options:
       links:
-        GitHub: https://github.com/sunrise-designs/ProtoSom
+        GitHub: https://github.com/sunrise-designs/OpenPolysom
   - source: github:quartz-community/recent-notes
     enabled: false
   - source: github:quartz-community/spacer

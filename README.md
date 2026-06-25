@@ -1,6 +1,6 @@
-![ProtoSom](doc/ProtoSom.jpg)
+![OpenPolysom](doc/ProtoSom.jpg)
 
-ProtoSom
+OpenPolysom
 ===========================
 
 This is an open-source Polysomnography (PSG) physical device and analysis software. It performs what is know as a sleep study.
@@ -12,9 +12,15 @@ It runs on an ESP32 microcontroller, and collects these signals from a patient:
 - Sound recording for snoring detection
 - Acceleration data from the leg sensors to detect leg twitching
 
-Ready to delve into code?
+The wiki — an LLM-first knowledge base
 ===========================
-See [wiki](/wiki/INDEX.md)
+The in-depth documentation lives in an **LLM wiki**: a structured knowledge base written first for AI coding agents to read as working context, and second for humans. It is deliberately [`llms.txt`](https://llmstxt.org/)-shaped — a curated *map* of the project (architecture, data formats, signal processing, settled decisions, roadmap, coding standards) rather than an exhaustive dump — so an agent (or a person) reads the index first and then opens only the pages a task needs. The same Markdown is browsable as a website.
+
+- **Browse it online:** https://sunrise-designs.github.io/OpenPolysom/
+- **Read the source:** [`wiki/INDEX.md`](wiki/INDEX.md) — start here
+- **Jump straight in:** [architecture](wiki/knowledge/architecture.md) · [data formats](wiki/knowledge/data-formats.md) · [roadmap](wiki/state/roadmap.md)
+
+The Markdown in [`wiki/`](wiki) is rendered to a static site with [Quartz](https://quartz.jzhao.xyz/) and published to GitHub Pages (build: [`web/build.sh`](web/build.sh)).
 
 Why do this?
 ===========================
@@ -67,6 +73,11 @@ The point it, it takes a confluence of all the different signals recorded by the
 
 Challenges to solve
 ===========================
+**Medical device compliance**
+
+There is no getting around the fact that this is a Medical Device, likely class B. There is no point in simply providing a heap of dry statistics and numerical metrics from the recorded signals - 99% of users without a very specialist skill set would not be able to interpret them. This isn't a "wellness" device. The interpretation is the whole point of the OpenPolysom, being able to cautiously point the user in the right direction on their path to the eventual resolution of their sleep problems.
+This lands it firmly in the regulated territory. Therefore, this system, software and hardware alike, will be designed with IEC 62304 (Medical Software) in mind. The intent is to keep the code which extracts the dry metrics completely separate from the code which makes any interpretation of those metrics.
+
 **Baseline removal from the RIP signal - the chest belts**
 
 The plan is to achieve that using a combination of Qualitative Diagnostic Calibration (QDC) variant (Marvin Sackner, 1989) and Adaptive Iteratively Reweighted Penalized Least Squares (airPLS)
@@ -84,9 +95,6 @@ I have not yet recorded a sample signal, but I am guessing there will be pretty 
 It's nice being able to harness amazing processing power of RPi5, but it's not a long term solution. The code will need to run on RISC-V code of the ESP32 chip.
 It does not have to do all the signal processing in real time, that can be done later, but I'd like to all I can in real-time (subject to acceptable battery life)
 
-**Medical software compliance**
-
-Even though this is early days, and it's an open-source project designed to be accessible to all, I am aiming for the highest standards of code quality and traceability. This means effectively designing this software to IEC 62304 (Medical Software). This entails version traceability, comprehensive test coverage, demonstrable reproducibility, and so on.
 
 What hardware does this expect
 ----------------------------
