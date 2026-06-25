@@ -16,7 +16,6 @@ build/
 !biometric_filtered.bin
 *.html
 *.pyc
-*pdf
 *.zarr/
 src_web/node_modules/
 
@@ -32,3 +31,4 @@ src_python/biometric_filtered.json
 biometric_filtered_meta.json
 biometric_meta.json
 .vscode/c_cpp_properties.json
+Dmitry Ignatyev PSG data.pdf
