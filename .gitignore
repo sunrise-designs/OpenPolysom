@@ -33,3 +33,4 @@ biometric_meta.json
 .vscode/c_cpp_properties.json
 src_web/dist/chart.js
 Dmitry Ignatyev PSG data.pdf
+.github/workflows/clean-machine-test.yml
