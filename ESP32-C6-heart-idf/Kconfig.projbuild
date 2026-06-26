@@ -1,0 +1,21 @@
+menu "Polysom Application"
+
+    config POLYSOM_WIFI_SSID
+        string "Wi-Fi SSID"
+        default "TNCAP26203D"
+        help
+            SSID of the network to connect to for NTP time sync.
+
+    config POLYSOM_WIFI_PASSWORD
+        string "Wi-Fi password"
+        default ""
+        help
+            Password for the Wi-Fi network.
+
+    config POLYSOM_NTP_SERVER
+        string "NTP server"
+        default "pool.ntp.org"
+        help
+            Hostname of the NTP server used for real-time clock sync.
+
+endmenu

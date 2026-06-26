@@ -9,7 +9,12 @@ extern volatile boolean  doConnect;
 extern volatile boolean  connected;
 extern volatile boolean  bleConnecting;
 extern volatile uint16_t latestRR_ms;
+extern volatile uint16_t latestBpm;
 extern int               scanAttempts;
+
+// Set from the scan result; empty until first device found
+extern String bleDeviceName;
+extern String bleDeviceAddress;
 
 // Shared timing — set by startBLEScan(), checked in loop() for rescan
 extern unsigned long lastScanTime;

@@ -9,7 +9,10 @@ volatile boolean  doConnect     = false;
 volatile boolean  connected     = false;
 volatile boolean  bleConnecting = false;
 volatile uint16_t latestRR_ms  = 0;
+volatile uint16_t latestBpm    = 0;
 int               scanAttempts  = 0;
+String bleDeviceName    = "";
+String bleDeviceAddress = "";
 
 static BLEAdvertisedDevice* myDevice = nullptr;
 static BLEClient*           pClient  = nullptr;
@@ -26,11 +29,12 @@ static void notifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteristic,
   int offset = 1;
 
   if (is16BitBpm) {
-    uint16_t bpm = (uint16_t)pData[1] | ((uint16_t)pData[2] << 8);
-    if (!dumping) Serial.printf("BPM: %d\n", bpm);
+    latestBpm = (uint16_t)pData[1] | ((uint16_t)pData[2] << 8);
+    if (!dumping) Serial.printf("BPM: %d\n", (int)latestBpm);
     offset = 3;
   } else {
-    if (!dumping) Serial.printf("BPM: %d\n", pData[1]);
+    latestBpm = pData[1];
+    if (!dumping) Serial.printf("BPM: %d\n", (int)latestBpm);
     offset = 2;
   }
 
@@ -106,7 +110,9 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
     if (advertisedDevice.haveServiceUUID() &&
         advertisedDevice.isAdvertisingService(serviceUUID)) {
       BLEDevice::getScan()->stop();
-      myDevice  = new BLEAdvertisedDevice(advertisedDevice);
+      myDevice         = new BLEAdvertisedDevice(advertisedDevice);
+      bleDeviceName    = String(advertisedDevice.getName().c_str());
+      bleDeviceAddress = String(advertisedDevice.getAddress().toString().c_str());
       doConnect = true;
     }
   }
