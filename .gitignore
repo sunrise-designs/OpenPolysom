@@ -1,5 +1,5 @@
 # Binaries
-main
+/main
 *.o
 
 # Data files

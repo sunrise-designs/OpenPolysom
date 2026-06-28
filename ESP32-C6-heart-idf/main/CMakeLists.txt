@@ -1,0 +1,30 @@
+idf_component_register(
+    SRCS
+        "main.cpp"
+        "sensors.cpp"
+        "ble_client.c"
+        "logger.cpp"
+        "display.cpp"
+        "wifi_ntp.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        driver
+        esp_driver_uart
+        esp_driver_i2c
+        esp_driver_spi
+        esp_driver_gpio
+        esp_driver_sdspi
+        esp_adc
+        esp_lcd
+        esp_wifi
+        esp_event
+        esp_netif
+        lwip
+        fatfs
+        sdmmc
+        nvs_flash
+        bt
+        freertos
+        log
+        edflib
+)

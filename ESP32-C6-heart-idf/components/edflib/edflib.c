@@ -41,9 +41,9 @@
 #define EDFLIB_VERSION  (127)
 /* EDFLIB_MAXFILES now defined in edflib.h (reduced to 2 for ESP32) */
 
-#if defined(__APPLE__) || defined(__MACH__) || defined(__APPLE_CC__) || defined(__HAIKU__) || defined(__ANDROID__) || defined(__xtensa__)
+#if defined(__APPLE__) || defined(__MACH__) || defined(__APPLE_CC__) || defined(__HAIKU__) || defined(__ANDROID__) || defined(__xtensa__) || defined(__riscv)
 
-/* ESP32 (Xtensa) uses standard fopen/fseek/ftell via the IDF VFS layer */
+/* ESP32 (Xtensa/RISC-V) uses standard fopen/fseek/ftell via the IDF VFS layer */
 #define fopeno fopen
 
 #else
@@ -6032,7 +6032,7 @@ EDFLIB_API int edfwrite_annotation_utf8_hr(int handle, long long onset, long lon
 
   list_annot->onset = onset;
   list_annot->duration = duration;
-  strncpy(list_annot->annotation, description, EDFLIB_WRITE_MAX_ANNOTATION_LEN);
+  memcpy(list_annot->annotation, description, EDFLIB_WRITE_MAX_ANNOTATION_LEN);
   list_annot->annotation[EDFLIB_WRITE_MAX_ANNOTATION_LEN] = 0;
 
   for(i=0; ; i++)
@@ -6094,10 +6094,10 @@ EDFLIB_API int edfwrite_annotation_latin1_hr(int handle, long long onset, long l
 
   list_annot->onset = onset;
   list_annot->duration = duration;
-  strncpy(str, description, EDFLIB_WRITE_MAX_ANNOTATION_LEN);
+  memcpy(str, description, EDFLIB_WRITE_MAX_ANNOTATION_LEN);
   str[EDFLIB_WRITE_MAX_ANNOTATION_LEN] = 0;
   edflib_latin12utf8(str, strlen(str));
-  strncpy(list_annot->annotation, str, EDFLIB_WRITE_MAX_ANNOTATION_LEN);
+  memcpy(list_annot->annotation, str, EDFLIB_WRITE_MAX_ANNOTATION_LEN);
   list_annot->annotation[EDFLIB_WRITE_MAX_ANNOTATION_LEN] = 0;
 
   hdrlist[handle]->annots_in_file++;
