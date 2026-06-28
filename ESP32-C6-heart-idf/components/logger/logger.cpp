@@ -12,8 +12,6 @@
 
 static const char *TAG = "logger";
 
-volatile bool g_dumping = false;
-
 // ── EDF signal indices ────────────────────────────────────────────────────────
 #define SIG_THORACIC 0
 #define SIG_ABDOMEN  1
@@ -208,16 +206,6 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
     }
 }
 
-void logger_process_cmd(char cmd)
-{
-    if (cmd == 'E') {
-        logger_close();
-        remove(EDF_FILE_PATH);
-        baseline_ok = false;
-        open_edf();
-    }
-}
-
 void logger_close(void)
 {
     if (edf_handle >= 0) {
@@ -243,3 +231,4 @@ bool logger_format_sd(void)
     ESP_LOGI(TAG, "SD card formatted");
     return true;
 }
+

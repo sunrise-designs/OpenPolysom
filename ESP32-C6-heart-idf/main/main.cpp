@@ -8,7 +8,6 @@
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "nvs_flash.h"
-#include "driver/uart.h"
 
 extern "C" {
 #include "ble_client.h"
@@ -97,26 +96,6 @@ static void sensor_task(void *arg)
     }
 }
 
-// ── UART command handler task ─────────────────────────────────────────────────
-static void uart_task(void *arg)
-{
-    (void)arg;
-    uart_config_t uart_cfg = {};
-    uart_cfg.baud_rate = 115200;
-    uart_cfg.data_bits = UART_DATA_8_BITS;
-    uart_cfg.parity    = UART_PARITY_DISABLE;
-    uart_cfg.stop_bits = UART_STOP_BITS_1;
-    uart_cfg.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
-    uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
-    uart_param_config(UART_NUM_0, &uart_cfg);
-
-    uint8_t ch;
-    while (1) {
-        if (uart_read_bytes(UART_NUM_0, &ch, 1, pdMS_TO_TICKS(100)) > 0)
-            logger_process_cmd((char)ch);
-    }
-}
-
 // ── app_main ──────────────────────────────────────────────────────────────────
 extern "C" void app_main(void)
 {
@@ -147,9 +126,6 @@ extern "C" void app_main(void)
 
     // Sensor loop
     xTaskCreate(sensor_task, "sensor", 8192, NULL, 5, NULL);
-
-    // UART command handler
-    xTaskCreate(uart_task, "uart", 2048, NULL, 3, NULL);
 
     ESP_LOGI(TAG, "All tasks started");
 }

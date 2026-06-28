@@ -10,7 +10,6 @@ idf_component_register(
         logger
         display
         nvs_flash
-        esp_driver_uart
         freertos
         log
 )
