@@ -229,7 +229,7 @@ bool sensors_init(void)
         .atten    = ADC_ATTEN_DB_12,
         .bitwidth = ADC_BITWIDTH_12,
     };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, ECG_ADC_CHANNEL, &ch_cfg));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, (adc_channel_t)ECG_ADC_CHANNEL, &ch_cfg));
 
     return ok;
 }
@@ -246,6 +246,6 @@ void sensors_read(void)
 void sensors_read_ecg(void)
 {
     int raw = 0;
-    adc_oneshot_read(s_adc, ECG_ADC_CHANNEL, &raw);
+    adc_oneshot_read(s_adc, (adc_channel_t)ECG_ADC_CHANNEL, &raw);
     g_ecg_raw = (uint16_t)raw;
 }

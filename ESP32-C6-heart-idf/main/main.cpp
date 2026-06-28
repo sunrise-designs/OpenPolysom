@@ -60,7 +60,23 @@ static void sensor_task(void *arg)
             // 5 Hz: display
             if (++tick_disp >= 10) {
                 tick_disp = 0;
-                display_update();
+                display_data_t dd = {};
+                dd.ble_connected   = ble_is_connected();
+                dd.ble_device_name = ble_get_device_name();
+                dd.bpm             = ble_get_bpm();
+                dd.rr_ms           = ble_get_rr_ms();
+                dd.accel0[0]       = g_accel0_x;
+                dd.accel0[1]       = g_accel0_y;
+                dd.accel0[2]       = g_accel0_z;
+                dd.accel1[0]       = g_accel1_x;
+                dd.accel1[1]       = g_accel1_y;
+                dd.accel1[2]       = g_accel1_z;
+                dd.ldc0            = g_ldc0;
+                dd.ldc1            = g_ldc1;
+                dd.ldc0_baseline   = logger_get_ldc0_baseline();
+                dd.ldc1_baseline   = logger_get_ldc1_baseline();
+                dd.baseline_ok     = logger_get_baseline_ok();
+                display_update(&dd);
             }
 
             // BLE rescan watchdog: restart scan every BLE_RESCAN_MS if not connected

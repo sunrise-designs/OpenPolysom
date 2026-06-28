@@ -1,8 +1,5 @@
 #include "display.h"
 #include "config.h"
-#include "ble_client.h"
-#include "logger.h"
-#include "sensors.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_st7789.h"
@@ -198,9 +195,8 @@ static void draw_labels(void)
     fill_rect(0, 0, LCD_W, LCD_H, COL_BG);
 
     draw_string(0, Y_TITLE,   "Polar H9",        COL_HDR,   COL_BG, 2);
-    char uuid_buf[12];
-    snprintf(uuid_buf, sizeof(uuid_buf), "SVC:0x%04X", ble_get_hr_svc_uuid());
-    draw_string(100, Y_TITLE + 4, uuid_buf, COL_LABEL, COL_BG, 1);
+    // 0x180D is the Bluetooth SIG Heart Rate Service UUID — a fixed constant.
+    draw_string(100, Y_TITLE + 4, "SVC:0x180D", COL_LABEL, COL_BG, 1);
     draw_hline(0, Y_DIV1,  LCD_W, COL_DIV);
     draw_string(0, Y_A0_LBL, "-- Accel 0 --",    COL_LABEL, COL_BG, 1);
     draw_string(0, Y_A1_LBL, "-- Accel 1 --",    COL_LABEL, COL_BG, 1);
@@ -264,25 +260,25 @@ void display_init(void)
     ESP_LOGI(TAG, "Display ready");
 }
 
-void display_update(void)
+void display_update(const display_data_t *data)
 {
     char buf[32];
 
     // ── Device / connection status ────────────────────────────────────────────
     fill_rect(0, Y_DEV, LCD_W, 10, COL_BG);
     draw_string(0, Y_DEV,
-                ble_is_connected() ? ble_get_device_name() : "Scanning...",
+                data->ble_connected ? data->ble_device_name : "Scanning...",
                 COL_VALUE, COL_BG, 1);
 
     // ── Heart rate / RR interval ──────────────────────────────────────────────
     fill_rect(0, Y_HR, LCD_W, 10, COL_BG);
     snprintf(buf, sizeof(buf), "HR:%3ubpm  RR:%4ums",
-             (unsigned)ble_get_bpm(), (unsigned)ble_get_rr_ms());
+             (unsigned)data->bpm, (unsigned)data->rr_ms);
     draw_string(0, Y_HR, buf, COL_VALUE, COL_BG, 1);
 
     // ── Accelerometer 0 ───────────────────────────────────────────────────────
     float mag0, p0, r0;
-    accel_angles(g_accel0_x, g_accel0_y, g_accel0_z, &mag0, &p0, &r0);
+    accel_angles(data->accel0[0], data->accel0[1], data->accel0[2], &mag0, &p0, &r0);
     fill_rect(0, Y_A0, LCD_W, 20, COL_BG);
     snprintf(buf, sizeof(buf), "  Mag:%5.0f mg", mag0);
     draw_string(0, Y_A0, buf, COL_VALUE, COL_BG, 1);
@@ -291,7 +287,7 @@ void display_update(void)
 
     // ── Accelerometer 1 ───────────────────────────────────────────────────────
     float mag1, p1, r1;
-    accel_angles(g_accel1_x, g_accel1_y, g_accel1_z, &mag1, &p1, &r1);
+    accel_angles(data->accel1[0], data->accel1[1], data->accel1[2], &mag1, &p1, &r1);
     fill_rect(0, Y_A1, LCD_W, 20, COL_BG);
     snprintf(buf, sizeof(buf), "  Mag:%5.0f mg", mag1);
     draw_string(0, Y_A1, buf, COL_VALUE, COL_BG, 1);
@@ -299,24 +295,20 @@ void display_update(void)
     draw_string(0, Y_A1 + 10, buf, COL_VALUE, COL_BG, 1);
 
     // ── LDC1612 ───────────────────────────────────────────────────────────────
-    bool   bOk   = logger_get_baseline_ok();
-    uint32_t b0  = logger_get_ldc0_baseline();
-    uint32_t b1  = logger_get_ldc1_baseline();
-
     fill_rect(0, Y_CH0, LCD_W, 20, COL_BG);
-    snprintf(buf, sizeof(buf), "  CH0:%9lu", (unsigned long)g_ldc0);
+    snprintf(buf, sizeof(buf), "  CH0:%9lu", (unsigned long)data->ldc0);
     draw_string(0, Y_CH0, buf, COL_VALUE, COL_BG, 1);
-    if (bOk)
-        snprintf(buf, sizeof(buf), "  d0:%+10ld", (long)(int32_t)(g_ldc0 - b0));
+    if (data->baseline_ok)
+        snprintf(buf, sizeof(buf), "  d0:%+10ld", (long)(int32_t)(data->ldc0 - data->ldc0_baseline));
     else
         snprintf(buf, sizeof(buf), "  d0: (no base)");
     draw_string(0, Y_CH0 + 10, buf, COL_VALUE, COL_BG, 1);
 
     fill_rect(0, Y_CH1, LCD_W, 20, COL_BG);
-    snprintf(buf, sizeof(buf), "  CH1:%9lu", (unsigned long)g_ldc1);
+    snprintf(buf, sizeof(buf), "  CH1:%9lu", (unsigned long)data->ldc1);
     draw_string(0, Y_CH1, buf, COL_VALUE, COL_BG, 1);
-    if (bOk)
-        snprintf(buf, sizeof(buf), "  d1:%+10ld", (long)(int32_t)(g_ldc1 - b1));
+    if (data->baseline_ok)
+        snprintf(buf, sizeof(buf), "  d1:%+10ld", (long)(int32_t)(data->ldc1 - data->ldc1_baseline));
     else
         snprintf(buf, sizeof(buf), "  d1: (no base)");
     draw_string(0, Y_CH1 + 10, buf, COL_VALUE, COL_BG, 1);
