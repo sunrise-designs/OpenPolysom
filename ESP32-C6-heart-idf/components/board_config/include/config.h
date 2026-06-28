@@ -25,9 +25,9 @@
 
 // ── Shared SPI bus (LCD + SD card) ───────────────────────────────────────────
 #define SPI_HOST_ID   SPI2_HOST
-#define SPI_MOSI_PIN  ((gpio_num_t)11)   // PLACEHOLDER
-#define SPI_MISO_PIN  ((gpio_num_t)12)   // PLACEHOLDER — needed by SD, ignored by LCD
-#define SPI_CLK_PIN   ((gpio_num_t)13)   // PLACEHOLDER
+#define SPI_MOSI_PIN  ((gpio_num_t)6)    // GPIO6 — matches reference board
+#define SPI_MISO_PIN  ((gpio_num_t)12)   // needed by SD, ignored by LCD
+#define SPI_CLK_PIN   ((gpio_num_t)7)    // GPIO7 — matches reference board
 
 // ── ST7789 LCD (172×320) ──────────────────────────────────────────────────────
 #define LCD_CS_PIN    ((gpio_num_t)14)
@@ -36,7 +36,7 @@
 #define LCD_BL_PIN    ((gpio_num_t)22)   // backlight (active HIGH)
 #define LCD_W         172
 #define LCD_H         320
-#define LCD_SPI_FREQ  40000000  // 40 MHz
+#define LCD_SPI_FREQ  12000000  // 12 MHz — matches reference board
 
 // ── SD card ───────────────────────────────────────────────────────────────────
 #define SD_CS_PIN     ((gpio_num_t)10)   // PLACEHOLDER

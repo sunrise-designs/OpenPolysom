@@ -246,16 +246,14 @@ void display_init(void)
     // ST7789 panel
     esp_lcd_panel_dev_config_t panel_cfg = {};
     panel_cfg.reset_gpio_num = LCD_RST_PIN;
-    panel_cfg.rgb_ele_order  = LCD_RGB_ELEMENT_ORDER_RGB;
+    panel_cfg.rgb_ele_order  = LCD_RGB_ELEMENT_ORDER_BGR;  // BGR — matches reference board
     panel_cfg.bits_per_pixel = 16;
     ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io, &panel_cfg, &s_panel));
 
     esp_lcd_panel_reset(s_panel);
     esp_lcd_panel_init(s_panel);
-    esp_lcd_panel_invert_color(s_panel, true);   // ST7789 typically needs inversion
-    esp_lcd_panel_set_gap(s_panel, 0, 0);
-    esp_lcd_panel_swap_xy(s_panel, false);
-    esp_lcd_panel_mirror(s_panel, false, false);
+    esp_lcd_panel_set_gap(s_panel, 34, 0);  // GRAM X offset — 172px active area starts at col 34
+    esp_lcd_panel_mirror(s_panel, true, false);  // mirror X — matches reference board
     esp_lcd_panel_disp_on_off(s_panel, true);
 
     // Backlight
