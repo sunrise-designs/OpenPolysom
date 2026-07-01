@@ -76,8 +76,16 @@ static int on_dsc_disc(uint16_t conn_handle, const struct ble_gatt_error *error,
 {
     (void)chr_def_handle;
     (void)arg;
-    if (error->status != 0 && error->status != BLE_HS_EDONE) return 0;
-    if (dsc == NULL) return 0;
+    if (error->status != 0 && error->status != BLE_HS_EDONE) {
+        ESP_LOGE(TAG, "Descriptor discovery failed: status=%d", error->status);
+        return 0;
+    }
+    if (dsc == NULL) {
+        if (error->status == BLE_HS_EDONE)
+            ESP_LOGW(TAG, "Descriptor discovery done, no CCCD found on HR characteristic");
+        return 0;
+    }
+    ESP_LOGI(TAG, "Found descriptor uuid=0x%04x handle=%d", ble_uuid_u16(&dsc->uuid.u), dsc->handle);
 
     // CCCD UUID = 0x2902
     if (ble_uuid_u16(&dsc->uuid.u) == 0x2902) {
@@ -98,15 +106,23 @@ static int on_chr_disc(uint16_t conn_handle, const struct ble_gatt_error *error,
 {
     (void)arg;
     if (error->status == BLE_HS_EDONE) return 0;
-    if (error->status != 0) return 0;
+    if (error->status != 0) {
+        ESP_LOGE(TAG, "Characteristic discovery failed: status=%d", error->status);
+        return 0;
+    }
     if (chr == NULL) return 0;
 
     if (ble_uuid_u16(&chr->uuid.u) == 0x2A37) {
         s_chr_val_handle = chr->val_handle;
-        // Discover descriptors between val_handle+1 and service end
-        ble_gattc_disc_all_dscs(conn_handle,
-                                 chr->val_handle + 1, s_svc_end,
-                                 on_dsc_disc, NULL);
+        ESP_LOGI(TAG, "HR Measurement chr: def_handle=%d val_handle=%d properties=0x%02x",
+                 chr->def_handle, chr->val_handle, chr->properties);
+        // NimBLE's Find-Information request actually starts at start_handle+1
+        // internally, so pass val_handle itself (not val_handle+1) here.
+        int rc = ble_gattc_disc_all_dscs(conn_handle,
+                                          chr->val_handle, s_svc_end,
+                                          on_dsc_disc, NULL);
+        if (rc != 0)
+            ESP_LOGE(TAG, "Failed to start descriptor discovery: rc=%d", rc);
     }
     return 0;
 }
@@ -117,15 +133,22 @@ static int on_svc_disc(uint16_t conn_handle, const struct ble_gatt_error *error,
 {
     (void)arg;
     if (error->status == BLE_HS_EDONE) return 0;
-    if (error->status != 0) return 0;
+    if (error->status != 0) {
+        ESP_LOGE(TAG, "Service discovery failed: status=%d", error->status);
+        return 0;
+    }
     if (svc == NULL) return 0;
 
     if (ble_uuid_cmp(&svc->uuid.u, &s_hr_svc_uuid.u) == 0) {
         s_svc_end = svc->end_handle;
-        ble_gattc_disc_chrs_by_uuid(conn_handle,
-                                     svc->start_handle, svc->end_handle,
-                                     (const ble_uuid_t *)&s_hr_chr_uuid,
-                                     on_chr_disc, NULL);
+        ESP_LOGI(TAG, "HR service: start_handle=%d end_handle=%d",
+                 svc->start_handle, svc->end_handle);
+        int rc = ble_gattc_disc_chrs_by_uuid(conn_handle,
+                                              svc->start_handle, svc->end_handle,
+                                              (const ble_uuid_t *)&s_hr_chr_uuid,
+                                              on_chr_disc, NULL);
+        if (rc != 0)
+            ESP_LOGE(TAG, "Failed to start characteristic discovery: rc=%d", rc);
     }
     return 0;
 }
@@ -168,7 +191,7 @@ static int on_gap_event(struct ble_gap_event *event, void *arg)
         break;
     }
 
-    case BLE_GAP_EVENT_CONNECT:
+    case BLE_GAP_EVENT_CONNECT: {
         if (event->connect.status != 0) {
             ESP_LOGE(TAG, "Connection failed (%d), restarting scan",
                      event->connect.status);
@@ -178,8 +201,11 @@ static int on_gap_event(struct ble_gap_event *event, void *arg)
         s_conn_handle = event->connect.conn_handle;
         s_connected   = true;
         ESP_LOGI(TAG, "Connected: %s", s_dev_name);
-        ble_gattc_disc_all_svcs(s_conn_handle, on_svc_disc, NULL);
+        int rc = ble_gattc_disc_all_svcs(s_conn_handle, on_svc_disc, NULL);
+        if (rc != 0)
+            ESP_LOGE(TAG, "Failed to start service discovery: rc=%d", rc);
         break;
+    }
 
     case BLE_GAP_EVENT_DISCONNECT:
         s_connected      = false;
