@@ -9,5 +9,6 @@
     "--query-driver=**",
     "--compile-commands-dir=/home/dmitry/OpenPolysom/ESP32-C6-heart-idf/build"
   ],
-  "idf.flashType": "UART"
+  "idf.flashType": "UART",
+  "idf.port": "/dev/ttyACM0"
 }

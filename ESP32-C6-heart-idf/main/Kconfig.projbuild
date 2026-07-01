@@ -24,15 +24,19 @@ menu "Board Configuration"
 
     config POLYSOM_I2C_SDA_PIN
         int "I2C SDA pin"
-        default 6
+        default 2
         help
             GPIO pin number for the shared I2C SDA line.
+            NOTE: placeholder pending confirmation against the board schematic —
+            previously defaulted to 6, which collided with the SPI MOSI pin.
 
     config POLYSOM_I2C_SCL_PIN
         int "I2C SCL pin"
-        default 7
+        default 3
         help
             GPIO pin number for the shared I2C SCL line.
+            NOTE: placeholder pending confirmation against the board schematic —
+            previously defaulted to 7, which collided with the SPI CLK pin.
 
     config POLYSOM_I2C_FREQ_HZ
         int "I2C bus frequency (Hz)"
