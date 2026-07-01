@@ -227,7 +227,9 @@ static bool open_edf(void)
     for (int i = 0; i < NUM_SIGNALS; i++) {
         edf_set_label(edf_handle, i, sigs[i].label);
         edf_set_transducer(edf_handle, i, sigs[i].transducer);
-        edf_set_samplefrequency(edf_handle, i, sigs[i].rate);
+        // edf_set_samplefrequency() actually takes samples-per-datarecord, not Hz;
+        // effective rate = samplefrequency / datarecord duration (edflib.h).
+        edf_set_samplefrequency(edf_handle, i, sigs[i].rate * RECORD_DURATION_S);
         edf_set_digital_maximum(edf_handle, i, sigs[i].dmax);
         edf_set_digital_minimum(edf_handle, i, sigs[i].dmin);
         edf_set_physical_maximum(edf_handle, i, sigs[i].pmax);
