@@ -20,6 +20,7 @@ static const char *TAG = "display";
 #define COL_DIV    0x39E7u  // dark grey
 
 #define Y_OFFSET 18
+#define X_OFFSET 10
 
 // ── Layout Y positions ────────────────────────────────────────────────────────
 #define Y_TITLE     0   + Y_OFFSET
@@ -222,14 +223,14 @@ static void draw_labels(void)
 {
     fill_rect(0, 0, LCD_W, LCD_H, COL_BG);
 
-    draw_string(0, Y_TITLE,   "Polar H9",        COL_HDR,   COL_BG);
+    draw_string(X_OFFSET, Y_TITLE,   "Polar H9",        COL_HDR,   COL_BG);
     // 0x180D is the Bluetooth SIG Heart Rate Service UUID — a fixed constant.
-    draw_string(100, Y_TITLE + 4, "SVC:0x180D", COL_LABEL, COL_BG);
-    draw_hline(0, Y_DIV1,  LCD_W, COL_DIV);
-    draw_string(0, Y_A0_LBL, "-- Accel 0 --",    COL_LABEL, COL_BG);
-    draw_string(0, Y_A1_LBL, "-- Accel 1 --",    COL_LABEL, COL_BG);
-    draw_hline(0, Y_DIV2,  LCD_W, COL_DIV);
-    draw_string(0, Y_LDC_LBL,"-- LDC1612 --",    COL_LABEL, COL_BG);
+    draw_string(100 + X_OFFSET, Y_TITLE + 4, "SVC:0x180D", COL_LABEL, COL_BG);
+    draw_hline(X_OFFSET, Y_DIV1,  LCD_W, COL_DIV);
+    draw_string(X_OFFSET, Y_A0_LBL, "-- Accel 0 --",    COL_LABEL, COL_BG);
+    draw_string(X_OFFSET, Y_A1_LBL, "-- Accel 1 --",    COL_LABEL, COL_BG);
+    draw_hline(X_OFFSET, Y_DIV2,  LCD_W, COL_DIV);
+    draw_string(X_OFFSET, Y_LDC_LBL,"-- LDC1612 --",    COL_LABEL, COL_BG);
 }
 
 // ── Physics helpers ───────────────────────────────────────────────────────────
@@ -291,51 +292,51 @@ void display_update(const display_data_t *data)
     char buf[32];
 
     // ── Device / connection status ────────────────────────────────────────────
-    fill_rect(0, Y_DEV, LCD_W, 10, COL_BG);
-    draw_string(0, Y_DEV,
+    fill_rect(X_OFFSET, Y_DEV, LCD_W, 10, COL_BG);
+    draw_string(X_OFFSET, Y_DEV,
                 data->ble_connected ? data->ble_device_name : "Scanning...",
                 COL_VALUE, COL_BG);
 
     // ── Heart rate / RR interval ──────────────────────────────────────────────
-    fill_rect(0, Y_HR, LCD_W, 10, COL_BG);
+    fill_rect(X_OFFSET, Y_HR, LCD_W, 10, COL_BG);
     snprintf(buf, sizeof(buf), "HR:%3ubpm  RR:%4ums",
              (unsigned)data->bpm, (unsigned)data->rr_ms);
-    draw_string(0, Y_HR, buf, COL_VALUE, COL_BG);
+    draw_string(X_OFFSET, Y_HR, buf, COL_VALUE, COL_BG);
 
     // ── Accelerometer 0 ───────────────────────────────────────────────────────
     float mag0, p0, r0;
     accel_angles(data->accel0[0], data->accel0[1], data->accel0[2], &mag0, &p0, &r0);
-    fill_rect(0, Y_A0, LCD_W, 20, COL_BG);
+    fill_rect(X_OFFSET, Y_A0, LCD_W, 20, COL_BG);
     snprintf(buf, sizeof(buf), "  Mag:%5.0f mg", mag0);
-    draw_string(0, Y_A0, buf, COL_VALUE, COL_BG);
+    draw_string(X_OFFSET, Y_A0, buf, COL_VALUE, COL_BG);
     snprintf(buf, sizeof(buf), "  P:%+6.1f  R:%+6.1f", p0, r0);
-    draw_string(0, Y_A0 + 10, buf, COL_VALUE, COL_BG);
+    draw_string(X_OFFSET, Y_A0 + 10, buf, COL_VALUE, COL_BG);
 
     // ── Accelerometer 1 ───────────────────────────────────────────────────────
     float mag1, p1, r1;
     accel_angles(data->accel1[0], data->accel1[1], data->accel1[2], &mag1, &p1, &r1);
-    fill_rect(0, Y_A1, LCD_W, 20, COL_BG);
+    fill_rect(X_OFFSET, Y_A1, LCD_W, 20, COL_BG);
     snprintf(buf, sizeof(buf), "  Mag:%5.0f mg", mag1);
-    draw_string(0, Y_A1, buf, COL_VALUE, COL_BG);
+    draw_string(X_OFFSET, Y_A1, buf, COL_VALUE, COL_BG);
     snprintf(buf, sizeof(buf), "  P:%+6.1f  R:%+6.1f", p1, r1);
-    draw_string(0, Y_A1 + 10, buf, COL_VALUE, COL_BG);
+    draw_string(X_OFFSET, Y_A1 + 10, buf, COL_VALUE, COL_BG);
 
     // ── LDC1612 ───────────────────────────────────────────────────────────────
-    fill_rect(0, Y_CH0, LCD_W, 20, COL_BG);
+    fill_rect(X_OFFSET, Y_CH0, LCD_W, 20, COL_BG);
     snprintf(buf, sizeof(buf), "  CH0:%9lu", (unsigned long)data->ldc0);
-    draw_string(0, Y_CH0, buf, COL_VALUE, COL_BG);
+    draw_string(X_OFFSET, Y_CH0, buf, COL_VALUE, COL_BG);
     if (data->baseline_ok)
         snprintf(buf, sizeof(buf), "  d0:%+10ld", (long)(int32_t)(data->ldc0 - data->ldc0_baseline));
     else
         snprintf(buf, sizeof(buf), "  d0: (no base)");
-    draw_string(0, Y_CH0 + 10, buf, COL_VALUE, COL_BG);
+    draw_string(X_OFFSET, Y_CH0 + 10, buf, COL_VALUE, COL_BG);
 
-    fill_rect(0, Y_CH1, LCD_W, 20, COL_BG);
+    fill_rect(X_OFFSET, Y_CH1, LCD_W, 20, COL_BG);
     snprintf(buf, sizeof(buf), "  CH1:%9lu", (unsigned long)data->ldc1);
-    draw_string(0, Y_CH1, buf, COL_VALUE, COL_BG);
+    draw_string(X_OFFSET, Y_CH1, buf, COL_VALUE, COL_BG);
     if (data->baseline_ok)
         snprintf(buf, sizeof(buf), "  d1:%+10ld", (long)(int32_t)(data->ldc1 - data->ldc1_baseline));
     else
         snprintf(buf, sizeof(buf), "  d1: (no base)");
-    draw_string(0, Y_CH1 + 10, buf, COL_VALUE, COL_BG);
+    draw_string(X_OFFSET, Y_CH1 + 10, buf, COL_VALUE, COL_BG);
 }
