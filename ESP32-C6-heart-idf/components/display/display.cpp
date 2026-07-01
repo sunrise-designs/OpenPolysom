@@ -184,6 +184,8 @@ static inline uint16_t swap16(uint16_t c) { return (c >> 8) | (c << 8); }
 
 static void fill_rect(int x, int y, int w, int h, uint16_t color)
 {
+    if (x + w > LCD_W) w = LCD_W - x;  // clip to panel edge
+    if (w <= 0 || h <= 0) return;
     uint16_t c = swap16(color);
     for (int i = 0; i < w; i++) s_line[i] = c;
     for (int row = y; row < y + h; row++)
@@ -191,7 +193,13 @@ static void fill_rect(int x, int y, int w, int h, uint16_t color)
 }
 
 // Render one character cell (6×8 pixels). Char cell = 5 pixel columns + 1 gap column.
-static uint16_t WORD_ALIGNED_ATTR s_char_buf[6 * 8];
+// Two buffers used alternately: esp_lcd_panel_draw_bitmap() only *queues* the
+// colour transfer — DMA sends it in the background — so the previous character's
+// pixels must stay untouched while the next one is rendered. Two buffers suffice
+// because every draw_bitmap starts with a polling CASET command, which waits for
+// all queued colour transfers to finish; at most one is in flight at any time.
+static uint16_t WORD_ALIGNED_ATTR s_char_buf[2][6 * 8];
+static int s_char_buf_idx = 0;
 
 static void draw_char(int x, int y, char c, uint16_t fg, uint16_t bg)
 {
@@ -199,13 +207,15 @@ static void draw_char(int x, int y, char c, uint16_t fg, uint16_t bg)
     const uint8_t *glyph = s_font[(uint8_t)c - 0x20];
     uint16_t fg_s = swap16(fg), bg_s = swap16(bg);
 
+    uint16_t *buf = s_char_buf[s_char_buf_idx];
+    s_char_buf_idx ^= 1;
     for (int row = 0; row < 8; row++) {
         for (int col = 0; col < 6; col++) {
             uint8_t bit = (col < 5) ? ((glyph[col] >> row) & 1) : 0;
-            s_char_buf[row * 6 + col] = bit ? fg_s : bg_s;
+            buf[row * 6 + col] = bit ? fg_s : bg_s;
         }
     }
-    esp_lcd_panel_draw_bitmap(s_panel, x, y, x + 6, y + 8, s_char_buf);
+    esp_lcd_panel_draw_bitmap(s_panel, x, y, x + 6, y + 8, buf);
 }
 
 static void draw_string(int x, int y, const char *s, uint16_t fg, uint16_t bg)
@@ -216,9 +226,7 @@ static void draw_string(int x, int y, const char *s, uint16_t fg, uint16_t bg)
 
 static void draw_hline(int x, int y, int w, uint16_t color)
 {
-    if (x + w > LCD_W) 
-        w = LCD_W - x - 1;
-    fill_rect(x, y, w, 1, color);
+    fill_rect(x, y, w, 1, color);  // fill_rect clips to the panel edge
 }
 
 // ── Static labels (drawn once at init) ────────────────────────────────────────
@@ -228,7 +236,7 @@ static void draw_labels(void)
 
     draw_string(X_OFFSET, Y_TITLE,   "Polar H9",        COL_HDR,   COL_BG);
     // 0x180D is the Bluetooth SIG Heart Rate Service UUID — a fixed constant.
-    draw_string(8*5 + X_OFFSET, Y_TITLE + 4, "SVC:0x180D", COL_LABEL, COL_BG);
+    draw_string(8*(5+1) + X_OFFSET, Y_TITLE + 4, "SVC:0x180D", COL_LABEL, COL_BG);
     draw_hline(X_OFFSET, Y_DIV1,  LCD_W, COL_DIV);
     draw_string(X_OFFSET, Y_A0_LBL, "-- Accel 0 --",    COL_LABEL, COL_BG);
     draw_string(X_OFFSET, Y_A1_LBL, "-- Accel 1 --",    COL_LABEL, COL_BG);
@@ -280,6 +288,26 @@ void display_init(void)
 
     esp_lcd_panel_reset(s_panel);
     esp_lcd_panel_init(s_panel);
+
+    // Panel tuning from the reference driver (Vernon_ST7789T.c) — the stock
+    // st7789 driver leaves these at power-on defaults, which on this panel give
+    // smeared pixels and washed-out contrast.
+    esp_lcd_panel_io_tx_param(io, 0xB2, (uint8_t[]){0x0C, 0x0C, 0x00, 0x33, 0x33}, 5); // porch
+    esp_lcd_panel_io_tx_param(io, 0xB7, (uint8_t[]){0x75}, 1);                         // gate voltages
+    esp_lcd_panel_io_tx_param(io, 0xBB, (uint8_t[]){0x1A}, 1);                         // VCOM
+    esp_lcd_panel_io_tx_param(io, 0xC2, (uint8_t[]){0x01, 0xFF}, 2);                   // VDV/VRH enable
+    esp_lcd_panel_io_tx_param(io, 0xC3, (uint8_t[]){0x13}, 1);                         // VRH
+    esp_lcd_panel_io_tx_param(io, 0xC4, (uint8_t[]){0x20}, 1);                         // VDV
+    esp_lcd_panel_io_tx_param(io, 0xC6, (uint8_t[]){0x0F}, 1);                         // frame rate 60 Hz
+    esp_lcd_panel_io_tx_param(io, 0xD0, (uint8_t[]){0xA4, 0xA1}, 2);                   // power control 1
+    esp_lcd_panel_io_tx_param(io, 0xE0, (uint8_t[]){0xD0, 0x0D, 0x14, 0x0D, 0x0D, 0x09, 0x38,
+                                                    0x44, 0x4E, 0x3A, 0x17, 0x18, 0x2F, 0x30}, 14); // gamma +
+    esp_lcd_panel_io_tx_param(io, 0xE1, (uint8_t[]){0xD0, 0x09, 0x0F, 0x08, 0x07, 0x14, 0x37,
+                                                    0x44, 0x4D, 0x38, 0x15, 0x16, 0x2C, 0x2E}, 14); // gamma -
+
+    // This panel needs display inversion for correct colours (reference sends INVON).
+    esp_lcd_panel_invert_color(s_panel, true);
+
     esp_lcd_panel_set_gap(s_panel, 34, 0);  // GRAM X offset — 172px active area starts at col 34
     esp_lcd_panel_mirror(s_panel, true, true);  // mirror X — matches reference board
     esp_lcd_panel_disp_on_off(s_panel, true);
