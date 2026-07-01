@@ -135,7 +135,7 @@ menu "Board Configuration"
 
     config POLYSOM_SD_CS_PIN
         int "SD card CS pin"
-        default 10
+        default 4
 
     config POLYSOM_SD_SPI_FREQ_HZ
         int "SD card SPI frequency (Hz)"
