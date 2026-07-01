@@ -10,6 +10,13 @@ extern "C" {
 #define SAMPLES_50HZ      500
 #define SAMPLES_1HZ        10
 
+// Capture ESP_LOG output to a buffered SD file. Call once, first thing in
+// app_main, before any other init, so early boot logs aren't missed.
+// Logs are still echoed to the console as before; the SD write only happens
+// when the 4 KB RAM buffer fills or at existing safe flush points, to limit
+// SD card wear.
+void logger_log_init(void);
+
 // Initialise SD card and open EDF file for writing.
 bool logger_init(void);
 

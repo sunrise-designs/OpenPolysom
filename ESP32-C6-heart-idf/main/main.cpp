@@ -99,6 +99,9 @@ static void sensor_task(void *arg)
 // ── app_main ──────────────────────────────────────────────────────────────────
 extern "C" void app_main(void)
 {
+    // Capture ESP_LOG output to SD as early as possible, before anything else logs.
+    logger_log_init();
+
     // NVS required by Wi-Fi and NimBLE
     esp_err_t nvs_ret = nvs_flash_init();
     if (nvs_ret == ESP_ERR_NVS_NO_FREE_PAGES ||

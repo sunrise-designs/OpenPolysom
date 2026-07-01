@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -120,6 +121,12 @@ void wifi_ntp_sync(void)
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, CONFIG_POLYSOM_NTP_SERVER);
     esp_sntp_init();
+
+    // SNTP sets the system clock to UTC; apply the local time zone rule so
+    // localtime_r() (here and elsewhere, e.g. the EDF filename/header) reports
+    // correct UK wall-clock time, including the BST offset in summer.
+    setenv("TZ", LOCAL_TZ, 1);
+    tzset();
 
     // Wait up to 10 s for time to be set
     time_t now = 0;

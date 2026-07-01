@@ -6,11 +6,111 @@
 #include "driver/spi_master.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdspi_host.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include <time.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
+#include <unistd.h>
 
 static const char *TAG = "logger";
+
+// ── ESP_LOG capture to SD ──────────────────────────────────────────────────────
+// Buffers formatted log lines in RAM and only touches the SD card when the
+// buffer fills (or at existing safe flush points), to keep write wear low.
+#define LOG_BUF_SIZE 4096
+static char             log_buf[LOG_BUF_SIZE];
+static size_t           log_buf_len = 0;
+static FILE            *log_file = NULL;
+static char             log_file_path[64];
+static SemaphoreHandle_t log_mutex = NULL;
+static vprintf_like_t   prev_vprintf = NULL;
+
+// Caller must hold log_mutex.
+static void log_flush_locked(void)
+{
+    if (log_buf_len == 0 || log_file == NULL) return;
+    fwrite(log_buf, 1, log_buf_len, log_file);
+    fflush(log_file);
+    fsync(fileno(log_file));
+    log_buf_len = 0;
+}
+
+static int log_capture_vprintf(const char *fmt, va_list args)
+{
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int console_n = prev_vprintf ? prev_vprintf(fmt, args) : vprintf(fmt, args);
+
+    char line[256];
+    int n = vsnprintf(line, sizeof(line), fmt, args_copy);
+    va_end(args_copy);
+    if (n > 0) {
+        if ((size_t)n >= sizeof(line)) n = sizeof(line) - 1; // truncated, still buffer what we have
+
+        if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            if (log_buf_len + (size_t)n > LOG_BUF_SIZE) {
+                log_flush_locked();
+            }
+            if ((size_t)n <= LOG_BUF_SIZE) {
+                memcpy(log_buf + log_buf_len, line, n);
+                log_buf_len += n;
+            }
+            xSemaphoreGive(log_mutex);
+        }
+    }
+    return console_n;
+}
+
+// Call once, first thing in app_main, so boot-time logs (Wi-Fi/NTP, etc.) are
+// buffered even before the SD card is mounted.
+void logger_log_init(void)
+{
+    log_mutex    = xSemaphoreCreateMutex();
+    prev_vprintf = esp_log_set_vprintf(log_capture_vprintf);
+}
+
+static void log_flush(void)
+{
+    if (!log_mutex) return;
+    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        log_flush_locked();
+        xSemaphoreGive(log_mutex);
+    }
+}
+
+// Opens the SD log file (same timestamp as the EDF file) and flushes
+// whatever was buffered during boot before the card was mounted.
+static void log_open_file(void)
+{
+    if (!log_mutex) return;
+    bool opened = false;
+    if (xSemaphoreTake(log_mutex, portMAX_DELAY) == pdTRUE) {
+        log_file = fopen(log_file_path, "w");
+        opened = (log_file != NULL);
+        log_flush_locked();
+        xSemaphoreGive(log_mutex);
+    }
+    // Logged outside the lock: ESP_LOGx re-enters log_capture_vprintf, which
+    // would otherwise try to re-take this same non-recursive mutex.
+    if (!opened) {
+        ESP_LOGE(TAG, "Failed to open log file %s", log_file_path);
+    }
+}
+
+static void log_close_file(void)
+{
+    if (!log_mutex) return;
+    if (xSemaphoreTake(log_mutex, portMAX_DELAY) == pdTRUE) {
+        log_flush_locked();
+        if (log_file) {
+            fclose(log_file);
+            log_file = NULL;
+        }
+        xSemaphoreGive(log_mutex);
+    }
+}
 
 // ── EDF signal indices ────────────────────────────────────────────────────────
 #define SIG_THORACIC 0
@@ -29,6 +129,7 @@ static const char *TAG = "logger";
 static int edf_handle = -1;
 static bool logging_active = false;
 static uint32_t record_count = 0;
+static char edf_file_path[64];
 
 // ── Sample buffers ────────────────────────────────────────────────────────────
 static int thoracic_buf[SAMPLES_50HZ];
@@ -84,7 +185,20 @@ static bool sd_mount(void)
 // ── EDF setup ────────────────────────────────────────────────────────────────
 static bool open_edf(void)
 {
-    edf_handle = edfopen_file_writeonly(EDF_FILE_PATH,
+    struct tm t = {};
+    time_t now = time(NULL);
+    localtime_r(&now, &t);
+    snprintf(edf_file_path, sizeof(edf_file_path),
+             EDF_FILE_DIR "/" EDF_FILE_PREFIX "_%04d-%02d-%02d_%02d-%02d-%02d.edf",
+             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+             t.tm_hour, t.tm_min, t.tm_sec);
+    snprintf(log_file_path, sizeof(log_file_path),
+             EDF_FILE_DIR "/" EDF_FILE_PREFIX "_%04d-%02d-%02d_%02d-%02d-%02d.log",
+             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+             t.tm_hour, t.tm_min, t.tm_sec);
+    log_open_file();
+
+    edf_handle = edfopen_file_writeonly(edf_file_path,
                                         EDFLIB_FILETYPE_EDFPLUS, NUM_SIGNALS);
     if (edf_handle < 0) {
         ESP_LOGE(TAG, "edfopen failed: %d", edf_handle);
@@ -121,9 +235,6 @@ static bool open_edf(void)
         edf_set_physical_dimension(edf_handle, i, sigs[i].dim);
     }
 
-    struct tm t = {};
-    time_t now = time(NULL);
-    localtime_r(&now, &t);
     edf_set_startdatetime(edf_handle,
                           t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
                           t.tm_hour, t.tm_min, t.tm_sec);
@@ -132,7 +243,7 @@ static bool open_edf(void)
     rr_idx        = 0;
     record_count  = 0;
     logging_active = true;
-    ESP_LOGI(TAG, "EDF recording started: %s", EDF_FILE_PATH);
+    ESP_LOGI(TAG, "EDF recording started: %s", edf_file_path);
     return true;
 }
 
@@ -202,6 +313,7 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
             ESP_LOGI(TAG, "EDF: %lu records (%.1f min)",
                      (unsigned long)record_count,
                      (float)record_count * RECORD_DURATION_S / 60.0f);
+            log_flush(); // piggyback on the EDF flush cadence to limit SD wear
         }
     }
 }
@@ -213,6 +325,7 @@ void logger_close(void)
         edf_handle     = -1;
         logging_active = false;
     }
+    log_close_file();
 }
 
 bool logger_format_sd(void)

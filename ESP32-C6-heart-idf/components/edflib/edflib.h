@@ -161,7 +161,7 @@
 
 
 #define EDFLIB_TIME_DIMENSION     (10000000LL)
-#define EDFLIB_MAXSIGNALS                  (8)   /* reduced for ESP32 RAM */
+#define EDFLIB_MAXSIGNALS                  (12)   /* reduced for ESP32 RAM; must exceed logger.cpp's NUM_SIGNALS (11) */
 #define EDFLIB_MAXFILES                    (2)   /* reduced for ESP32 RAM */
 #define EDFLIB_MAX_ANNOTATION_LEN        (512)
 
