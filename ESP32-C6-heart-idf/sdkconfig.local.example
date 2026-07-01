@@ -1,0 +1,8 @@
+# Copy this file to sdkconfig.local (gitignored) and fill in real credentials.
+# sdkconfig.local overlays sdkconfig.defaults — see CMakeLists.txt.
+CONFIG_POLYSOM_WIFI_SSID="your-primary-ssid"
+CONFIG_POLYSOM_WIFI_PASSWORD="your-primary-password"
+CONFIG_POLYSOM_WIFI_SSID_2="your-fallback-ssid-1"
+CONFIG_POLYSOM_WIFI_PASSWORD_2="your-fallback-password-1"
+CONFIG_POLYSOM_WIFI_SSID_3="your-fallback-ssid-2"
+CONFIG_POLYSOM_WIFI_PASSWORD_3="your-fallback-password-2"

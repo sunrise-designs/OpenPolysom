@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include <stdbool.h>
 #include <string.h>
 #include <time.h>
 
@@ -19,6 +20,17 @@ static const char *TAG = "wifi_ntp";
 
 static EventGroupHandle_t s_wifi_events;
 static int s_retry_count = 0;
+
+typedef struct {
+    const char *ssid;
+    const char *password;
+} wifi_candidate_t;
+
+static const wifi_candidate_t s_wifi_candidates[] = {
+    { CONFIG_POLYSOM_WIFI_SSID,   CONFIG_POLYSOM_WIFI_PASSWORD },
+    { CONFIG_POLYSOM_WIFI_SSID_2, CONFIG_POLYSOM_WIFI_PASSWORD_2 },
+    { CONFIG_POLYSOM_WIFI_SSID_3, CONFIG_POLYSOM_WIFI_PASSWORD_3 },
+};
 
 static void wifi_event_handler(void *arg, esp_event_base_t base,
                                 int32_t id, void *data)
@@ -38,6 +50,47 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
     }
 }
 
+// Tries each configured Wi-Fi network in turn until one connects.
+// Returns true once esp_wifi_start()/connect has succeeded for a candidate.
+static bool wifi_connect_any(void)
+{
+    for (size_t i = 0; i < sizeof(s_wifi_candidates) / sizeof(s_wifi_candidates[0]); i++) {
+        const wifi_candidate_t *candidate = &s_wifi_candidates[i];
+        if (candidate->ssid[0] == '\0') {
+            continue;
+        }
+
+        wifi_config_t wifi_cfg = {0};
+        strncpy((char *)wifi_cfg.sta.ssid, candidate->ssid,
+                sizeof(wifi_cfg.sta.ssid) - 1);
+        strncpy((char *)wifi_cfg.sta.password, candidate->password,
+                sizeof(wifi_cfg.sta.password) - 1);
+        wifi_cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+
+        s_retry_count = 0;
+        xEventGroupClearBits(s_wifi_events, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
+        ESP_ERROR_CHECK(esp_wifi_start());
+
+        ESP_LOGI(TAG, "Connecting to %s (%u/%u)...", candidate->ssid,
+                 (unsigned)(i + 1), (unsigned)(sizeof(s_wifi_candidates) / sizeof(s_wifi_candidates[0])));
+        EventBits_t bits = xEventGroupWaitBits(s_wifi_events,
+                                                WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                                pdFALSE, pdFALSE,
+                                                pdMS_TO_TICKS(10000));
+
+        if (bits & WIFI_CONNECTED_BIT) {
+            return true;
+        }
+
+        ESP_LOGW(TAG, "Failed to connect to %s", candidate->ssid);
+        esp_wifi_stop();
+    }
+
+    return false;
+}
+
 void wifi_ntp_sync(void)
 {
     s_wifi_events = xEventGroupCreate();
@@ -55,26 +108,10 @@ void wifi_ntp_sync(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL, &h_ip));
 
-    wifi_config_t wifi_cfg = {0};
-    strncpy((char *)wifi_cfg.sta.ssid,     CONFIG_POLYSOM_WIFI_SSID,
-            sizeof(wifi_cfg.sta.ssid) - 1);
-    strncpy((char *)wifi_cfg.sta.password, CONFIG_POLYSOM_WIFI_PASSWORD,
-            sizeof(wifi_cfg.sta.password) - 1);
-    wifi_cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
-    ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGI(TAG, "Connecting to %s...", CONFIG_POLYSOM_WIFI_SSID);
-    EventBits_t bits = xEventGroupWaitBits(s_wifi_events,
-                                            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                                            pdFALSE, pdFALSE,
-                                            pdMS_TO_TICKS(10000));
-
-    if (!(bits & WIFI_CONNECTED_BIT)) {
-        ESP_LOGW(TAG, "Wi-Fi connection failed — clock not synced");
-        esp_wifi_stop();
+    if (!wifi_connect_any()) {
+        ESP_LOGW(TAG, "Wi-Fi connection failed on all networks — clock not synced");
         vEventGroupDelete(s_wifi_events);
         return;
     }

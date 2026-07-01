@@ -2,15 +2,41 @@ menu "Polysom Application"
 
     config POLYSOM_WIFI_SSID
         string "Wi-Fi SSID"
-        default "TNCAP26203D"
+        default ""
         help
-            SSID of the network to connect to for NTP time sync.
+            SSID of the primary network to try for NTP time sync.
+            Set real credentials in sdkconfig.local (gitignored), not here.
 
     config POLYSOM_WIFI_PASSWORD
         string "Wi-Fi password"
         default ""
         help
-            Password for the Wi-Fi network.
+            Password for the primary Wi-Fi network.
+            Set real credentials in sdkconfig.local (gitignored), not here.
+
+    config POLYSOM_WIFI_SSID_2
+        string "Wi-Fi SSID (fallback 1)"
+        default ""
+        help
+            SSID of the second network to try if the primary one fails.
+
+    config POLYSOM_WIFI_PASSWORD_2
+        string "Wi-Fi password (fallback 1)"
+        default ""
+        help
+            Password for the second Wi-Fi network.
+
+    config POLYSOM_WIFI_SSID_3
+        string "Wi-Fi SSID (fallback 2)"
+        default ""
+        help
+            SSID of the third network to try if the first two fail.
+
+    config POLYSOM_WIFI_PASSWORD_3
+        string "Wi-Fi password (fallback 2)"
+        default ""
+        help
+            Password for the third Wi-Fi network.
 
     config POLYSOM_NTP_SERVER
         string "NTP server"
@@ -70,7 +96,10 @@ menu "Board Configuration"
 
     config POLYSOM_SPI_MISO_PIN
         int "SPI MISO pin"
-        default 12
+        default 5
+        help
+            GPIO12/13 are reserved for the native USB Serial/JTAG D-/D+ lines
+            used by the console (/dev/ttyACM0) — do not assign them here.
 
     config POLYSOM_SPI_CLK_PIN
         int "SPI CLK pin"

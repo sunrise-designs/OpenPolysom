@@ -36,3 +36,9 @@ Dmitry Ignatyev PSG data.pdf
 .github/workflows/clean-machine-test.yml
 ESP32-C6-heart-idf/reference/ESP32-C6-LCD-1.47-Test/
 src_rust/polysom_rtdi/target
+
+# Real Wi-Fi credentials for the ESP32 firmware — never committed.
+# sdkconfig is a generated file that ends up containing merged secrets
+# once sdkconfig.local is applied, so it's untracked too.
+ESP32-C6-heart-idf/sdkconfig
+ESP32-C6-heart-idf/sdkconfig.local
