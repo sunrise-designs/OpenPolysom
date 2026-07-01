@@ -18,6 +18,7 @@ static const char *TAG = "display";
 #define COL_LABEL  0x07FFu  // cyan
 #define COL_VALUE  0xFFFFu  // white
 #define COL_DIV    0x39E7u  // dark grey
+#define COL_WARN   0xF800u  // red
 
 #define Y_OFFSET 18
 #define X_OFFSET 10
@@ -215,6 +216,8 @@ static void draw_string(int x, int y, const char *s, uint16_t fg, uint16_t bg)
 
 static void draw_hline(int x, int y, int w, uint16_t color)
 {
+    if (x + w > LCD_W) 
+        w = LCD_W - x - 1;
     fill_rect(x, y, w, 1, color);
 }
 
@@ -225,7 +228,7 @@ static void draw_labels(void)
 
     draw_string(X_OFFSET, Y_TITLE,   "Polar H9",        COL_HDR,   COL_BG);
     // 0x180D is the Bluetooth SIG Heart Rate Service UUID — a fixed constant.
-    draw_string(100 + X_OFFSET, Y_TITLE + 4, "SVC:0x180D", COL_LABEL, COL_BG);
+    draw_string(8*5 + X_OFFSET, Y_TITLE + 4, "SVC:0x180D", COL_LABEL, COL_BG);
     draw_hline(X_OFFSET, Y_DIV1,  LCD_W, COL_DIV);
     draw_string(X_OFFSET, Y_A0_LBL, "-- Accel 0 --",    COL_LABEL, COL_BG);
     draw_string(X_OFFSET, Y_A1_LBL, "-- Accel 1 --",    COL_LABEL, COL_BG);
@@ -339,4 +342,9 @@ void display_update(const display_data_t *data)
     else
         snprintf(buf, sizeof(buf), "  d1: (no base)");
     draw_string(X_OFFSET, Y_CH1 + 10, buf, COL_VALUE, COL_BG);
+
+    // ── Recording status ──────────────────────────────────────────────────────
+    fill_rect(X_OFFSET, Y_WIFI_ST, LCD_W, 10, COL_BG);
+    if (!data->recording)
+        draw_string(X_OFFSET, Y_WIFI_ST, "NOT RECORDING - NO SD", COL_WARN, COL_BG);
 }

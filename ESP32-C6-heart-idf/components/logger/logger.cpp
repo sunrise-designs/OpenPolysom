@@ -43,6 +43,14 @@ static int log_capture_vprintf(const char *fmt, va_list args)
     va_copy(args_copy, args);
     int console_n = prev_vprintf ? prev_vprintf(fmt, args) : vprintf(fmt, args);
 
+    // Some driver logs (e.g. Wi-Fi MAC trace/ADDBA messages) are emitted from ISR
+    // context. xSemaphoreTake/Give below are not ISR-safe, so skip SD buffering
+    // there entirely rather than corrupting the interrupt stack.
+    if (xPortInIsrContext()) {
+        va_end(args_copy);
+        return console_n;
+    } 
+
     char line[256];
     int n = vsnprintf(line, sizeof(line), fmt, args_copy);
     va_end(args_copy);
@@ -51,9 +59,11 @@ static int log_capture_vprintf(const char *fmt, va_list args)
 
         if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             if (log_buf_len + (size_t)n > LOG_BUF_SIZE) {
-                log_flush_locked();
+                log_flush_locked(); // no-op if log_file isn't open yet (e.g. no SD card)
             }
-            if ((size_t)n <= LOG_BUF_SIZE) {
+            // Recheck after the flush attempt: if there's still no file to drain
+            // to, drop this line rather than writing past the end of log_buf.
+            if (log_buf_len + (size_t)n <= LOG_BUF_SIZE) {
                 memcpy(log_buf + log_buf_len, line, n);
                 log_buf_len += n;
             }
@@ -151,6 +161,7 @@ static bool     baseline_ok     = false;
 uint32_t logger_get_ldc0_baseline(void) { return ldc0_baseline; }
 uint32_t logger_get_ldc1_baseline(void) { return ldc1_baseline; }
 bool     logger_get_baseline_ok(void)   { return baseline_ok; }
+bool     logger_is_active(void)         { return logging_active; }
 
 // ── SD card ───────────────────────────────────────────────────────────────────
 static sdmmc_card_t *s_card = NULL;

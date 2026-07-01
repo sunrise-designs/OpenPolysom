@@ -75,6 +75,7 @@ static void sensor_task(void *arg)
                 dd.ldc0_baseline   = logger_get_ldc0_baseline();
                 dd.ldc1_baseline   = logger_get_ldc1_baseline();
                 dd.baseline_ok     = logger_get_baseline_ok();
+                dd.recording       = logger_is_active();
                 display_update(&dd);
             }
 
@@ -122,7 +123,9 @@ extern "C" void app_main(void)
     wifi_ntp_sync();
 
     // SD card + EDF file (adds SD to the SPI bus display_init already created)
-    logger_init();
+    if (!logger_init()) {
+        ESP_LOGE(TAG, "Logger init failed (no SD card?) - continuing without recording");
+    }
 
     // BLE client (NimBLE, runs its own FreeRTOS task internally)
     ble_client_init();

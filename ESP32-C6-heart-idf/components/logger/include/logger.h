@@ -39,6 +39,11 @@ uint32_t logger_get_ldc0_baseline(void);
 uint32_t logger_get_ldc1_baseline(void);
 bool     logger_get_baseline_ok(void);
 
+// True once logger_init() has successfully mounted the SD card and opened the
+// EDF file. False if logger_init() failed (e.g. no SD card present) — used by
+// the display module to warn that samples are not being recorded.
+bool     logger_is_active(void);
+
 #ifdef __cplusplus
 }
 #endif
