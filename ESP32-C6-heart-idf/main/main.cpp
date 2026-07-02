@@ -7,13 +7,42 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
+#include "esp_system.h"
 #include "nvs_flash.h"
+#include <stdio.h>
 
 extern "C" {
 #include "ble_client.h"
 }
 
 static const char *TAG = "main";
+
+// ── Boot diagnostics ──────────────────────────────────────────────────────────
+// Survives every reset except power loss, so it counts unattended reboots.
+static RTC_DATA_ATTR uint32_t s_boot_count = 0;
+
+// Shown on the LCD because the resets under investigation only happen when no
+// serial monitor is attached.
+static void show_reset_reason(void)
+{
+    const char *rr;
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON:   rr = "POWER-ON";   break;
+        case ESP_RST_SW:        rr = "SW-RESET";   break;
+        case ESP_RST_PANIC:     rr = "PANIC";      break;
+        case ESP_RST_INT_WDT:   rr = "INT-WDT";    break;
+        case ESP_RST_TASK_WDT:  rr = "TASK-WDT";   break;
+        case ESP_RST_WDT:       rr = "OTHER-WDT";  break;
+        case ESP_RST_DEEPSLEEP: rr = "SLEEP-WAKE"; break;
+        case ESP_RST_BROWNOUT:  rr = "BROWNOUT";   break;
+        default:                rr = "OTHER";      break;
+    }
+    s_boot_count++;
+    char msg[32];
+    snprintf(msg, sizeof(msg), "RST:%s BOOT#%lu", rr, (unsigned long)s_boot_count);
+    display_boot_msg(msg);
+    ESP_LOGI(TAG, "Reset reason: %s, boot count %lu", rr, (unsigned long)s_boot_count);
+}
 
 // ── Deep-sleep entry ──────────────────────────────────────────────────────────
 static void enter_deep_sleep(void)
@@ -101,7 +130,12 @@ static void sensor_task(void *arg)
 extern "C" void app_main(void)
 {
     // Capture ESP_LOG output to SD as early as possible, before anything else logs.
-    logger_log_init();
+    // Temporarily disabled while tracking down the intermittent BLE heap panic —
+    // logger_log_init() installs the vprintf hook; leaving it uncalled means
+    // log_mutex stays NULL, so every other logger_* call becomes a no-op
+    // (they all guard on `if (!log_mutex) return;`). Re-enable once confirmed
+    // innocent.
+    // logger_log_init();
 
     // NVS required by Wi-Fi and NimBLE
     esp_err_t nvs_ret = nvs_flash_init();
@@ -115,6 +149,7 @@ extern "C" void app_main(void)
 
     // Display first (also initialises the shared SPI bus)
     display_init();
+    show_reset_reason();
 
     // Sensors (I2C bus + ADC)
     sensors_init();

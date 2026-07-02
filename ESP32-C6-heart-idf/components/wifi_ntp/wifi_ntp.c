@@ -98,7 +98,7 @@ void wifi_ntp_sync(void)
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
+    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -111,41 +111,49 @@ void wifi_ntp_sync(void)
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 
-    if (!wifi_connect_any()) {
+    if (wifi_connect_any()) {
+        ESP_LOGI(TAG, "Connected. Starting SNTP sync with %s", CONFIG_POLYSOM_NTP_SERVER);
+        esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+        esp_sntp_setservername(0, CONFIG_POLYSOM_NTP_SERVER);
+        esp_sntp_init();
+
+        // SNTP sets the system clock to UTC; apply the local time zone rule so
+        // localtime_r() (here and elsewhere, e.g. the EDF filename/header) reports
+        // correct UK wall-clock time, including the BST offset in summer.
+        setenv("TZ", LOCAL_TZ, 1);
+        tzset();
+
+        // Wait up to 10 s for time to be set
+        time_t now = 0;
+        struct tm t = {0};
+        int retries = 0;
+        while (t.tm_year < (2020 - 1900) && retries++ < 20) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+            time(&now);
+            localtime_r(&now, &t);
+        }
+        if (t.tm_year >= (2020 - 1900))
+            ESP_LOGI(TAG, "Time synced: %04d-%02d-%02d %02d:%02d:%02d",
+                     t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                     t.tm_hour, t.tm_min, t.tm_sec);
+        else
+            ESP_LOGW(TAG, "NTP sync timed out");
+
+        esp_sntp_stop();
+    } else {
         ESP_LOGW(TAG, "Wi-Fi connection failed on all networks — clock not synced");
-        vEventGroupDelete(s_wifi_events);
-        return;
     }
 
-    ESP_LOGI(TAG, "Connected. Starting SNTP sync with %s", CONFIG_POLYSOM_NTP_SERVER);
-    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, CONFIG_POLYSOM_NTP_SERVER);
-    esp_sntp_init();
-
-    // SNTP sets the system clock to UTC; apply the local time zone rule so
-    // localtime_r() (here and elsewhere, e.g. the EDF filename/header) reports
-    // correct UK wall-clock time, including the BST offset in summer.
-    setenv("TZ", LOCAL_TZ, 1);
-    tzset();
-
-    // Wait up to 10 s for time to be set
-    time_t now = 0;
-    struct tm t = {0};
-    int retries = 0;
-    while (t.tm_year < (2020 - 1900) && retries++ < 20) {
-        vTaskDelay(pdMS_TO_TICKS(500));
-        time(&now);
-        localtime_r(&now, &t);
-    }
-    if (t.tm_year >= (2020 - 1900))
-        ESP_LOGI(TAG, "Time synced: %04d-%02d-%02d %02d:%02d:%02d",
-                 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-                 t.tm_hour, t.tm_min, t.tm_sec);
-    else
-        ESP_LOGW(TAG, "NTP sync timed out");
-
-    esp_sntp_stop();
+    // Wi-Fi is only needed for this one-shot clock sync. esp_wifi_stop() alone
+    // leaves the driver's TX/RX buffer pools resident on the heap for the rest
+    // of the run, competing with BLE's heap-backed mbuf pool (no PSRAM on this
+    // board — ~300KB internal RAM total) — fully deinit so that heap is back.
     esp_wifi_stop();
+    esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, h_any);
+    esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, h_ip);
+    esp_wifi_deinit();
+    esp_netif_destroy_default_wifi(sta_netif);
+    esp_event_loop_delete_default();
     vEventGroupDelete(s_wifi_events);
-    ESP_LOGI(TAG, "Wi-Fi disconnected after NTP sync");
+    ESP_LOGI(TAG, "Wi-Fi torn down");
 }

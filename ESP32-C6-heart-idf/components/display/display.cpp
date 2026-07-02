@@ -37,6 +37,7 @@ static const char *TAG = "display";
 #define Y_CH0       126 + Y_OFFSET
 #define Y_CH1       146 + Y_OFFSET
 #define Y_WIFI_ST   168 + Y_OFFSET
+#define Y_BOOT      190 + Y_OFFSET  // boot info line — display_update() never draws here
 
 
 // ── Backlight (PWM via LEDC) ──────────────────────────────────────────────────
@@ -236,12 +237,18 @@ static void draw_labels(void)
 
     draw_string(X_OFFSET, Y_TITLE,   "Polar H9",        COL_HDR,   COL_BG);
     // 0x180D is the Bluetooth SIG Heart Rate Service UUID — a fixed constant.
-    draw_string(8*(5+1) + X_OFFSET, Y_TITLE + 4, "SVC:0x180D", COL_LABEL, COL_BG);
+    draw_string(8*(5+1) + 6 + X_OFFSET, Y_TITLE + 4, "SVC:0x180D", COL_LABEL, COL_BG);
     draw_hline(X_OFFSET, Y_DIV1,  LCD_W, COL_DIV);
     draw_string(X_OFFSET, Y_A0_LBL, "-- Accel 0 --",    COL_LABEL, COL_BG);
     draw_string(X_OFFSET, Y_A1_LBL, "-- Accel 1 --",    COL_LABEL, COL_BG);
     draw_hline(X_OFFSET, Y_DIV2,  LCD_W, COL_DIV);
     draw_string(X_OFFSET, Y_LDC_LBL,"-- LDC1612 --",    COL_LABEL, COL_BG);
+}
+
+void display_boot_msg(const char *msg)
+{
+    fill_rect(X_OFFSET, Y_BOOT, LCD_W, 10, COL_BG);
+    draw_string(X_OFFSET, Y_BOOT, msg, COL_WARN, COL_BG);
 }
 
 // ── Physics helpers ───────────────────────────────────────────────────────────

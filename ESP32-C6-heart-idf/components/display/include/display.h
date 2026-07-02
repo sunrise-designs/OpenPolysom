@@ -28,6 +28,12 @@ void display_init(void);
 // Redraw all live values from data. Call at 5 Hz from the sensor task.
 void display_update(const display_data_t *data);
 
+// Draw a one-line message in the boot-info area at the bottom of the screen
+// (below everything display_update() touches, so it stays visible until the
+// next reboot). Used to show the reset reason when no serial monitor is
+// attached.
+void display_boot_msg(const char *msg);
+
 #ifdef __cplusplus
 }
 #endif
