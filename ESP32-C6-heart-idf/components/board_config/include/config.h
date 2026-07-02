@@ -19,6 +19,10 @@
 // ── SDP800 differential pressure sensor ──────────────────────────────────────
 #define SDP800_ADDR   CONFIG_POLYSOM_SDP800_ADDR
 
+// ── DS1307 real-time clock ────────────────────────────────────────────────────
+#define DS1307_ADDR           CONFIG_POLYSOM_DS1307_ADDR
+#define RTC_SYNC_INTERVAL_MS  CONFIG_POLYSOM_RTC_SYNC_INTERVAL_MS
+
 // ── ADC — ECG signal ──────────────────────────────────────────────────────────
 // ECG_ADC_UNIT stays as the enum constant; ECG_ADC_CHANNEL is the raw integer
 // from Kconfig — callers must cast to adc_channel_t at the call site.

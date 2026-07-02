@@ -64,6 +64,7 @@ static void sensor_task(void *arg)
     int tick50   = 0;  // divides to 50 Hz
     int tick_disp = 0; // divides to 5 Hz
     int tick_scan = 0; // BLE rescan watchdog (in 50 Hz ticks)
+    int tick_rtc  = 0; // RTC drift-correction watchdog (in 50 Hz ticks)
     int scan_attempts = 0;
 
     while (1) {
@@ -105,7 +106,14 @@ static void sensor_task(void *arg)
                 dd.ldc1_baseline   = logger_get_ldc1_baseline();
                 dd.baseline_ok     = logger_get_baseline_ok();
                 dd.recording       = logger_is_active();
+                dd.recording_seconds = logger_get_elapsed_seconds();
                 display_update(&dd);
+            }
+
+            // Periodic RTC drift correction (no-op if no RTC was detected)
+            if (++tick_rtc >= (int)(RTC_SYNC_INTERVAL_MS / 20)) {
+                tick_rtc = 0;
+                sensors_rtc_periodic_sync();
             }
 
             // BLE rescan watchdog: restart scan every BLE_RESCAN_MS if not connected
@@ -154,8 +162,14 @@ extern "C" void app_main(void)
     // Sensors (I2C bus + ADC)
     sensors_init();
 
-    // NTP time sync (Wi-Fi, then disconnects)
-    wifi_ntp_sync();
+    // If a DS1307 RTC is fitted and already holds a plausible time (i.e. it
+    // has been set on a previous boot), use it and skip Wi-Fi entirely.
+    // Otherwise fall back to Wi-Fi/NTP and, if an RTC is fitted, seed it so
+    // future boots don't need Wi-Fi at all.
+    if (!sensors_rtc_startup_sync()) {
+        wifi_ntp_sync();
+        sensors_rtc_write_from_system();
+    }
 
     // SD card + EDF file (adds SD to the SPI bus display_init already created)
     if (!logger_init()) {
