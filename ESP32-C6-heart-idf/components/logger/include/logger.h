@@ -44,6 +44,9 @@ bool     logger_get_baseline_ok(void);
 // the display module to warn that samples are not being recorded.
 bool     logger_is_active(void);
 
+// Seconds elapsed since the current recording started. 0 if not recording.
+uint32_t logger_get_elapsed_seconds(void);
+
 #ifdef __cplusplus
 }
 #endif

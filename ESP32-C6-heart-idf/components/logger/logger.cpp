@@ -2,12 +2,15 @@
 #include "config.h"
 #include "edflib.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_vfs_fat.h"
 #include "driver/spi_master.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdspi_host.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "sensors.h"
+#include "ble_client.h"
 #include <time.h>
 #include <stdio.h>
 #include <string.h>
@@ -140,6 +143,8 @@ static int edf_handle = -1;
 static bool logging_active = false;
 static uint32_t record_count = 0;
 static char edf_file_path[64];
+static char json_file_path[64];
+static time_t recording_start_time = 0;
 
 // ── Sample buffers ────────────────────────────────────────────────────────────
 static int thoracic_buf[SAMPLES_50HZ];
@@ -162,6 +167,10 @@ uint32_t logger_get_ldc0_baseline(void) { return ldc0_baseline; }
 uint32_t logger_get_ldc1_baseline(void) { return ldc1_baseline; }
 bool     logger_get_baseline_ok(void)   { return baseline_ok; }
 bool     logger_is_active(void)         { return logging_active; }
+uint32_t logger_get_elapsed_seconds(void)
+{
+    return logging_active ? (uint32_t)difftime(time(NULL), recording_start_time) : 0;
+}
 
 // ── SD card ───────────────────────────────────────────────────────────────────
 static sdmmc_card_t *s_card = NULL;
@@ -193,6 +202,61 @@ static bool sd_mount(void)
     return true;
 }
 
+// ── JSON sidecar ─────────────────────────────────────────────────────────────
+// Written once at recording start, alongside the EDF file (same base name,
+// .json extension). recording_end_time is left null; nothing currently fills
+// it in on logger_close().
+static void write_json_sidecar(const struct tm *t)
+{
+    FILE *f = fopen(json_file_path, "w");
+    if (!f) {
+        ESP_LOGE(TAG, "Failed to open sidecar file %s", json_file_path);
+        return;
+    }
+
+    uint8_t mac[6] = {};
+    esp_efuse_mac_get_default(mac);
+    char device_uid[13];
+    snprintf(device_uid, sizeof(device_uid), "%02X%02X%02X%02X%02X%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+    char start_time[32];
+    strftime(start_time, sizeof(start_time), "%Y-%m-%dT%H:%M:%S", t);
+
+    typedef struct { const char *name; bool present; double sample_rate_hz; } SensorInfo;
+    const SensorInfo sensors[] = {
+        {"MMA8451 accel0",             g_mma0_present,      50.0},
+        {"MMA8451 accel1",             g_mma1_present,      50.0},
+        {"LDC1612 (thoracic/abdomen)", g_ldc_present,       50.0},
+        {"SDP800 flow",                g_sdp_present,       50.0},
+        {"AD8232 ECG",                 true,                50.0},
+        {"DS1307 RTC",                 g_rtc_present,        0.0},
+        {"Polar H9 (BLE HR/RR)",       ble_is_connected(),   1.0},
+    };
+    const int num_sensors = sizeof(sensors) / sizeof(sensors[0]);
+
+    fprintf(f, "{\n");
+    fprintf(f, "  \"device_uid\": \"%s\",\n", device_uid);
+    fprintf(f, "  \"recording_start_time\": \"%s\",\n", start_time);
+    fprintf(f, "  \"timezone\": \"%s\",\n", LOCAL_TZ);
+    fprintf(f, "  \"recording_end_time\": null,\n");
+    fprintf(f, "  \"sensors\": [\n");
+    for (int i = 0; i < num_sensors; i++) {
+        fprintf(f, "    {\"name\": \"%s\", \"present\": %s, \"sample_rate_hz\": ",
+                sensors[i].name, sensors[i].present ? "true" : "false");
+        if (sensors[i].sample_rate_hz > 0) {
+            fprintf(f, "%.0f}", sensors[i].sample_rate_hz);
+        } else {
+            fprintf(f, "null}");
+        }
+        fprintf(f, "%s\n", (i == num_sensors - 1) ? "" : ",");
+    }
+    fprintf(f, "  ]\n");
+    fprintf(f, "}\n");
+    fclose(f);
+    ESP_LOGI(TAG, "Sidecar written: %s", json_file_path);
+}
+
 // ── EDF setup ────────────────────────────────────────────────────────────────
 static bool open_edf(void)
 {
@@ -205,6 +269,10 @@ static bool open_edf(void)
              t.tm_hour, t.tm_min, t.tm_sec);
     snprintf(log_file_path, sizeof(log_file_path),
              EDF_FILE_DIR "/" EDF_FILE_PREFIX "_%04d-%02d-%02d_%02d-%02d-%02d.log",
+             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+             t.tm_hour, t.tm_min, t.tm_sec);
+    snprintf(json_file_path, sizeof(json_file_path),
+             EDF_FILE_DIR "/" EDF_FILE_PREFIX "_%04d-%02d-%02d_%02d-%02d-%02d.json",
              t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
              t.tm_hour, t.tm_min, t.tm_sec);
     log_open_file();
@@ -252,9 +320,12 @@ static bool open_edf(void)
                           t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
                           t.tm_hour, t.tm_min, t.tm_sec);
 
+    write_json_sidecar(&t);
+
     sample_idx    = 0;
     rr_idx        = 0;
     record_count  = 0;
+    recording_start_time = now;
     logging_active = true;
     ESP_LOGI(TAG, "EDF recording started: %s", edf_file_path);
     return true;

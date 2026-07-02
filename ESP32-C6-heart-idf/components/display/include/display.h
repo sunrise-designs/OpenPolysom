@@ -19,6 +19,7 @@ typedef struct {
     uint32_t    ldc1_baseline;
     bool        baseline_ok;
     bool        recording;
+    uint32_t    recording_seconds;
 } display_data_t;
 
 // Initialise the SPI bus, ST7789 panel, and draw static labels.
