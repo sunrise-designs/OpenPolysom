@@ -9,6 +9,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 static const char *TAG = "display";
 
@@ -38,6 +39,8 @@ static const char *TAG = "display";
 #define Y_CH1       146 + Y_OFFSET
 #define Y_WIFI_ST   168 + Y_OFFSET
 #define Y_BOOT      190 + Y_OFFSET  // boot info line — display_update() never draws here
+#define Y_TIME      212 + Y_OFFSET
+#define Y_WIFI_SSID 224 + Y_OFFSET
 
 
 // ── Backlight (PWM via LEDC) ──────────────────────────────────────────────────
@@ -327,7 +330,7 @@ void display_init(void)
 
 void display_update(const display_data_t *data)
 {
-    char buf[32];
+    char buf[48];  // wide enough for "WiFi: " + a 32-char SSID
 
     // ── Device / connection status ────────────────────────────────────────────
     fill_rect(X_OFFSET, Y_DEV, LCD_W, 10, COL_BG);
@@ -385,5 +388,37 @@ void display_update(const display_data_t *data)
     } else {
         snprintf(buf, sizeof(buf), "RECORDING  %lus", (unsigned long)data->recording_seconds);
         draw_string(X_OFFSET, Y_WIFI_ST, buf, COL_VALUE, COL_BG);
+    }
+
+    // ── Current time ──────────────────────────────────────────────────────────
+    // Reflects whichever source set the system clock at boot (DS1307 RTC or
+    // NTP — see main.cpp/sensors.cpp); a year sanity check catches the case
+    // where neither sync succeeded and the clock is still at its epoch default.
+    fill_rect(X_OFFSET, Y_TIME, LCD_W, 10, COL_BG);
+    time_t now = time(NULL);
+    struct tm t;
+    localtime_r(&now, &t);
+    if (t.tm_year + 1900 >= 2020) {
+        // Casts + modulo bound each field's width for the compiler — plain
+        // int tm_* fields make -Wformat-truncation assume up to 11 digits.
+        snprintf(buf, sizeof(buf), "%04u-%02u-%02u %02u:%02u:%02u",
+                 (unsigned)(t.tm_year + 1900) % 10000u,
+                 (unsigned)(t.tm_mon + 1) % 100u,
+                 (unsigned)t.tm_mday % 100u,
+                 (unsigned)t.tm_hour % 100u,
+                 (unsigned)t.tm_min % 100u,
+                 (unsigned)t.tm_sec % 100u);
+        draw_string(X_OFFSET, Y_TIME, buf, COL_VALUE, COL_BG);
+    } else {
+        draw_string(X_OFFSET, Y_TIME, "No time sync", COL_WARN, COL_BG);
+    }
+
+    // ── Wi-Fi network (boot-time NTP sync only — Wi-Fi is torn down after) ────
+    fill_rect(X_OFFSET, Y_WIFI_SSID, LCD_W, 10, COL_BG);
+    if (data->wifi_ssid && data->wifi_ssid[0] != '\0') {
+        snprintf(buf, sizeof(buf), "WiFi: %s", data->wifi_ssid);
+        draw_string(X_OFFSET, Y_WIFI_SSID, buf, COL_VALUE, COL_BG);
+    } else {
+        draw_string(X_OFFSET, Y_WIFI_SSID, "WiFi: (not used)", COL_LABEL, COL_BG);
     }
 }

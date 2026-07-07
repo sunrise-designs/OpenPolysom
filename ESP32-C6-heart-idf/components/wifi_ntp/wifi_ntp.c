@@ -21,6 +21,7 @@ static const char *TAG = "wifi_ntp";
 
 static EventGroupHandle_t s_wifi_events;
 static int s_retry_count = 0;
+static char s_connected_ssid[33] = "";
 
 typedef struct {
     const char *ssid;
@@ -82,6 +83,8 @@ static bool wifi_connect_any(void)
                                                 pdMS_TO_TICKS(10000));
 
         if (bits & WIFI_CONNECTED_BIT) {
+            strncpy(s_connected_ssid, candidate->ssid, sizeof(s_connected_ssid) - 1);
+            s_connected_ssid[sizeof(s_connected_ssid) - 1] = '\0';
             return true;
         }
 
@@ -156,4 +159,9 @@ void wifi_ntp_sync(void)
     esp_event_loop_delete_default();
     vEventGroupDelete(s_wifi_events);
     ESP_LOGI(TAG, "Wi-Fi torn down");
+}
+
+const char *wifi_ntp_get_ssid(void)
+{
+    return s_connected_ssid;
 }

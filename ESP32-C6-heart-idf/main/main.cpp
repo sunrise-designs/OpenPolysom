@@ -107,6 +107,7 @@ static void sensor_task(void *arg)
                 dd.baseline_ok     = logger_get_baseline_ok();
                 dd.recording       = logger_is_active();
                 dd.recording_seconds = logger_get_elapsed_seconds();
+                dd.wifi_ssid       = wifi_ntp_get_ssid();
                 display_update(&dd);
             }
 
