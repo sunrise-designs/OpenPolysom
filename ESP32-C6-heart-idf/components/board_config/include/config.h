@@ -19,6 +19,10 @@
 // ── SDP800 differential pressure sensor ──────────────────────────────────────
 #define SDP800_ADDR   CONFIG_POLYSOM_SDP800_ADDR
 
+// ── DS1307 real-time clock ────────────────────────────────────────────────────
+#define DS1307_ADDR           CONFIG_POLYSOM_DS1307_ADDR
+#define RTC_SYNC_INTERVAL_MS  CONFIG_POLYSOM_RTC_SYNC_INTERVAL_MS
+
 // ── ADC — ECG signal ──────────────────────────────────────────────────────────
 // ECG_ADC_UNIT stays as the enum constant; ECG_ADC_CHANNEL is the raw integer
 // from Kconfig — callers must cast to adc_channel_t at the call site.
@@ -55,4 +59,12 @@
 #define SLEEP_DURATION_US  ((uint64_t)CONFIG_POLYSOM_SLEEP_DURATION_MINS * 60ULL * 1000000ULL)
 
 // ── EDF file ──────────────────────────────────────────────────────────────────
-#define EDF_FILE_PATH "/sdcard/biometric.edf"
+// Final path is "/sdcard/biometric_YYYY-MM-DD_HH-MM-SS.edf", timestamped at open time.
+#define EDF_FILE_DIR    "/sdcard"
+#define EDF_FILE_PREFIX "biometric"
+
+// ── Local time zone ───────────────────────────────────────────────────────────
+// UK time: GMT in winter, BST (UTC+1) from last Sunday in March to last Sunday
+// in October. SNTP sets the system clock to UTC; this POSIX TZ rule is what
+// makes localtime_r() report the correct local wall-clock time.
+#define LOCAL_TZ "GMT0BST,M3.5.0/1,M10.5.0"

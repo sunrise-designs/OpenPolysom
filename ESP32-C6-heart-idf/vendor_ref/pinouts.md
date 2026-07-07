@@ -1,0 +1,27 @@
+# LCD
+
+| LCD Pin | ESP32C6 |
+|---------|---------|
+| MOSI    | GPIO6   |
+| SCLK    | GPIO7   |
+| LCD_CS  | GPIO14  |
+| LCD_DC  | GPIO15  |
+| LCD_RST | GPIO21  |
+| LCD_BL  | GPIO22  |
+
+# RGB LED
+
+| RGB LED     | ESP32C6 |
+|-------------|---------|
+| RGB_Control | GPIO8   |
+
+# TF Card
+
+| TF Card | ESP32C6 |
+|---------|---------|
+| MISO    | GPIO5   |
+| MOSI    | GPIO6   |
+| SCLK    | GPIO7   |
+| CS      | GPIO4   |
+| SD_D1   | NC      |
+| SD_D2   | NC      |

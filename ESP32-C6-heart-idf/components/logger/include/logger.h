@@ -10,6 +10,13 @@ extern "C" {
 #define SAMPLES_50HZ      500
 #define SAMPLES_1HZ        10
 
+// Capture ESP_LOG output to a buffered SD file. Call once, first thing in
+// app_main, before any other init, so early boot logs aren't missed.
+// Logs are still echoed to the console as before; the SD write only happens
+// when the 4 KB RAM buffer fills or at existing safe flush points, to limit
+// SD card wear.
+void logger_log_init(void);
+
 // Initialise SD card and open EDF file for writing.
 bool logger_init(void);
 
@@ -31,6 +38,14 @@ void logger_close(void);
 uint32_t logger_get_ldc0_baseline(void);
 uint32_t logger_get_ldc1_baseline(void);
 bool     logger_get_baseline_ok(void);
+
+// True once logger_init() has successfully mounted the SD card and opened the
+// EDF file. False if logger_init() failed (e.g. no SD card present) — used by
+// the display module to warn that samples are not being recorded.
+bool     logger_is_active(void);
+
+// Seconds elapsed since the current recording started. 0 if not recording.
+uint32_t logger_get_elapsed_seconds(void);
 
 #ifdef __cplusplus
 }

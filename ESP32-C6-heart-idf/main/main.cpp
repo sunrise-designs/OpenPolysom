@@ -7,13 +7,42 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
+#include "esp_system.h"
 #include "nvs_flash.h"
+#include <stdio.h>
 
 extern "C" {
 #include "ble_client.h"
 }
 
 static const char *TAG = "main";
+
+// ── Boot diagnostics ──────────────────────────────────────────────────────────
+// Survives every reset except power loss, so it counts unattended reboots.
+static RTC_DATA_ATTR uint32_t s_boot_count = 0;
+
+// Shown on the LCD because the resets under investigation only happen when no
+// serial monitor is attached.
+static void show_reset_reason(void)
+{
+    const char *rr;
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON:   rr = "POWER-ON";   break;
+        case ESP_RST_SW:        rr = "SW-RESET";   break;
+        case ESP_RST_PANIC:     rr = "PANIC";      break;
+        case ESP_RST_INT_WDT:   rr = "INT-WDT";    break;
+        case ESP_RST_TASK_WDT:  rr = "TASK-WDT";   break;
+        case ESP_RST_WDT:       rr = "OTHER-WDT";  break;
+        case ESP_RST_DEEPSLEEP: rr = "SLEEP-WAKE"; break;
+        case ESP_RST_BROWNOUT:  rr = "BROWNOUT";   break;
+        default:                rr = "OTHER";      break;
+    }
+    s_boot_count++;
+    char msg[32];
+    snprintf(msg, sizeof(msg), "RST:%s BOOT#%lu", rr, (unsigned long)s_boot_count);
+    display_boot_msg(msg);
+    ESP_LOGI(TAG, "Reset reason: %s, boot count %lu", rr, (unsigned long)s_boot_count);
+}
 
 // ── Deep-sleep entry ──────────────────────────────────────────────────────────
 static void enter_deep_sleep(void)
@@ -35,6 +64,7 @@ static void sensor_task(void *arg)
     int tick50   = 0;  // divides to 50 Hz
     int tick_disp = 0; // divides to 5 Hz
     int tick_scan = 0; // BLE rescan watchdog (in 50 Hz ticks)
+    int tick_rtc  = 0; // RTC drift-correction watchdog (in 50 Hz ticks)
     int scan_attempts = 0;
 
     while (1) {
@@ -75,7 +105,15 @@ static void sensor_task(void *arg)
                 dd.ldc0_baseline   = logger_get_ldc0_baseline();
                 dd.ldc1_baseline   = logger_get_ldc1_baseline();
                 dd.baseline_ok     = logger_get_baseline_ok();
+                dd.recording       = logger_is_active();
+                dd.recording_seconds = logger_get_elapsed_seconds();
                 display_update(&dd);
+            }
+
+            // Periodic RTC drift correction (no-op if no RTC was detected)
+            if (++tick_rtc >= (int)(RTC_SYNC_INTERVAL_MS / 20)) {
+                tick_rtc = 0;
+                sensors_rtc_periodic_sync();
             }
 
             // BLE rescan watchdog: restart scan every BLE_RESCAN_MS if not connected
@@ -99,6 +137,14 @@ static void sensor_task(void *arg)
 // ── app_main ──────────────────────────────────────────────────────────────────
 extern "C" void app_main(void)
 {
+    // Capture ESP_LOG output to SD as early as possible, before anything else logs.
+    // Temporarily disabled while tracking down the intermittent BLE heap panic —
+    // logger_log_init() installs the vprintf hook; leaving it uncalled means
+    // log_mutex stays NULL, so every other logger_* call becomes a no-op
+    // (they all guard on `if (!log_mutex) return;`). Re-enable once confirmed
+    // innocent.
+    // logger_log_init();
+
     // NVS required by Wi-Fi and NimBLE
     esp_err_t nvs_ret = nvs_flash_init();
     if (nvs_ret == ESP_ERR_NVS_NO_FREE_PAGES ||
@@ -111,15 +157,24 @@ extern "C" void app_main(void)
 
     // Display first (also initialises the shared SPI bus)
     display_init();
+    show_reset_reason();
 
     // Sensors (I2C bus + ADC)
     sensors_init();
 
-    // NTP time sync (Wi-Fi, then disconnects)
-    wifi_ntp_sync();
+    // If a DS1307 RTC is fitted and already holds a plausible time (i.e. it
+    // has been set on a previous boot), use it and skip Wi-Fi entirely.
+    // Otherwise fall back to Wi-Fi/NTP and, if an RTC is fitted, seed it so
+    // future boots don't need Wi-Fi at all.
+    if (!sensors_rtc_startup_sync()) {
+        wifi_ntp_sync();
+        sensors_rtc_write_from_system();
+    }
 
     // SD card + EDF file (adds SD to the SPI bus display_init already created)
-    logger_init();
+    if (!logger_init()) {
+        ESP_LOGE(TAG, "Logger init failed (no SD card?) - continuing without recording");
+    }
 
     // BLE client (NimBLE, runs its own FreeRTOS task internally)
     ble_client_init();

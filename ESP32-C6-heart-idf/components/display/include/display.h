@@ -18,6 +18,8 @@ typedef struct {
     uint32_t    ldc0_baseline;
     uint32_t    ldc1_baseline;
     bool        baseline_ok;
+    bool        recording;
+    uint32_t    recording_seconds;
 } display_data_t;
 
 // Initialise the SPI bus, ST7789 panel, and draw static labels.
@@ -26,6 +28,12 @@ void display_init(void);
 
 // Redraw all live values from data. Call at 5 Hz from the sensor task.
 void display_update(const display_data_t *data);
+
+// Draw a one-line message in the boot-info area at the bottom of the screen
+// (below everything display_update() touches, so it stays visible until the
+// next reboot). Used to show the reset reason when no serial monitor is
+// attached.
+void display_boot_msg(const char *msg);
 
 #ifdef __cplusplus
 }

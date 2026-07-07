@@ -2,15 +2,128 @@
 #include "config.h"
 #include "edflib.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_vfs_fat.h"
 #include "driver/spi_master.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdspi_host.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "sensors.h"
+#include "ble_client.h"
 #include <time.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
+#include <unistd.h>
 
 static const char *TAG = "logger";
+
+// ── ESP_LOG capture to SD ──────────────────────────────────────────────────────
+// Buffers formatted log lines in RAM and only touches the SD card when the
+// buffer fills (or at existing safe flush points), to keep write wear low.
+#define LOG_BUF_SIZE 4096
+static char             log_buf[LOG_BUF_SIZE];
+static size_t           log_buf_len = 0;
+static FILE            *log_file = NULL;
+static char             log_file_path[64];
+static SemaphoreHandle_t log_mutex = NULL;
+static vprintf_like_t   prev_vprintf = NULL;
+
+// Caller must hold log_mutex.
+static void log_flush_locked(void)
+{
+    if (log_buf_len == 0 || log_file == NULL) return;
+    fwrite(log_buf, 1, log_buf_len, log_file);
+    fflush(log_file);
+    fsync(fileno(log_file));
+    log_buf_len = 0;
+}
+
+static int log_capture_vprintf(const char *fmt, va_list args)
+{
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int console_n = prev_vprintf ? prev_vprintf(fmt, args) : vprintf(fmt, args);
+
+    // Some driver logs (e.g. Wi-Fi MAC trace/ADDBA messages) are emitted from ISR
+    // context. xSemaphoreTake/Give below are not ISR-safe, so skip SD buffering
+    // there entirely rather than corrupting the interrupt stack.
+    if (xPortInIsrContext()) {
+        va_end(args_copy);
+        return console_n;
+    } 
+
+    char line[256];
+    int n = vsnprintf(line, sizeof(line), fmt, args_copy);
+    va_end(args_copy);
+    if (n > 0) {
+        if ((size_t)n >= sizeof(line)) n = sizeof(line) - 1; // truncated, still buffer what we have
+
+        if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            if (log_buf_len + (size_t)n > LOG_BUF_SIZE) {
+                log_flush_locked(); // no-op if log_file isn't open yet (e.g. no SD card)
+            }
+            // Recheck after the flush attempt: if there's still no file to drain
+            // to, drop this line rather than writing past the end of log_buf.
+            if (log_buf_len + (size_t)n <= LOG_BUF_SIZE) {
+                memcpy(log_buf + log_buf_len, line, n);
+                log_buf_len += n;
+            }
+            xSemaphoreGive(log_mutex);
+        }
+    }
+    return console_n;
+}
+
+// Call once, first thing in app_main, so boot-time logs (Wi-Fi/NTP, etc.) are
+// buffered even before the SD card is mounted.
+void logger_log_init(void)
+{
+    log_mutex    = xSemaphoreCreateMutex();
+    prev_vprintf = esp_log_set_vprintf(log_capture_vprintf);
+}
+
+static void log_flush(void)
+{
+    if (!log_mutex) return;
+    if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        log_flush_locked();
+        xSemaphoreGive(log_mutex);
+    }
+}
+
+// Opens the SD log file (same timestamp as the EDF file) and flushes
+// whatever was buffered during boot before the card was mounted.
+static void log_open_file(void)
+{
+    if (!log_mutex) return;
+    bool opened = false;
+    if (xSemaphoreTake(log_mutex, portMAX_DELAY) == pdTRUE) {
+        log_file = fopen(log_file_path, "w");
+        opened = (log_file != NULL);
+        log_flush_locked();
+        xSemaphoreGive(log_mutex);
+    }
+    // Logged outside the lock: ESP_LOGx re-enters log_capture_vprintf, which
+    // would otherwise try to re-take this same non-recursive mutex.
+    if (!opened) {
+        ESP_LOGE(TAG, "Failed to open log file %s", log_file_path);
+    }
+}
+
+static void log_close_file(void)
+{
+    if (!log_mutex) return;
+    if (xSemaphoreTake(log_mutex, portMAX_DELAY) == pdTRUE) {
+        log_flush_locked();
+        if (log_file) {
+            fclose(log_file);
+            log_file = NULL;
+        }
+        xSemaphoreGive(log_mutex);
+    }
+}
 
 // ── EDF signal indices ────────────────────────────────────────────────────────
 #define SIG_THORACIC 0
@@ -29,6 +142,9 @@ static const char *TAG = "logger";
 static int edf_handle = -1;
 static bool logging_active = false;
 static uint32_t record_count = 0;
+static char edf_file_path[64];
+static char json_file_path[64];
+static time_t recording_start_time = 0;
 
 // ── Sample buffers ────────────────────────────────────────────────────────────
 static int thoracic_buf[SAMPLES_50HZ];
@@ -50,6 +166,11 @@ static bool     baseline_ok     = false;
 uint32_t logger_get_ldc0_baseline(void) { return ldc0_baseline; }
 uint32_t logger_get_ldc1_baseline(void) { return ldc1_baseline; }
 bool     logger_get_baseline_ok(void)   { return baseline_ok; }
+bool     logger_is_active(void)         { return logging_active; }
+uint32_t logger_get_elapsed_seconds(void)
+{
+    return logging_active ? (uint32_t)difftime(time(NULL), recording_start_time) : 0;
+}
 
 // ── SD card ───────────────────────────────────────────────────────────────────
 static sdmmc_card_t *s_card = NULL;
@@ -81,10 +202,82 @@ static bool sd_mount(void)
     return true;
 }
 
+// ── JSON sidecar ─────────────────────────────────────────────────────────────
+// Written once at recording start, alongside the EDF file (same base name,
+// .json extension). recording_end_time is left null; nothing currently fills
+// it in on logger_close().
+static void write_json_sidecar(const struct tm *t)
+{
+    FILE *f = fopen(json_file_path, "w");
+    if (!f) {
+        ESP_LOGE(TAG, "Failed to open sidecar file %s", json_file_path);
+        return;
+    }
+
+    uint8_t mac[6] = {};
+    esp_efuse_mac_get_default(mac);
+    char device_uid[13];
+    snprintf(device_uid, sizeof(device_uid), "%02X%02X%02X%02X%02X%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+    char start_time[32];
+    strftime(start_time, sizeof(start_time), "%Y-%m-%dT%H:%M:%S", t);
+
+    typedef struct { const char *name; bool present; double sample_rate_hz; } SensorInfo;
+    const SensorInfo sensors[] = {
+        {"MMA8451 accel0",             g_mma0_present,      50.0},
+        {"MMA8451 accel1",             g_mma1_present,      50.0},
+        {"LDC1612 (thoracic/abdomen)", g_ldc_present,       50.0},
+        {"SDP800 flow",                g_sdp_present,       50.0},
+        {"AD8232 ECG",                 true,                50.0},
+        {"DS1307 RTC",                 g_rtc_present,        0.0},
+        {"Polar H9 (BLE HR/RR)",       ble_is_connected(),   1.0},
+    };
+    const int num_sensors = sizeof(sensors) / sizeof(sensors[0]);
+
+    fprintf(f, "{\n");
+    fprintf(f, "  \"device_uid\": \"%s\",\n", device_uid);
+    fprintf(f, "  \"recording_start_time\": \"%s\",\n", start_time);
+    fprintf(f, "  \"timezone\": \"%s\",\n", LOCAL_TZ);
+    fprintf(f, "  \"recording_end_time\": null,\n");
+    fprintf(f, "  \"sensors\": [\n");
+    for (int i = 0; i < num_sensors; i++) {
+        fprintf(f, "    {\"name\": \"%s\", \"present\": %s, \"sample_rate_hz\": ",
+                sensors[i].name, sensors[i].present ? "true" : "false");
+        if (sensors[i].sample_rate_hz > 0) {
+            fprintf(f, "%.0f}", sensors[i].sample_rate_hz);
+        } else {
+            fprintf(f, "null}");
+        }
+        fprintf(f, "%s\n", (i == num_sensors - 1) ? "" : ",");
+    }
+    fprintf(f, "  ]\n");
+    fprintf(f, "}\n");
+    fclose(f);
+    ESP_LOGI(TAG, "Sidecar written: %s", json_file_path);
+}
+
 // ── EDF setup ────────────────────────────────────────────────────────────────
 static bool open_edf(void)
 {
-    edf_handle = edfopen_file_writeonly(EDF_FILE_PATH,
+    struct tm t = {};
+    time_t now = time(NULL);
+    localtime_r(&now, &t);
+    snprintf(edf_file_path, sizeof(edf_file_path),
+             EDF_FILE_DIR "/" EDF_FILE_PREFIX "_%04d-%02d-%02d_%02d-%02d-%02d.edf",
+             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+             t.tm_hour, t.tm_min, t.tm_sec);
+    snprintf(log_file_path, sizeof(log_file_path),
+             EDF_FILE_DIR "/" EDF_FILE_PREFIX "_%04d-%02d-%02d_%02d-%02d-%02d.log",
+             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+             t.tm_hour, t.tm_min, t.tm_sec);
+    snprintf(json_file_path, sizeof(json_file_path),
+             EDF_FILE_DIR "/" EDF_FILE_PREFIX "_%04d-%02d-%02d_%02d-%02d-%02d.json",
+             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+             t.tm_hour, t.tm_min, t.tm_sec);
+    log_open_file();
+
+    edf_handle = edfopen_file_writeonly(edf_file_path,
                                         EDFLIB_FILETYPE_EDFPLUS, NUM_SIGNALS);
     if (edf_handle < 0) {
         ESP_LOGE(TAG, "edfopen failed: %d", edf_handle);
@@ -113,7 +306,9 @@ static bool open_edf(void)
     for (int i = 0; i < NUM_SIGNALS; i++) {
         edf_set_label(edf_handle, i, sigs[i].label);
         edf_set_transducer(edf_handle, i, sigs[i].transducer);
-        edf_set_samplefrequency(edf_handle, i, sigs[i].rate);
+        // edf_set_samplefrequency() actually takes samples-per-datarecord, not Hz;
+        // effective rate = samplefrequency / datarecord duration (edflib.h).
+        edf_set_samplefrequency(edf_handle, i, sigs[i].rate * RECORD_DURATION_S);
         edf_set_digital_maximum(edf_handle, i, sigs[i].dmax);
         edf_set_digital_minimum(edf_handle, i, sigs[i].dmin);
         edf_set_physical_maximum(edf_handle, i, sigs[i].pmax);
@@ -121,18 +316,18 @@ static bool open_edf(void)
         edf_set_physical_dimension(edf_handle, i, sigs[i].dim);
     }
 
-    struct tm t = {};
-    time_t now = time(NULL);
-    localtime_r(&now, &t);
     edf_set_startdatetime(edf_handle,
                           t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
                           t.tm_hour, t.tm_min, t.tm_sec);
 
+    write_json_sidecar(&t);
+
     sample_idx    = 0;
     rr_idx        = 0;
     record_count  = 0;
+    recording_start_time = now;
     logging_active = true;
-    ESP_LOGI(TAG, "EDF recording started: %s", EDF_FILE_PATH);
+    ESP_LOGI(TAG, "EDF recording started: %s", edf_file_path);
     return true;
 }
 
@@ -202,6 +397,7 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
             ESP_LOGI(TAG, "EDF: %lu records (%.1f min)",
                      (unsigned long)record_count,
                      (float)record_count * RECORD_DURATION_S / 60.0f);
+            log_flush(); // piggyback on the EDF flush cadence to limit SD wear
         }
     }
 }
@@ -213,6 +409,7 @@ void logger_close(void)
         edf_handle     = -1;
         logging_active = false;
     }
+    log_close_file();
 }
 
 bool logger_format_sd(void)

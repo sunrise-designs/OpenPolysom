@@ -28,6 +28,14 @@ static uint16_t s_chr_val_handle = 0;
 static const ble_uuid16_t s_hr_svc_uuid = BLE_UUID16_INIT(0x180D);
 static const ble_uuid16_t s_hr_chr_uuid = BLE_UUID16_INIT(0x2A37);
 
+// Generic Access Service / Device Name characteristic (for a reliable,
+// authoritative name — the advertising packet that triggers the connect
+// often doesn't carry the name; it may only be in a separate scan-response
+// packet that we never see because we cancel scanning as soon as the HR
+// service UUID is found).
+static const ble_uuid16_t s_gap_svc_uuid       = BLE_UUID16_INIT(0x1800);
+static const ble_uuid16_t s_dev_name_chr_uuid  = BLE_UUID16_INIT(0x2A00);
+
 // ── Public getters ────────────────────────────────────────────────────────────
 uint16_t    ble_get_bpm(void)           { return s_bpm; }
 uint16_t    ble_get_rr_ms(void)         { return s_rr_ms; }
@@ -39,6 +47,7 @@ uint16_t    ble_get_hr_svc_uuid(void)   { return ble_uuid_u16(&s_hr_svc_uuid.u);
 // ── Forward declarations ──────────────────────────────────────────────────────
 static void start_scan(void);
 static int  on_gap_event(struct ble_gap_event *event, void *arg);
+static void start_dev_name_disc(uint16_t conn_handle);
 
 // ── HR notification parser ────────────────────────────────────────────────────
 static void parse_hr_notify(struct os_mbuf *om)
@@ -96,6 +105,51 @@ static int on_dsc_disc(uint16_t conn_handle, const struct ble_gatt_error *error,
             ESP_LOGI(TAG, "Notifications enabled on HR characteristic");
         else
             ESP_LOGE(TAG, "CCCD write failed: %d", rc);
+
+        // Only look up the Device Name once HR notifications are set up:
+        // NimBLE's GATT client has a small fixed pool of concurrent
+        // procedures (CONFIG_BT_NIMBLE_GATT_MAX_PROCS, default 4). Starting
+        // the name lookup earlier competed with HR service/characteristic/
+        // descriptor discovery for those slots and could silently starve
+        // the CCCD write, leaving BPM/RR stuck at 0.
+        start_dev_name_disc(conn_handle);
+    }
+    return 0;
+}
+
+// ── Device Name read (from GATT, once connected) ─────────────────────────────
+static int on_dev_name_read(uint16_t conn_handle, const struct ble_gatt_error *error,
+                             struct ble_gatt_attr *attr, void *arg)
+{
+    (void)conn_handle;
+    (void)arg;
+    if (error->status != 0 || attr == NULL || attr->om == NULL) {
+        ESP_LOGW(TAG, "Device Name read failed: status=%d", error->status);
+        return 0;
+    }
+    uint16_t len = OS_MBUF_PKTLEN(attr->om);
+    if (len >= sizeof(s_dev_name)) len = sizeof(s_dev_name) - 1;
+    os_mbuf_copydata(attr->om, 0, len, s_dev_name);
+    s_dev_name[len] = '\0';
+    ESP_LOGI(TAG, "Device Name (GATT): %s", s_dev_name);
+    return 0;
+}
+
+static int on_dev_name_chr_disc(uint16_t conn_handle, const struct ble_gatt_error *error,
+                                 const struct ble_gatt_chr *chr, void *arg)
+{
+    (void)arg;
+    if (error->status == BLE_HS_EDONE) return 0;
+    if (error->status != 0) {
+        ESP_LOGW(TAG, "Device Name characteristic discovery failed: status=%d", error->status);
+        return 0;
+    }
+    if (chr == NULL) return 0;
+
+    if (ble_uuid_u16(&chr->uuid.u) == 0x2A00) {
+        int rc = ble_gattc_read(conn_handle, chr->val_handle, on_dev_name_read, NULL);
+        if (rc != 0)
+            ESP_LOGW(TAG, "Failed to start Device Name read: rc=%d", rc);
     }
     return 0;
 }
@@ -127,7 +181,7 @@ static int on_chr_disc(uint16_t conn_handle, const struct ble_gatt_error *error,
     return 0;
 }
 
-// ── GATT service discovery ────────────────────────────────────────────────────
+// ── GATT service discovery (HR service only) ─────────────────────────────────
 static int on_svc_disc(uint16_t conn_handle, const struct ble_gatt_error *error,
                         const struct ble_gatt_svc *svc, void *arg)
 {
@@ -139,18 +193,48 @@ static int on_svc_disc(uint16_t conn_handle, const struct ble_gatt_error *error,
     }
     if (svc == NULL) return 0;
 
-    if (ble_uuid_cmp(&svc->uuid.u, &s_hr_svc_uuid.u) == 0) {
-        s_svc_end = svc->end_handle;
-        ESP_LOGI(TAG, "HR service: start_handle=%d end_handle=%d",
-                 svc->start_handle, svc->end_handle);
-        int rc = ble_gattc_disc_chrs_by_uuid(conn_handle,
-                                              svc->start_handle, svc->end_handle,
-                                              (const ble_uuid_t *)&s_hr_chr_uuid,
-                                              on_chr_disc, NULL);
-        if (rc != 0)
-            ESP_LOGE(TAG, "Failed to start characteristic discovery: rc=%d", rc);
-    }
+    s_svc_end = svc->end_handle;
+    ESP_LOGI(TAG, "HR service: start_handle=%d end_handle=%d",
+             svc->start_handle, svc->end_handle);
+    int rc = ble_gattc_disc_chrs_by_uuid(conn_handle,
+                                          svc->start_handle, svc->end_handle,
+                                          (const ble_uuid_t *)&s_hr_chr_uuid,
+                                          on_chr_disc, NULL);
+    if (rc != 0)
+        ESP_LOGE(TAG, "Failed to start characteristic discovery: rc=%d", rc);
     return 0;
+}
+
+// ── GATT service discovery (GAP service, for Device Name) ────────────────────
+static int on_gap_svc_disc(uint16_t conn_handle, const struct ble_gatt_error *error,
+                            const struct ble_gatt_svc *svc, void *arg)
+{
+    (void)arg;
+    if (error->status == BLE_HS_EDONE) return 0;
+    if (error->status != 0) {
+        ESP_LOGW(TAG, "GAP service discovery failed: status=%d", error->status);
+        return 0;
+    }
+    if (svc == NULL) return 0;
+
+    ESP_LOGI(TAG, "GAP service: start_handle=%d end_handle=%d",
+             svc->start_handle, svc->end_handle);
+    int rc = ble_gattc_disc_chrs_by_uuid(conn_handle,
+                                          svc->start_handle, svc->end_handle,
+                                          (const ble_uuid_t *)&s_dev_name_chr_uuid,
+                                          on_dev_name_chr_disc, NULL);
+    if (rc != 0)
+        ESP_LOGW(TAG, "Failed to start Device Name characteristic discovery: rc=%d", rc);
+    return 0;
+}
+
+static void start_dev_name_disc(uint16_t conn_handle)
+{
+    int rc = ble_gattc_disc_svc_by_uuid(conn_handle,
+                                         (const ble_uuid_t *)&s_gap_svc_uuid,
+                                         on_gap_svc_disc, NULL);
+    if (rc != 0)
+        ESP_LOGW(TAG, "Failed to start GAP service discovery: rc=%d", rc);
 }
 
 // ── GAP event handler ─────────────────────────────────────────────────────────
@@ -201,7 +285,9 @@ static int on_gap_event(struct ble_gap_event *event, void *arg)
         s_conn_handle = event->connect.conn_handle;
         s_connected   = true;
         ESP_LOGI(TAG, "Connected: %s", s_dev_name);
-        int rc = ble_gattc_disc_all_svcs(s_conn_handle, on_svc_disc, NULL);
+        int rc = ble_gattc_disc_svc_by_uuid(s_conn_handle,
+                                             (const ble_uuid_t *)&s_hr_svc_uuid,
+                                             on_svc_disc, NULL);
         if (rc != 0)
             ESP_LOGE(TAG, "Failed to start service discovery: rc=%d", rc);
         break;

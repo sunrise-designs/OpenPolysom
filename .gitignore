@@ -3,7 +3,6 @@
 *.o
 
 # Data files
-*.csv
 *.edf
 
 # Patient data which should stay private and not be committed to the repository

@@ -84,6 +84,18 @@ menu "Board Configuration"
         hex "SDP800 I2C address"
         default 0x25
 
+    config POLYSOM_DS1307_ADDR
+        hex "DS1307 RTC I2C address"
+        default 0x68
+
+    config POLYSOM_RTC_SYNC_INTERVAL_MS
+        int "RTC drift-correction interval (ms)"
+        default 600000
+        help
+            How often the system clock is re-synced from the DS1307 RTC, to
+            correct drift in the ESP32's internal oscillator. Only takes
+            effect if a DS1307 is detected on the I2C bus.
+
     config POLYSOM_ECG_ADC_CHANNEL
         int "ECG ADC channel number"
         default 1
@@ -135,7 +147,7 @@ menu "Board Configuration"
 
     config POLYSOM_SD_CS_PIN
         int "SD card CS pin"
-        default 10
+        default 4
 
     config POLYSOM_SD_SPI_FREQ_HZ
         int "SD card SPI frequency (Hz)"
