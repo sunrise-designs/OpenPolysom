@@ -44,6 +44,22 @@ menu "Polysom Application"
         help
             Hostname of the NTP server used for real-time clock sync.
 
+    config POLYSOM_FILESERVER_AP_SSID
+        string "File-server Wi-Fi AP SSID"
+        default "PolySom-Files"
+        help
+            SSID of the access point started when the download button
+            (GPIO20) is pressed, so recorded files can be pulled off over
+            Wi-Fi. The device is the AP; connect a laptop/phone to it
+            directly, no existing network required.
+
+    config POLYSOM_FILESERVER_AP_PASSWORD
+        string "File-server Wi-Fi AP password"
+        default "polysom123"
+        help
+            Password for the file-server access point. Must be empty (open
+            network) or at least 8 characters (WPA2 minimum).
+
 endmenu
 
 menu "Board Configuration"

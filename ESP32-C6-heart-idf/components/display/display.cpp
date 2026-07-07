@@ -383,7 +383,9 @@ void display_update(const display_data_t *data)
 
     // ── Recording status ──────────────────────────────────────────────────────
     fill_rect(X_OFFSET, Y_WIFI_ST, LCD_W, 10, COL_BG);
-    if (!data->recording) {
+    if (data->ap_active) {
+        draw_string(X_OFFSET, Y_WIFI_ST, "AP ACTIVE - FILE SERVER", COL_WARN, COL_BG);
+    } else if (!data->recording) {
         draw_string(X_OFFSET, Y_WIFI_ST, "NOT RECORDING - NO SD", COL_WARN, COL_BG);
     } else {
         snprintf(buf, sizeof(buf), "RECORDING  %lus", (unsigned long)data->recording_seconds);

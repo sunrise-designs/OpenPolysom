@@ -360,3 +360,25 @@ void ble_client_init(void)
 
     nimble_port_freertos_init(ble_host_task);
 }
+
+// Mirrors the official stack_init_deinit() pattern in the IDF blecent
+// example: nimble_port_stop() blocks (in this caller's task, not the host
+// task) until the host's stop procedure has fully drained, at which point
+// ble_host_task's nimble_port_run() returns and self-deletes via
+// nimble_port_freertos_deinit() — safe to immediately follow with
+// nimble_port_deinit() to release the controller/host heap.
+void ble_client_deinit(void)
+{
+    int rc = nimble_port_stop();
+    if (rc == 0) {
+        nimble_port_deinit();
+    } else {
+        ESP_LOGW(TAG, "nimble_port_stop failed: %d", rc);
+    }
+
+    s_connected      = false;
+    s_bpm            = 0;
+    s_rr_ms          = 0;
+    s_conn_handle    = BLE_HS_CONN_HANDLE_NONE;
+    s_chr_val_handle = 0;
+}

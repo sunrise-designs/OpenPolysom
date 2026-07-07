@@ -9,7 +9,9 @@ idf_component_register(
         sensors
         logger
         display
+        file_server
         nvs_flash
         freertos
+        esp_driver_gpio
         log
 )

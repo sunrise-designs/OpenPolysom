@@ -3,8 +3,11 @@
 #include "logger.h"
 #include "display.h"
 #include "wifi_ntp.h"
+#include "file_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "esp_system.h"
@@ -51,6 +54,56 @@ static void enter_deep_sleep(void)
     logger_close();
     esp_sleep_enable_timer_wakeup(SLEEP_DURATION_US);
     esp_deep_sleep_start();
+}
+
+// ── Download-mode button (GPIO20, falling edge) ──────────────────────────────
+// Wired to a momentary button to GND (internal pull-up enabled). On press:
+// stop recording and flush the EDF/log files, tear down BLE to free its heap,
+// then bring up the Wi-Fi AP + HTTP file server so the SD card contents can
+// be pulled off without opening the case.
+#define DOWNLOAD_BTN_PIN GPIO_NUM_20
+
+static QueueHandle_t s_download_evt_queue = NULL;
+
+static void IRAM_ATTR download_btn_isr(void *arg)
+{
+    (void)arg;
+    BaseType_t hpw = pdFALSE;
+    uint32_t dummy = 0;
+    xQueueSendFromISR(s_download_evt_queue, &dummy, &hpw);
+    if (hpw) portYIELD_FROM_ISR();
+}
+
+static void download_mode_task(void *arg)
+{
+    (void)arg;
+    uint32_t dummy;
+    for (;;) {
+        if (xQueueReceive(s_download_evt_queue, &dummy, portMAX_DELAY) == pdTRUE) {
+            ESP_LOGI(TAG, "Download button pressed: stopping recording, "
+                          "tearing down BLE, starting file server");
+            logger_close();
+            ble_client_deinit();
+            file_server_start();
+        }
+    }
+}
+
+static void download_button_init(void)
+{
+    s_download_evt_queue = xQueueCreate(4, sizeof(uint32_t));
+
+    gpio_config_t io_conf = {};
+    io_conf.pin_bit_mask = 1ULL << DOWNLOAD_BTN_PIN;
+    io_conf.mode         = GPIO_MODE_INPUT;
+    io_conf.pull_up_en   = GPIO_PULLUP_ENABLE;
+    io_conf.intr_type    = GPIO_INTR_NEGEDGE;
+    gpio_config(&io_conf);
+
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(DOWNLOAD_BTN_PIN, download_btn_isr, NULL);
+
+    xTaskCreate(download_mode_task, "dl_mode", 4096, NULL, 5, NULL);
 }
 
 // ── Sensor / logger / display task (runs at 100 Hz) ──────────────────────────
@@ -108,6 +161,7 @@ static void sensor_task(void *arg)
                 dd.recording       = logger_is_active();
                 dd.recording_seconds = logger_get_elapsed_seconds();
                 dd.wifi_ssid       = wifi_ntp_get_ssid();
+                dd.ap_active       = file_server_is_active();
                 display_update(&dd);
             }
 
@@ -179,6 +233,9 @@ extern "C" void app_main(void)
 
     // BLE client (NimBLE, runs its own FreeRTOS task internally)
     ble_client_init();
+
+    // Download-mode button: stop recording / BLE, start Wi-Fi file server
+    download_button_init();
 
     // Sensor loop
     xTaskCreate(sensor_task, "sensor", 8192, NULL, 5, NULL);
