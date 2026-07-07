@@ -1,4 +1,4 @@
-![OpenPolysom](doc/ProtoSom.jpg)
+![OpenPolysom](Hardware/doc/logo/som_polysom%20(Medium).png)
 
 OpenPolysom
 ===========================
@@ -6,21 +6,11 @@ OpenPolysom
 This is an open-source Polysomnography (PSG) physical device and analysis software. It performs what is know as a sleep study.
 
 It runs on an ESP32 microcontroller, and collects these signals from a patient:
-- Respiratory Inductance Plethysmography (RIP)
-- Nasal air flow rate
+- [Respiratory Inductance Plethysmography (RIP)](#baseline-removal-from-the-rip-signal---the-chest-belts)
+- [Nasal air flow rate](#air-flow-signal-processing)
 - RR intervals (heart rate)
-- Sound recording for snoring detection
-- Acceleration data from the leg sensors to detect leg twitching
-
-The wiki — an LLM-first knowledge base
-===========================
-The in-depth documentation lives in an **LLM wiki**: a structured knowledge base written first for AI coding agents to read as working context, and second for humans. It is deliberately [`llms.txt`](https://llmstxt.org/)-shaped — a curated *map* of the project (architecture, data formats, signal processing, settled decisions, roadmap, coding standards) rather than an exhaustive dump — so an agent (or a person) reads the index first and then opens only the pages a task needs. The same Markdown is browsable as a website.
-
-- **Browse it online:** https://sunrise-designs.github.io/OpenPolysom/
-- **Read the source:** [`wiki/INDEX.md`](wiki/INDEX.md) — start here
-- **Jump straight in:** [architecture](wiki/knowledge/architecture.md) · [data formats](wiki/knowledge/data-formats.md) · [roadmap](wiki/state/roadmap.md)
-
-The Markdown in [`wiki/`](wiki) is rendered to a static site with [Quartz](https://quartz.jzhao.xyz/) and published to GitHub Pages (build: [`web/build.sh`](web/build.sh)).
+- Sound recording for [snoring detection](#snoring-classification-and-feature-extraction)
+- Acceleration data from the leg sensors to [detect leg twitching](#accelerometer-data-processing)
 
 Why do this?
 ===========================
@@ -73,28 +63,35 @@ The point it, it takes a confluence of all the different signals recorded by the
 
 Challenges to solve
 ===========================
-**Medical device compliance**
+## Medical device compliance
 
 There is no getting around the fact that this is a Medical Device, likely class B. There is no point in simply providing a heap of dry statistics and numerical metrics from the recorded signals - 99% of users without a very specialist skill set would not be able to interpret them. This isn't a "wellness" device. The interpretation is the whole point of the OpenPolysom, being able to cautiously point the user in the right direction on their path to the eventual resolution of their sleep problems.
 This lands it firmly in the regulated territory. Therefore, this system, software and hardware alike, will be designed with IEC 62304 (Medical Software) in mind. The intent is to keep the code which extracts the dry metrics completely separate from the code which makes any interpretation of those metrics.
 
-**Baseline removal from the RIP signal - the chest belts**
+## Accelerometer data processing
+I am currently using two accelerometers attached near the ankle to both legs to detect leg twitching and decide whether PLMS (Periodic Limb Movements of Sleep) or PLMD (Periodic Limb Movement Disorder) is present. The American Academy of Sleep Medicine (AASM) scoring criteria are fairly straightforward to interpret, but for an accurate count the acceleration due to twitching (sudden movement followed by return to the same leg position) should be distinguished from the acceleration due to the position change. This will be determined by the angle between the two baseline positions $q1$ and $q2$: $\Delta q = q_2 \otimes q_1^{-1}$ being below a certain threshold. (note: for advanced clinical studies, Leg Movement events are detected with Electromyography (EMG), because isometric contractions which do not result in physical movement also count. The accelerometers is a temporary proxy which is easier to setup and more robust)
+
+## Baseline removal from the RIP signal - the chest belts
 
 The plan is to achieve that using a combination of Qualitative Diagnostic Calibration (QDC) variant (Marvin Sackner, 1989) and Adaptive Iteratively Reweighted Penalized Least Squares (airPLS)
 
-**Snoring classification and feature extraction**
+## Snoring classification and feature extraction
 
 The end game would be to achieve accurate classification of anatomical snoring site according to the VOTE (Velum, Oropharynx, Tongue base, and Epiglottis). This could be achieved using MFCC/Mel feature extraction, then a fast real time ML model trained on the MPSSC (Munich-Passau Snore Sound Corpus) data.
 
-**Air flow signal processing**
+## Air flow signal processing
 
 I have not yet recorded a sample signal, but I am guessing there will be pretty standard noise filtering involved
 
-**Porting from Raspberry Pi 5 to ESP32 C6**
+The wiki — an LLM-first knowledge base
+===========================
+The in-depth documentation lives in an **LLM wiki**: a structured knowledge base written first for AI coding agents to read as working context, and second for humans. It is deliberately [`llms.txt`](https://llmstxt.org/)-shaped — a curated *map* of the project (architecture, data formats, signal processing, settled decisions, roadmap, coding standards) rather than an exhaustive dump — so an agent (or a person) reads the index first and then opens only the pages a task needs. The same Markdown is browsable as a website.
 
-It's nice being able to harness amazing processing power of RPi5, but it's not a long term solution. The code will need to run on RISC-V code of the ESP32 chip.
-It does not have to do all the signal processing in real time, that can be done later, but I'd like to all I can in real-time (subject to acceptable battery life)
+- **Browse it online:** https://sunrise-designs.github.io/OpenPolysom/
+- **Read the source:** [`wiki/INDEX.md`](wiki/INDEX.md) — start here
+- **Jump straight in:** [architecture](wiki/knowledge/architecture.md) · [data formats](wiki/knowledge/data-formats.md) · [roadmap](wiki/state/roadmap.md)
 
+The Markdown in [`wiki/`](wiki) is rendered to a static site with [Quartz](https://quartz.jzhao.xyz/) and published to GitHub Pages (build: [`web/build.sh`](web/build.sh)).
 
 What hardware does this expect
 ----------------------------
@@ -108,7 +105,13 @@ The breadboard features (for now)
 
 How to build
 ----------------------------
-TODO - work in progress, lots has changed
+This is work in progress as project is developing fast.
+
+The basic dependencies are:
+- Python
+- npm
+- esp-idf (v 6.0 onwards)
+- Rust (upcoming)
 
 
 Why a Som?
