@@ -17,9 +17,7 @@ build/
 *.pyc
 *.zarr/
 src_web/node_modules/
-
-# Viewer entry HTML is a tracked source file despite the blanket *.html ignore above
-!src_web/index.html
+src_web/dist/
 
 # Quartz wiki build artifacts (web/build.sh) — never committed
 /.quartz/
@@ -30,8 +28,6 @@ src_python/biometric_filtered.json
 biometric_filtered_meta.json
 biometric_meta.json
 .vscode/c_cpp_properties.json
-src_web/dist/chart.js
-Dmitry Ignatyev PSG data.pdf
 .github/workflows/clean-machine-test.yml
 ESP32-C6-heart-idf/reference/ESP32-C6-LCD-1.47-Test/
 src_rust/polysom_rtdi/target
@@ -41,3 +37,4 @@ src_rust/polysom_rtdi/target
 # once sdkconfig.local is applied, so it's untracked too.
 ESP32-C6-heart-idf/sdkconfig
 ESP32-C6-heart-idf/sdkconfig.local
+

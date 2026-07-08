@@ -4,6 +4,9 @@ import { formatDuration, formatRecordedAt, shortSha } from './format';
 import { PLMI_ABNORMAL_THRESHOLD } from './narrative';
 import { CHANNEL_META } from './chart';
 
+/** Shown in the toolbar's range readout before any drag-selection is made. */
+export const NO_RANGE_TEXT = 'Drag on a chart to select a range';
+
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
     c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
@@ -163,17 +166,17 @@ function kpiCards(meta: Meta, narrative: Narrative): string {
 const MONTAGE = `
   <div class="section-title">Montage <span class="st-line"></span></div>
   <div class="mont-list">
-    <div class="mont">
+    <div class="mont" data-idx="0">
       <div class="m-ico" style="background:rgba(240,120,154,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 20S3 14 3 8.5A4.5 4.5 0 0 1 12 6a4.5 4.5 0 0 1 9 2.5C21 14 12 20 12 20z" stroke="var(--cardiac)" stroke-width="1.7"/></svg></div>
       <div><div class="m-name">Cardiac</div><div class="m-sub">RR interval · live</div></div>
       <div class="m-right"><div class="toggle on"></div></div>
     </div>
-    <div class="mont">
+    <div class="mont" data-idx="1,3,4,5">
       <div class="m-ico" style="background:rgba(95,208,196,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 12c2 0 2-5 4-5s2 10 4 10 2-10 4-10 2 5 4 5" stroke="var(--movement)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div><div class="m-name">Movement</div><div class="m-sub">Accel mag + X/Y/Z · live</div></div>
       <div class="m-right"><div class="toggle on"></div></div>
     </div>
-    <div class="mont">
+    <div class="mont" data-idx="2">
       <div class="m-ico" style="background:rgba(179,136,245,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 13h4l2-7 3 13 2-9 2 5h5" stroke="var(--hrv)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div><div class="m-name">HRV trend</div><div class="m-sub">RMSSD · live</div></div>
       <div class="m-right"><div class="toggle on"></div></div>
@@ -258,7 +261,7 @@ export function renderShell(meta: Meta, narrative: Narrative): string {
           <div class="sig-toolbar">
             <div class="card-title" style="margin:0;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 12h4l2-7 4 14 3-9 2 4h5" stroke="var(--movement-2)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Signal viewer <span class="fs-hint">· tap a chart to expand ⤢</span>
+              Signal viewer <span class="fs-hint">· tap a chart to expand ⤢</span><span class="zoom-hint">· drag to select · ctrl+scroll to zoom</span>
             </div>
             <div class="legend">
               <span class="leg"><span class="sw" style="background:var(--good-soft);border:1px solid var(--good)"></span>Limb movement</span>
@@ -268,6 +271,7 @@ export function renderShell(meta: Meta, narrative: Narrative): string {
               <span class="leg off"><span class="sw"></span>Arousal</span>
               <span class="leg off"><span class="sw"></span>Desat</span>
             </div>
+            <div class="sig-range" id="sig-range">${esc(NO_RANGE_TEXT)}</div>
           </div>
           <div class="sig-grid">
             ${CHANNEL_META.map((m, i) => `<div class="card sig-card"><div class="sig-head"><span class="gdot" style="background:${m.color}"></span>${esc(m.name)}</div><div class="sig-plot" id="sig-${String(i)}"></div></div>`).join('')}

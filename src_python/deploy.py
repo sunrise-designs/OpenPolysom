@@ -12,6 +12,10 @@ _SRC_WEB        = _DIR.parent / 'src_web'
 _NETLIFY_CONFIG = _DIR / 'netlify.json'
 _NETLIFY_API    = 'https://api.netlify.com/api/v1/sites/{site_id}/deploys'
 
+# Static PWA assets index.html/manifest.webmanifest need, beyond dist/chart.js —
+# Netlify only serves what's in the zip, unlike serve.py's on-the-fly lookup.
+_STATIC_ASSETS = ('styles.css', 'sw.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png')
+
 
 def _add_dir_to_zip(zf, dir_path, zip_prefix):
     for file_path in sorted(Path(dir_path).rglob('*')):
@@ -29,13 +33,15 @@ def deploy_to_netlify(zarr_path, meta_path):
         print('Error: add a "token" key to netlify.json.', file=sys.stderr)
         sys.exit(1)
 
-    zarr_path = Path(zarr_path)
-    meta_path = Path(meta_path)
+    zarr_path   = Path(zarr_path)
+    meta_path   = Path(meta_path)
+    events_path = meta_path.parent / 'events.json'
 
-    index_html = _SRC_WEB / 'index.html'
-    chart_js   = _SRC_WEB / 'dist' / 'chart.js'
+    index_html   = _SRC_WEB / 'index.html'
+    chart_js     = _SRC_WEB / 'dist' / 'chart.js'
+    static_paths = [_SRC_WEB / name for name in _STATIC_ASSETS]
 
-    for p in (zarr_path, meta_path, index_html, chart_js):
+    for p in (zarr_path, meta_path, events_path, index_html, chart_js, *static_paths):
         if not p.exists():
             print(f'Error: not found: {p}', file=sys.stderr)
             sys.exit(1)
@@ -43,14 +49,21 @@ def deploy_to_netlify(zarr_path, meta_path):
     headers_file = (
         '/index.html\n  Content-Type: text/html; charset=utf-8\n'
         '/dist/chart.js\n  Content-Type: application/javascript\n'
+        '/sw.js\n  Content-Type: application/javascript\n'
+        '/styles.css\n  Content-Type: text/css\n'
+        '/manifest.webmanifest\n  Content-Type: application/manifest+json\n'
         f'/{meta_path.name}\n  Content-Type: application/json\n'
+        '/events.json\n  Content-Type: application/json\n'
     )
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
         zf.writestr('index.html', index_html.read_bytes())
         zf.writestr('dist/chart.js', chart_js.read_bytes())
+        for static_path in static_paths:
+            zf.writestr(static_path.name, static_path.read_bytes())
         zf.writestr(meta_path.name, meta_path.read_bytes())
+        zf.writestr('events.json', events_path.read_bytes())
         _add_dir_to_zip(zf, zarr_path, zarr_path.name)
         zf.writestr('_headers', headers_file)
     buf.seek(0)
@@ -87,9 +100,9 @@ def _resolve_paths(stem=None, zarr=None, meta=None):
         sys.exit(1)
     meta_path = candidates[0]
     meta_data = json.loads(meta_path.read_text())
-    zarr_name = meta_data.get('zarr_path')
+    zarr_name = meta_data.get('layers', {}).get('working', {}).get('path')
     if not zarr_name:
-        print(f'Error: no zarr_path key in {meta_path}', file=sys.stderr)
+        print(f'Error: no layers.working.path key in {meta_path}', file=sys.stderr)
         sys.exit(1)
     return cwd / zarr_name, meta_path
 

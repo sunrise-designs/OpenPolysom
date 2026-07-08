@@ -134,6 +134,7 @@ header.top { display: flex; align-items: center; gap: 18px; padding: 4px 2px 8px
 .leg.off { opacity: .5; }
 .leg.off .sw { background: repeating-linear-gradient(45deg, #3a4660 0 4px, transparent 0 8px); }
 .window-range { font-family: var(--mono); font-size: 12px; color: var(--text-mut); background: var(--surface-2); border: 1px solid var(--ring); border-radius: 999px; padding: 4px 12px; }
+.sig-range { font-family: var(--mono); font-size: 11.5px; color: var(--movement-2); background: var(--surface-2); border: 1px solid var(--ring); border-radius: 999px; padding: 4px 12px; white-space: nowrap; }
 .chart { width: 100%; height: 1100px; }
 
 /* centered recorded line under the header */
@@ -156,6 +157,9 @@ header.top { display: flex; align-items: center; gap: 18px; padding: 4px 2px 8px
 .section-title .st-line { flex:1; height:1px; background: linear-gradient(90deg, var(--ring), transparent); }
 .mont-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
 .mont { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: var(--radius-sm); border: 1px solid var(--ring); background: var(--surface-2); }
+.mont[data-idx] { cursor: pointer; }
+.mont[data-idx]:hover { border-color: var(--ring-2); }
+.mont[data-idx].muted-row { opacity: .55; }
 .mont .m-ico { flex: 0 0 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; }
 .mont .m-name { font-size: 12.5px; font-weight: 600; }
 .mont .m-sub { font-size: 10.5px; color: var(--text-dim); }
@@ -184,6 +188,9 @@ footer.prov .disc b { color: var(--warn); }
 
 /* tap-to-expand hint (mobile only; revealed in the <=760 block) */
 .fs-hint { display: none; font-size: 11px; color: var(--text-dim); font-weight: 500; }
+/* brush/zoom hint (desktop only; drag-select + shift+scroll aren't wired on touch) */
+.zoom-hint { font-size: 11px; color: var(--text-dim); font-weight: 500; margin-left: 6px; }
+@media (max-width: 760px) { .zoom-hint { display: none; } }
 
 /* full-screen single-chart overlay (mobile, forced landscape) */
 #chart-fs { position: fixed; inset: 0; z-index: 1000; background: var(--bg); display: none; }

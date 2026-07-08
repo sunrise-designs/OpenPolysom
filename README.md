@@ -113,6 +113,10 @@ The basic dependencies are:
 - esp-idf (v 6.0 onwards)
 - Rust (upcoming)
 
+How to use
+----------------------------
+See this [brief guide](how%20to%20use.md)
+
 
 Why a Som?
 ===========================

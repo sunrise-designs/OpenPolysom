@@ -18,8 +18,8 @@
   },
   "recording": {
     "start_iso": "2026-07-08T01:57:52",
-    "duration_s": 2500.0,
-    "n_samples": 125000,
+    "duration_s": 2830.0,
+    "n_samples": 141500,
     "sample_rate_hz": 50.0,
     "source": "ACEBE6FFFE1D"
   },
@@ -27,8 +27,8 @@
     "plmi": 0.0,
     "total_lms": 0,
     "total_plms": 0,
-    "total_hours": 0.6944444444444444,
-    "hrv_rmssd_overall": 72.39260739460762,
+    "total_hours": 0.7861111111111111,
+    "hrv_rmssd_overall": 85.48759899044909,
     "threshold": 3.0,
     "window_sec": 30.0,
     "fs": 50.0
@@ -52,18 +52,18 @@
     }
   },
   "provenance": {
-    "generated_at": "2026-07-08T03:55:01.428119+00:00",
+    "generated_at": "2026-07-08T03:58:32.300557+00:00",
     "pipeline": {
       "repo": "sunrise-designs/ProtoSom",
       "git": {
-        "sha": "3a6beb188f3b86cca845ed277fae3feef56549f4",
-        "dirty": true,
+        "sha": "92c5e576faedd7d8a1fad4480d2601bf0088b0e4",
+        "dirty": false,
         "branch": "main"
       }
     },
     "input_preparation": {
-      "skip_samples": 7500,
-      "note": "leading 150.0 s dropped before DSP"
+      "skip_samples": 3500,
+      "note": "leading 70.0 s dropped before DSP"
     }
   }
 }

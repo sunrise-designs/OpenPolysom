@@ -94,6 +94,35 @@ export function channelIndexAtY(yPx: number, heightPx: number, count: number): n
   return tops.findIndex((top) => yPct >= top && yPct <= top + rowH);
 }
 
+// Single-band x-range brush, shared shape for every bubble chart so the
+// selection main.ts mirrors across panes looks identical on each of them.
+const brushOption: Record<string, unknown> = {
+  xAxisIndex: 0,
+  brushType: 'lineX',
+  brushMode: 'single',
+  removeOnClick: true,
+  throttleType: 'debounce',
+  throttleDelay: 200,
+  brushStyle: { color: 'rgba(95,208,196,0.16)', borderColor: COLORS.movement, borderWidth: 1 },
+  toolbox: [],
+};
+
+// Selection is auto-activated from main.ts (no toolbox button needed). ECharts'
+// brush preprocessor auto-injects a default toolbox (rect/polygon/keep/clear
+// icons) whenever `brush.toolbox` resolves empty on first render — an explicit
+// `show: false` is the only thing that actually suppresses it.
+const hiddenToolboxOption: Record<string, unknown> = { show: false };
+
+/** Range of a brush selection, in elapsed seconds — [start, end], start <= end. */
+export type BrushRange = readonly [number, number];
+
+/** Pull the selected [start, end] out of an ECharts `brushSelected` event payload. */
+export function brushRangeFromEvent(params: unknown): BrushRange | undefined {
+  const batch = (params as { batch?: readonly { areas?: readonly { coordRange?: readonly [number, number] }[] }[] }).batch;
+  const range = batch?.[0]?.areas?.[0]?.coordRange;
+  return range === undefined ? undefined : [Math.min(range[0], range[1]), Math.max(range[0], range[1])];
+}
+
 const sharedTooltip = (touch: boolean): Record<string, unknown> =>
   touch
     ? { show: false }
@@ -163,10 +192,17 @@ export function buildBubbleOption(zarr: ZarrData, events: EventsDoc, index: numb
       axisTick: { show: false },
       splitLine: { lineStyle: { color: COLORS.grid, opacity: 0.6 } },
     },
-    // Desktop: keep the inside-zoom component (connect-synced) but never let it
-    // capture the wheel/drag, so the page scrolls normally when the cursor is
-    // over a chart. Crosshair/tooltip sync is via axisPointer + echarts.connect.
+    // Desktop: keep the inside-zoom component (connect-synced) so
+    // dispatchAction({type:'dataZoom'}) works, but leave its own wheel/drag
+    // handling off — main.ts (wireCtrlZoom) owns the wheel event instead,
+    // since zrender's canvas swallows wheel events outright regardless of
+    // this config, and only a manual handler can replay the scroll for the
+    // non-Ctrl case. See wireCtrlZoom's comment for the full story.
     dataZoom: touch ? [] : [{ type: 'inside', filterMode: 'none', zoomOnMouseWheel: false, moveOnMouseWheel: false, moveOnMouseMove: false }],
+    // Desktop: drag-to-select an x-range (main.ts activates brush mode on init
+    // and mirrors the selection across every chart). Dropped on touch — a drag
+    // gesture there is a page-scroll swipe, per the dataZoom rule above.
+    ...(touch ? {} : { brush: brushOption, toolbox: hiddenToolboxOption }),
     series: [series],
   };
 }
