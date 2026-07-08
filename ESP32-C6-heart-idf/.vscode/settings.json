@@ -1,5 +1,5 @@
 {
-  "idf.currentSetup": "/home/dmitry/.espressif/v6.0.1/esp-idf",
+  "idf.currentSetup": "C:\\esp\\v6.0.1\\esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32c6"
 },
@@ -12,5 +12,5 @@
   "idf.flashType": "UART",
   "idf.port": "/dev/ttyACM0",
   "idf.monitorBaudRate": "921600",
-  "idf.portWin": "COM5"
+  "idf.portWin": "COM6"
 }

@@ -1,17 +1,11 @@
 import argparse
 import json
 import struct
-import time
 from pathlib import Path
 
-from device import dump_from_device, erase_device
 from signal_processing import remove_baseline, count_plm, compute_hrv, accel_magnitude
 from plotting import save_plotly_html, plot
 from export_zarr import save_zarr_json
-
-PORT = 'COM4'
-BAUD = 115200
-OUT  = f'biometric_{time.strftime("%Y-%m-%d")}.bin'
 
 
 def load_from_file(path):
@@ -37,10 +31,8 @@ def load_recording_meta(bin_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Dump biometric log from ESP32 device and plot it.')
-    parser.add_argument('port', nargs='?', default=PORT, help=f'Serial port (default: {PORT})')
-    parser.add_argument('-f', '--file', help='Load from a previously saved .bin file instead of reading from the device')
-    parser.add_argument('-e', '--erase', action='store_true', help='Erase the log on the device and exit (sends the "E" command)')
+    parser = argparse.ArgumentParser(description='Load a biometric log and plot it.')
+    parser.add_argument('-f', '--file', required=True, help='Load from a saved .bin file')
     parser.add_argument('-b', '--baseline', action='store_true', help='Remove baseline from accelerometer channels and write a new <stem>_filtered.bin file, then exit')
     parser.add_argument('--window', type=float, default=30.0, help='Median filter window in seconds for baseline removal (default: 30)')
     parser.add_argument('-c', '--count', action='store_true', help='Count PLMs per AASM scoring rules and print total count + PLMI')
@@ -55,16 +47,8 @@ def main():
 
     _plotlyjs = {'cdn': 'cdn', 'embed': True, 'omit': False}[args.plotlyjs]
 
-    if args.erase:
-        erase_device(args.port, BAUD)
-        return
-
-    if args.file:
-        data = load_from_file(args.file)
-        src_path = Path(args.file)
-    else:
-        data = dump_from_device(args.port, BAUD, OUT)
-        src_path = Path(OUT)
+    data = load_from_file(args.file)
+    src_path = Path(args.file)
 
     recording_meta = load_recording_meta(src_path)
     print(f"Recording metadata: {recording_meta}" if recording_meta else "No recording metadata found.")
@@ -78,7 +62,7 @@ def main():
         print(f"Ignoring last {args.ignore_last} samples ({args.ignore_last / 10.0:.1f} s)")
 
     if args.baseline:
-        src      = Path(args.file) if args.file else Path(OUT)
+        src      = Path(args.file)
         out_path = src.with_stem(src.stem + '_filtered')
         out_path.write_bytes(remove_baseline(data, window_sec=args.window))
         print(f"Saved baseline-removed data to {out_path}")
