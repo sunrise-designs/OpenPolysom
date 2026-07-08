@@ -2,7 +2,7 @@
 title: Coding Standards
 domain: standards
 status: living
-updated: 2026-06-19
+updated: 2026-07-08
 summary: How code is written per language across the three-language boundary — C++ ingest, Python processing, the TS web app — plus the round-trip and reproducibility tests that hold them honest.
 ---
 
@@ -118,11 +118,11 @@ algorithm narratives in [signal processing](../knowledge/signal-processing.md).
   contract: Zarr v2, Blosc(zstd, shuffle), **no numcodecs-only filters** — that ban is a hard
   rule because the TS web app must read the same arrays.
 
-> **Note on the legacy `.bin`.** `remove_baseline` / `count_plm` still parse the **legacy
-> 5-byte record** (3×`uint8` accel + `uint16` RR @10 Hz, e.g. `struct.unpack_from('<H',
-> data, i+3)` at `signal_processing.py:7`). That format is **legacy and being retired** in
-> favour of EDF+ → raw Zarr; only the committed anonymous `biometric_filtered.bin` uses it.
-> Do not extend it — new processing reads the raw anchor Zarr.
+> **Reading note.** `remove_baseline` / `count_plm` / `accel_magnitude` take plain
+> physical-unit arrays + `fs` directly. `src_python/read_log.py` sources those arrays
+> from the EDF+ raw anchor via `edf_reader.py` (`edfio`), which is still short of the
+> target of reading the **raw Zarr** (doesn't exist yet — see
+> [roadmap](../state/roadmap.md) stage 2).
 
 > **Watch-item:** how much Python is acceptable *long-term* for medical-grade software is
 > open. C++ wins on performance + compliance, so processing **may** migrate Python→C++

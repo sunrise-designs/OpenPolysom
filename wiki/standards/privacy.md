@@ -2,7 +2,7 @@
 title: Privacy & PII Handling
 domain: standards
 status: living
-updated: 2026-06-19
+updated: 2026-07-08
 summary: How patient-identifying data is kept out of the public repo and scrubbed from shareable exports.
 ---
 
@@ -12,7 +12,7 @@ ProtoSom is a **public** repo. Patient-identifying data must never be committed,
 
 ## Current state (good)
 
-`.gitignore` already excludes `patient.cfg`, `*.json`, `*.edf`, `*.csv`, and `*.bin` (with an explicit `!biometric_filtered.bin` exception). **No real PII is, or ever was, committed.** `biometric_filtered.bin` is *anonymous* sample data — accelerometer + RR only, no identifiers.
+`.gitignore` already excludes `patient.cfg`, `*.json`, `*.edf`, and `*.csv`. **No real PII is, or ever was, committed.**
 
 ## Where PII appears in the design
 
@@ -25,4 +25,4 @@ ProtoSom is a **public** repo. Patient-identifying data must never be committed,
 2. **The clinical export scrubs it.** The Zarr → EDF/BDF [clinical export](../knowledge/data-formats.md) blanks the EDF+ header patient name/DOB to produce a de-identified, shareable `clinical.edf`.
 3. **Never relax the gitignore** for `patient.cfg` or any `meta.json` that contains PII.
 
-See [decisions](../state/decisions.md) — settled item S9 (export scrubbing) and open fork O9 (the de-identification policy still to finalise with Leon/Dmitry).
+See [decisions](../state/decisions.md) — settled item S8 (export scrubbing) and open fork O9 (the de-identification policy still to finalise with Leon/Dmitry).

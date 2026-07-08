@@ -2,7 +2,7 @@
 title: Decision Log
 domain: state
 status: living
-updated: 2026-06-20
+updated: 2026-07-08
 summary: The settled architecture decisions for ProtoSom Component 2 and the open forks still owed to Leon and Dmitry.
 ---
 
@@ -32,10 +32,9 @@ Each is considered closed for the PoC. Reopen only by editing this page with a d
 | S4 | **Zarr v2 + Blosc(zstd, shuffle) codec; NO Python-only numcodecs filters** (no Delta, no PackBits). | The store must be readable by C++ (TensorStore/z5) and TS (zarrita.js), not just Python — so only language-neutral codecs are allowed. z5 is v2-only, hence v2 default (see open fork O5). |
 | S5 | **Language boundary: C++ ingests, Python processes, TypeScript presents.** | Each language is chosen for its strength: C++ for acquisition/performance/compliance, Python for DSP+ML, TS for the viewer. They meet at the Zarr store + metadata. See [architecture](../knowledge/architecture.md). |
 | S6 | **The TS web app READS Zarr and never writes it.** | Keeps the boundary one-directional: only C++ ingest writes the raw Zarr layer and only Python processing writes the derived layer; the viewer is a pure reader. |
-| S7 | **Retire the legacy 5-byte `.bin`** (3×uint8 accel + uint16 RR @10 Hz). | Superseded by EDF+ as the raw anchor; only the committed anonymous `biometric_filtered.bin` still uses it, kept as sample data via the `.gitignore` exception. |
-| S8 | **Drop the proposed "proprietary binary" capture format.** | EDF+ (biosignals) + FLAC (audio) cover the raw anchor with standard, tooling-supported formats; a bespoke format adds no value and harms auditability. |
-| S9 | **Clinical EDF+/BDF+ export, regenerated on demand, never stored.** | EDFBrowser interop without a third persisted copy; the export scrubs the EDF+ header (patient name/DOB) for a de-identified shareable file. May be owned by C++ ingest. |
-| S10 | **Cross-platform: the TS web app is the single core — installable PWA now, webview-wrap later (Capacitor = mobile, Tauri 2 = desktop/air-gapped). NOT React Native or non-JS (Flutter/KMP/.NET MAUI).** (decided 2026-06-20) | A stack survey confirmed RN's Hermes engine has **no production WebAssembly** ([Polygen is build-time `wasm2c` only](https://github.com/callstackincubator/polygen)) — breaking zarrita's Blosc decode — and RN-native can't render ECharts (canvas), so RN/non-JS would force rewriting the charts **and** the Zarr boundary (the two crown jewels). Webview wrappers reuse ~100% of the TS + ECharts + zarrita stack; [Tauri 2](https://v2.tauri.app/)'s Rust shell can also spawn the C++ ingest / Python processing per the on-demand model. Shipped now as an installable, offline-capable PWA. |
+| S7 | **Drop the proposed "proprietary binary" capture format.** | EDF+ (biosignals) + FLAC (audio) cover the raw anchor with standard, tooling-supported formats; a bespoke format adds no value and harms auditability. |
+| S8 | **Clinical EDF+/BDF+ export, regenerated on demand, never stored.** | EDFBrowser interop without a third persisted copy; the export scrubs the EDF+ header (patient name/DOB) for a de-identified shareable file. May be owned by C++ ingest. |
+| S9 | **Cross-platform: the TS web app is the single core — installable PWA now, webview-wrap later (Capacitor = mobile, Tauri 2 = desktop/air-gapped). NOT React Native or non-JS (Flutter/KMP/.NET MAUI).** (decided 2026-06-20) | A stack survey confirmed RN's Hermes engine has **no production WebAssembly** ([Polygen is build-time `wasm2c` only](https://github.com/callstackincubator/polygen)) — breaking zarrita's Blosc decode — and RN-native can't render ECharts (canvas), so RN/non-JS would force rewriting the charts **and** the Zarr boundary (the two crown jewels). Webview wrappers reuse ~100% of the TS + ECharts + zarrita stack; [Tauri 2](https://v2.tauri.app/)'s Rust shell can also spawn the C++ ingest / Python processing per the on-demand model. Shipped now as an installable, offline-capable PWA. |
 
 Canonical terms used throughout the wiki: **raw anchor**, **working store**, **derived layer**,
 **clinical export**, **C++ ingest**, **Python processing**, **the TS web app**, **the slicing
@@ -66,7 +65,7 @@ Nothing here should be treated as decided by downstream wiki pages.
 
 ## How to use this page
 
-- A new page must not contradict a **settled** decision (A1–A9); if it needs to, that is a reopen —
+- A new page must not contradict a **settled** decision (S1–S9); if it needs to, that is a reopen —
   edit this log first with a dated rationale, then the page.
 - A page that touches an **open fork** must link here rather than picking a side.
 - Related context: [architecture](../knowledge/architecture.md),

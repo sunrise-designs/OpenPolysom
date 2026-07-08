@@ -1,28 +1,19 @@
 import argparse
 import json
-import struct
 from pathlib import Path
 
-from signal_processing import remove_baseline, count_plm, compute_hrv, accel_magnitude
+from edf_reader import load_edf
+from signal_processing import count_plm, compute_hrv, accel_magnitude
 from plotting import save_plotly_html, plot
 from export_zarr import save_zarr_json
 
 
-def load_from_file(path):
-    with open(path, 'rb') as f:
-        data = f.read()
-    print(f"Loaded {len(data)} bytes from {path}")
-    return data
-
-
-def load_recording_meta(bin_path):
-    # FUTURE: replace this function body with binary header parsing once
-    # the firmware writes metadata into the .bin file header.
-    # Until then, metadata lives in a sidecar .json file alongside the .bin,
-    # with the script directory as a fallback for when they differ.
+def load_recording_meta(edf_path):
+    # Written alongside the .edf by the firmware (see logger.cpp write_json_sidecar);
+    # falls back to the script directory for when they differ.
     candidates = [
-        Path(bin_path).with_suffix('.json'),
-        Path(__file__).parent / Path(bin_path).with_suffix('.json').name,
+        Path(edf_path).with_suffix('.json'),
+        Path(__file__).parent / Path(edf_path).with_suffix('.json').name,
     ]
     for p in candidates:
         if p.exists():
@@ -30,15 +21,20 @@ def load_recording_meta(bin_path):
     return None
 
 
+def _trim(signal, fs, skip_s, ignore_last_s):
+    start = int(skip_s * fs)
+    end = len(signal) - int(ignore_last_s * fs) if ignore_last_s > 0 else len(signal)
+    return signal[start:end]
+
+
 def main():
-    parser = argparse.ArgumentParser(description='Load a biometric log and plot it.')
-    parser.add_argument('-f', '--file', required=True, help='Load from a saved .bin file')
-    parser.add_argument('-b', '--baseline', action='store_true', help='Remove baseline from accelerometer channels and write a new <stem>_filtered.bin file, then exit')
+    parser = argparse.ArgumentParser(description='Load a biometric EDF+ recording and plot it.')
+    parser.add_argument('-f', '--file', required=True, help='Load from an EDF+ recording')
     parser.add_argument('--window', type=float, default=30.0, help='Median filter window in seconds for baseline removal (default: 30)')
     parser.add_argument('-c', '--count', action='store_true', help='Count PLMs per AASM scoring rules and print total count + PLMI')
-    parser.add_argument('--threshold', type=float, default=8.0, help='Accelerometer amplitude threshold for LM detection (default: 8)')
-    parser.add_argument('--skip', type=int, default=700, help='Number of leading samples to ignore (default: 700, file is not modified)')
-    parser.add_argument('--ignore_last', type=int, default=0, help='Number of trailing samples to ignore (default: 0, file is not modified)')
+    parser.add_argument('--threshold', type=float, default=8.0, help='Accelerometer amplitude threshold (mg) for LM detection (default: 8)')
+    parser.add_argument('--skip', type=float, default=70.0, help='Seconds to trim from the start of each channel (default: 70)')
+    parser.add_argument('--ignore_last', type=float, default=0.0, help='Seconds to trim from the end of each channel (default: 0)')
     parser.add_argument('--chart', choices=['echarts', 'plotly'], default='echarts',
                         help='HTML chart library for the output report (default: echarts)')
     parser.add_argument('--plotlyjs', choices=['cdn', 'embed', 'omit'], default='cdn',
@@ -47,50 +43,62 @@ def main():
 
     _plotlyjs = {'cdn': 'cdn', 'embed': True, 'omit': False}[args.plotlyjs]
 
-    data = load_from_file(args.file)
     src_path = Path(args.file)
+    recording = load_edf(src_path)
+    print(f"Loaded EDF+ recording starting {recording.start_datetime} from {src_path}")
 
     recording_meta = load_recording_meta(src_path)
     print(f"Recording metadata: {recording_meta}" if recording_meta else "No recording metadata found.")
 
     if args.skip > 0:
-        data = data[args.skip * 5:]
-        print(f"Skipping first {args.skip} samples ({args.skip / 10.0:.1f} s)")
-
+        print(f"Skipping first {args.skip:.1f} s of each channel")
     if args.ignore_last > 0:
-        data = data[:-args.ignore_last * 5]
-        print(f"Ignoring last {args.ignore_last} samples ({args.ignore_last / 10.0:.1f} s)")
+        print(f"Ignoring last {args.ignore_last:.1f} s of each channel")
 
-    if args.baseline:
-        src      = Path(args.file)
-        out_path = src.with_stem(src.stem + '_filtered')
-        out_path.write_bytes(remove_baseline(data, window_sec=args.window))
-        print(f"Saved baseline-removed data to {out_path}")
-        return
+    def trimmed(label):
+        return _trim(recording[label], recording.rate(label), args.skip, args.ignore_last)
+
+    a0x, a0y, a0z = trimmed('Accel0X'), trimmed('Accel0Y'), trimmed('Accel0Z')
+    a1x, a1y, a1z = trimmed('Accel1X'), trimmed('Accel1Y'), trimmed('Accel1Z')
+    rr = trimmed('RR')
+    fs_accel = recording.rate('Accel0X')
+    fs_rr = recording.rate('RR')
+
+    t = [i / fs_accel for i in range(len(a0x))]
+    t_rr = [i / fs_rr for i in range(len(rr))]
+    raw = ([float(v) for v in a0x], [float(v) for v in a0y], [float(v) for v in a0z])
 
     if args.count:
-        result = count_plm(data, threshold=args.threshold)
-        result.update({'threshold': args.threshold, 'window_sec': args.window, 'fs': 10})
-        records = [(data[i], data[i+1], data[i+2], struct.unpack_from('<H', data, i+3)[0])
-                   for i in range(0, len(data) - 4, 5)]
-        t       = [i / 10.0 for i in range(len(records))]
-        rr_list = [r[3] for r in records]
-        hrv_overall, hrv_t, hrv_rmssd = compute_hrv(rr_list)
+        print("--- Accel0 ---")
+        result0 = count_plm(a0x, a0y, a0z, threshold=args.threshold, fs=fs_accel)
+        print("--- Accel1 ---")
+        result1 = count_plm(a1x, a1y, a1z, threshold=args.threshold, fs=fs_accel)
+
+        # The chart/Zarr export schema currently carries one accelerometer's
+        # results; Accel0 is treated as primary. Accel1's scoring is computed
+        # and printed above but not yet plotted/exported.
+        result = result0
+        result.update({'threshold': args.threshold, 'window_sec': args.window, 'fs': fs_accel})
+
+        hrv_overall, hrv_t, hrv_rmssd = compute_hrv(rr, fs=fs_rr)
         result.update({'hrv_overall': hrv_overall, 'hrv_t': hrv_t, 'hrv_rmssd': hrv_rmssd})
         print(f"HRV (RMSSD)        : {hrv_overall:.1f} ms")
-        raw = ([r[0] for r in records], [r[1] for r in records], [r[2] for r in records])
+
         if args.chart == 'echarts':
             zarr_path, meta_path = save_zarr_json(
                 src_path.stem,
-                t, rr_list, raw, result['vm'],
+                t, list(rr), raw, result['vm'],
                 hrv_t=result['hrv_t'], hrv_rmssd=result['hrv_rmssd'],
                 stats=result,
                 recording_meta=recording_meta,
+                source_path=src_path,
+                skip_s=args.skip,
+                rr_t=t_rr,
             )
             print(f"To view: python src_python/serve.py --meta {meta_path}")
         else:
             save_plotly_html(
-                t, rr_list, result['vm'],
+                t, list(rr), result['vm'],
                 lm_events=result['lm_events'],
                 plm_groups=result['plm_groups'],
                 stats=result,
@@ -100,13 +108,8 @@ def main():
             )
         return
 
-    records = [(data[i], data[i+1], data[i+2], struct.unpack_from('<H', data, i+3)[0])
-               for i in range(0, len(data) - 4, 5)]
-    t   = [i / 10.0 for i in range(len(records))]
-    rr  = [r[3] for r in records]
-    mag = accel_magnitude(data, window_sec=args.window)
-    raw = ([r[0] for r in records], [r[1] for r in records], [r[2] for r in records])
-    plot(t, rr, mag, recording_meta=recording_meta, raw_channels=raw, include_plotlyjs=_plotlyjs)
+    mag = accel_magnitude(a0x, a0y, a0z, window_sec=args.window, fs=fs_accel)
+    plot(t, list(rr), mag, recording_meta=recording_meta, raw_channels=raw, include_plotlyjs=_plotlyjs)
 
 
 if __name__ == '__main__':

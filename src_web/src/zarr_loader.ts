@@ -28,13 +28,14 @@ async function readArray(root: zarr.Location<zarr.Readable>, name: string): Prom
  */
 export async function loadZarr(store: zarr.Readable): Promise<ZarrData> {
   const root = zarr.root(store);
-  const [t, accelX, accelY, accelZ, accelMag, rr, hrvT, hrvRmssd] = await Promise.all([
+  const [t, accelX, accelY, accelZ, accelMag, rr, rrT, hrvT, hrvRmssd] = await Promise.all([
     readArray(root, 't'),
     readArray(root, 'accel_x'),
     readArray(root, 'accel_y'),
     readArray(root, 'accel_z'),
     readArray(root, 'accel_mag'),
     readArray(root, 'rr'),
+    readArray(root, 'rr_t'),
     readArray(root, 'hrv_t'),
     readArray(root, 'hrv_rmssd'),
   ]);
@@ -45,6 +46,7 @@ export async function loadZarr(store: zarr.Readable): Promise<ZarrData> {
     accel_z: accelZ as Uint8Array,
     accel_mag: accelMag as Float32Array,
     rr: rr as Float32Array,
+    rr_t: rrT as Float64Array,
     hrv_t: hrvT as Float64Array,
     hrv_rmssd: hrvRmssd as Float32Array,
   };

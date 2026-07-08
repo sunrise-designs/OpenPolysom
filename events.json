@@ -1,0 +1,18 @@
+{
+  "schema": "protosom.events",
+  "schema_version": "1.0.0",
+  "recording_id": "biometric_2026-07-08_01-57-52",
+  "time_base": {
+    "reference": "recording_start",
+    "start_iso": "2026-07-08T01:57:52",
+    "unit": "s"
+  },
+  "channels_ref": "working.zarr",
+  "scorings": [
+    {
+      "scoring_id": "plm-auto-v0",
+      "events": [],
+      "groups": []
+    }
+  ]
+}

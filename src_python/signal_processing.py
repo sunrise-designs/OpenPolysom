@@ -1,40 +1,23 @@
-import struct
 import numpy as np
 from scipy.ndimage import median_filter
 
 
-def remove_baseline(data, window_sec=30, fs=10):
-    records = [(data[i], data[i+1], data[i+2], struct.unpack_from('<H', data, i+3)[0])
-               for i in range(0, len(data) - 4, 5)]
+def remove_baseline(channels, window_sec=30, fs=50):
+    """Subtract a rolling median from each channel (jerk-preserving baseline removal).
 
-    channels = [np.array([r[c] for r in records], dtype=float) for c in range(3)]
-    rr_vals  = [r[3] for r in records]
-
+    channels: iterable of 1-D array-likes, already in physical units.
+    Returns a list of baseline-removed float arrays, same order/scale as input.
+    """
     window = int(window_sec * fs)
     # reflect mode avoids one-sided lag artifacts at the edges
-    filtered = [ch - median_filter(ch, size=window, mode='reflect') + 128.0
-                for ch in channels]
-
-    out = bytearray()
-    for i, rr in enumerate(rr_vals):
-        ax = int(np.clip(round(filtered[0][i]), 0, 255))
-        ay = int(np.clip(round(filtered[1][i]), 0, 255))
-        az = int(np.clip(round(filtered[2][i]), 0, 255))
-        out += bytes([ax, ay, az]) + struct.pack('<H', rr)
-    return bytes(out)
+    return [np.asarray(ch, dtype=float) - median_filter(np.asarray(ch, dtype=float), size=window, mode='reflect')
+            for ch in channels]
 
 
-def count_plm(data, threshold=8, fs=10):
+def count_plm(ax, ay, az, threshold=8, fs=50):
     # Apply baseline removal internally so raw or pre-filtered data both work
-    filtered = remove_baseline(data, fs=fs)
-    records = [(filtered[i], filtered[i+1], filtered[i+2],
-                struct.unpack_from('<H', filtered, i+3)[0])
-               for i in range(0, len(filtered) - 4, 5)]
-
-    ax = np.array([r[0] for r in records], dtype=float) - 128
-    ay = np.array([r[1] for r in records], dtype=float) - 128
-    az = np.array([r[2] for r in records], dtype=float) - 128
-    vm = np.sqrt(ax**2 + ay**2 + az**2)
+    fax, fay, faz = remove_baseline([ax, ay, az], fs=fs)
+    vm = np.sqrt(fax**2 + fay**2 + faz**2)
 
     # Find contiguous runs above threshold (AASM: 0.5–10 s duration)
     above = (vm >= threshold).astype(int)
@@ -71,7 +54,7 @@ def count_plm(data, threshold=8, fs=10):
     lm_events   = [(on / fs, off / fs) for on, off in lm_pairs]
     plm_groups  = [[lm_events[i] for i in grp] for grp in plm_group_indices]
     total_plms  = sum(len(g) for g in plm_groups)
-    total_hours = len(records) / fs / 3600
+    total_hours = len(vm) / fs / 3600
     plmi        = total_plms / total_hours if total_hours > 0 else 0.0
 
     print(f"Recording duration : {total_hours:.2f} hours")
@@ -85,21 +68,16 @@ def count_plm(data, threshold=8, fs=10):
             'vm': list(vm)}
 
 
-def accel_magnitude(data, window_sec=30, fs=10):
-    filtered = remove_baseline(data, window_sec=window_sec, fs=fs)
-    records = [(filtered[i], filtered[i+1], filtered[i+2])
-               for i in range(0, len(filtered) - 4, 5)]
-    ax = np.array([r[0] for r in records], dtype=float) - 128
-    ay = np.array([r[1] for r in records], dtype=float) - 128
-    az = np.array([r[2] for r in records], dtype=float) - 128
-    return list(np.sqrt(ax**2 + ay**2 + az**2))
+def accel_magnitude(ax, ay, az, window_sec=30, fs=50):
+    fax, fay, faz = remove_baseline([ax, ay, az], window_sec=window_sec, fs=fs)
+    return list(np.sqrt(fax**2 + fay**2 + faz**2))
 
 
 def _rmssd(arr):
     return float(np.sqrt(np.mean(np.diff(arr) ** 2)))
 
 
-def compute_hrv(rr_series, fs=10, window_sec=300):
+def compute_hrv(rr_series, fs=1, window_sec=300):
     rr = np.array(rr_series, dtype=float)
 
     # Each sample holds the most recent RR value; extract actual beat transitions

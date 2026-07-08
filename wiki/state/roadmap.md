@@ -2,7 +2,7 @@
 title: Build Roadmap
 domain: state
 status: living
-updated: 2026-06-19
+updated: 2026-07-08
 summary: The ordered build plan from the current repo state to the target three-language pipeline, with dependencies, exit criteria, and the open forks that gate it.
 ---
 
@@ -20,27 +20,31 @@ This page is **living** — re-order and tick items as the build moves.
 ## Where we are today (current state)
 
 - **C++ ingest** writes EDF+ at the device only:
-  [`src/main.cpp`](../../src/main.cpp) (RPi5, 6-channel physical samples) and
+  [`src/main.cpp`](../../src/main.cpp) (RPi5, 6-channel physical samples),
   [`logger.cpp`](../../ESP32-S3-heart/BLE_HR_plus_accel_ADC/logger.cpp)
-  (ESP32-S3, 4-channel digital samples), both via edflib. There is **no
+  (ESP32-S3, 4-channel digital samples), and the newer
+  [`logger.cpp`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)
+  (ESP32-C6, 11-channel digital samples), all via edflib. There is **no
   EDF+ → raw-Zarr** ingest step yet — Zarr is currently produced by Python.
 - **Python processing** ([`src_python/signal_processing.py`](../../src_python/signal_processing.py))
-  reads the **legacy 5-byte `.bin`** (3×uint8 accel + uint16 RR @10 Hz), not the
-  raw anchor: `remove_baseline`, `count_plm` (AASM PLM/LM), `compute_hrv`
-  (RMSSD). It has **no tests**.
+  reads the **EDF+ raw anchor directly** via
+  [`edf_reader.py`](../../src_python/edf_reader.py) (`edfio`), not the raw Zarr:
+  `remove_baseline`, `count_plm` (AASM PLM/LM, run per accelerometer),
+  `compute_hrv` (RMSSD). It has **no tests**.
 - **Zarr is written from Python** ([`export_zarr.py`](../../src_python/export_zarr.py),
-  `zarr_format=2`, single-chunk arrays, a `_meta.json` sidecar with a
-  `git_hash`) — the right *layer*, but written from the wrong stage and from
-  `.bin`, not from EDF+.
+  `zarr_format=2`, single-chunk arrays, `meta.json` + `events.json` sidecars following
+  the canonical schema) — the right *layer*, but written from the wrong stage (Python,
+  not C++ ingest) and sourced from EDF+ directly rather than from a raw Zarr.
 - **The TS web app** ([`src_web/src/`](../../src_web/src/)) reads the Zarr +
   sidecar and charts it, but via the **old `zarr` (zarr.js) library**
   ([`zarr_loader.ts`](../../src_web/src/zarr_loader.ts), `HTTPStore` +
   `openArray`), and loads the whole recording in-browser. No slicing server, no
   audio pane, no PDF report.
 
-So the spine exists end-to-end, but it routes through `.bin` and zarr.js, and
-the three-layer model, the language boundary, the tests, and the provenance
-primitives are mostly **intentions, not code**. The roadmap below closes that gap.
+So the spine exists end-to-end, but Python reads the EDF+ raw anchor directly
+instead of a raw Zarr and the viewer still uses zarr.js, and the three-layer
+model, the language boundary, the tests, and the provenance primitives are
+mostly **intentions, not code**. The roadmap below closes that gap.
 
 ## Dependency order at a glance
 
@@ -86,7 +90,7 @@ code; each is tracked in [decisions](../state/decisions.md) as an [open fork](..
 **Exit:** each fork has a recorded decision or an explicit "defer, revisit at
 stage N" note in [decisions](../state/decisions.md).
 
-## 1 — C++ EDF+ → raw-Zarr ingest, retire the 5-byte `.bin`
+## 1 — C++ EDF+ → raw-Zarr ingest
 
 The first real code. Build the **C++ ingest** step that turns the **raw anchor**
 (EDF+ from the device, read via edflib) into the **raw** layer of the
@@ -99,34 +103,31 @@ chunked along time, plus extracted EDF+ header metadata into `meta.json`.
   **digital** (`edfwrite_digital_samples`); see [data formats](../knowledge/data-formats.md).
 - Write Zarr v2 with the chosen C++ lib (stage 0), Blosc(zstd, shuffle), one
   array per channel (Thoracic, Abdomen, HR, RR, Flow, HR_Raw from the RPi5;
-  AccelX/Y/Z, RR from the ESP32-S3), each chunked along time — **not** the
+  AccelX/Y/Z, RR from the ESP32-S3; Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z,
+  Accel1X/Y/Z, RR from the ESP32-C6), each chunked along time — **not** the
   single-chunk shortcut [`export_zarr.py`](../../src_python/export_zarr.py) uses.
-- **Retire the legacy `.bin`.** Once EDF+ → raw Zarr works, the 5-byte `.bin` is
-  no longer an input to anything but the one committed `biometric_filtered.bin`
-  sample; stop reading it in new code (see [data formats](../knowledge/data-formats.md)).
 - **Round-trip tests** (this is the IEC-62304 entry point): EDF+ → raw Zarr →
   back to EDF+ must reproduce samples bit-exact for digital channels and within
   the physical-resolution tolerance for physical channels. Same for the
   on-demand **clinical export** (EDF+/BDF+ regenerated, never stored). Property
   tests over channel count / rate / dtype, not just one fixture.
 
-**Exit:** `biometric_filtered.bin` (or a real EDF+ capture) ingests to a v2 Zarr
-that the TS web app can open, the round-trip test is green, and `meta.json`
-carries the EDF+ header fields.
+**Exit:** a real EDF+ capture ingests to a v2 Zarr that the TS web app can open,
+the round-trip test is green, and `meta.json` carries the EDF+ header fields.
 
 **Depends on:** stage 0 (Zarr lib + spec).
 
 ## 2 — Port & validate the Python processing against the raw Zarr
 
 Re-point [Python processing](../knowledge/signal-processing.md) at the **raw
-Zarr**, not `.bin`, and put the clinical DSP under test. This is the
-producer the assessment flagged as untested.
+Zarr** — it currently reads the EDF+ raw anchor directly (via `edf_reader.py` /
+`edfio`) — and put the clinical DSP under test. This is the producer the
+assessment flagged as untested.
 
 - **Read raw Zarr → write derived Zarr + `events.json` + `meta.json`** (with a
   provenance block, stage 6). `remove_baseline`, `count_plm`, `compute_hrv`
-  keep their algorithms but take arrays from the raw store instead of unpacking
-  `.bin` bytes (`signal_processing.py:6-24` currently does `struct.unpack` over
-  the 5-byte record — that goes away).
+  already take plain physical-unit arrays + `fs`; the remaining work is
+  sourcing those arrays from the raw Zarr instead of reading the EDF+ directly.
 - **Tests against the raw Zarr** (TDD per [coding standards](../standards/coding.md)):
   PLM/LM scoring against the AASM rules in
   [`plans/removing accel baseline.md`](../../plans/removing%20accel%20baseline.md)

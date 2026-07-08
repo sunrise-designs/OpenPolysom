@@ -2,7 +2,7 @@
 title: Hardware & C++ Ingest
 domain: knowledge
 status: living
-updated: 2026-06-19
+updated: 2026-07-08
 summary: The acquisition devices (RPi5 + ESP32-S3 wrist unit), their sensors, exact EDF+ channel layouts, and the I2C/BLE data paths that feed the C++ ingest side.
 ---
 
@@ -104,9 +104,6 @@ passed to `logRecord` every `LOG_RATE_MS = 100 ms`, `.ino:126–128`), even thou
 sampled at 50 Hz in the loop (`ACCEL_RATE_HZ`, `.ino:16`). The start time comes from an NTP-synced
 clock (`logger.cpp:82–87`). A `D` serial command hex-dumps the file; `E` erases and restarts
 (`logger.cpp:138–168`).
-
-The committed `biometric_filtered.bin` legacy sample (3×uint8 accel + uint16 RR @10 Hz) predates
-this EDF+ logger and is being **retired** — see [data formats](../knowledge/data-formats.md).
 
 ### Acquisition loop & sensors (`BLE_HR_plus_accel_ADC.ino`)
 

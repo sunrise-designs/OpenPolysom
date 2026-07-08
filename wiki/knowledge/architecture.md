@@ -2,7 +2,7 @@
 title: Component-2 Architecture
 domain: knowledge
 status: living
-updated: 2026-06-19
+updated: 2026-07-08
 summary: The canonical reference for ProtoSom's data pipeline after data leaves the device — the four-stage pipeline, the three-layer data model, and the C++ ingest / Python processing / TS web-app language boundary that meets at the Zarr store plus metadata.
 ---
 
@@ -63,8 +63,9 @@ The 6-channel EDF+ written by [`src/main.cpp`](../../src/main.cpp) (RPi5 acquisi
 raw anchor — Thoracic + Abdomen (LDC1612 RIP belts, nH, 50 Hz), HR (BPM, 1 Hz), RR (ms, 5 Hz),
 Flow (SDP800, 50 Hz), HR_Raw (AD8232 ECG ADC, 100 Hz); see the `ChannelInfo` table at
 [`src/main.cpp:145`](../../src/main.cpp). The ESP32-S3 wrist device adds a 4-channel EDF+
-(AccelX/Y/Z @10 Hz + RR @1 Hz). The previously proposed proprietary binary is **dropped**, and the
-legacy 5-byte `.bin` format is **being retired** (only `biometric_filtered.bin` still uses it).
+(AccelX/Y/Z @10 Hz + RR @1 Hz), and the newer ESP32-C6 wrist logger
+([`logger.cpp`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)) writes an 11-channel
+EDF+ (Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z, Accel1X/Y/Z, RR).
 
 ### Layer 2 — Working store
 
@@ -92,9 +93,10 @@ architecture. ([Zarr v2 + Blosc/zstd rationale](data-formats.md), [decisions](..
 > **Note on the current code.** [`src_python/export_zarr.py`](../../src_python/export_zarr.py) reflects
 > the earlier single-codebase prototype: Python opens the group with
 > `zarr.open_group(..., zarr_format=2)` ([`export_zarr.py:56`](../../src_python/export_zarr.py)),
-> creates one array per signal, and writes a `*_meta.json` sidecar carrying patient + stats +
-> `git_hash` ([`export_zarr.py:94`](../../src_python/export_zarr.py)). Under the settled architecture
-> the **raw** Zarr is produced by C++ ingest and the **derived** Zarr + metadata by Python processing;
+> creates one array per signal, and writes `meta.json` + `events.json` sidecars following the
+> canonical nested schema — `subject`/`recording`/`stats`/`layers`/`provenance`, with the full
+> git SHA + dirty flag under `provenance.pipeline.git`. Under the settled architecture the
+> **raw** Zarr is produced by C++ ingest and the **derived** Zarr + metadata by Python processing;
 > the Python writer above is the seed of the derived-layer producer.
 
 ### Layer 3 — Clinical export
@@ -159,8 +161,8 @@ Zarr + metadata. Then the TS web app reads and displays.
 
 **On demand.** The TS side may invoke C++ binaries (ingest / export) or trigger Python re-processing
 as subprocesses. These write the **derived layer**; the **raw anchor stays immutable**; **each derived
-product is stamped with provenance** (e.g. the `git_hash` already written in
-[`export_zarr.py:94`](../../src_python/export_zarr.py)).
+product is stamped with provenance** (the full git SHA + dirty flag + raw-anchor content hash already
+written by [`export_zarr.py`](../../src_python/export_zarr.py) into `meta.json.provenance`).
 
 **The viewer reads the Zarr boundary.** At PoC scale the browser reads the whole (tiny) recording
 directly via `zarrita.js`. As data grows, a **thin TS slicing server** reads the Zarr and serves the
@@ -171,9 +173,9 @@ without changing the viewer**. Audio gets a separate spectrogram pane (`wavesurf
 Python-precomputed spectrogram array stored in Zarr. See [viewer](viewer.md).
 
 The current end-to-end path is visible in [`export_zarr.py`](../../src_python/export_zarr.py):
-`save_zarr_json` writes the Zarr + `*_meta.json`, and `serve_and_open` starts a local HTTP server that
-serves `index.html` + the built chart bundle alongside the output, opening the viewer at
-`index.html?meta=<file>`.
+`save_zarr_json` writes the Zarr + `meta.json` + `events.json`, and `serve_and_open` starts a local
+threaded HTTP server that serves `index.html` + the built chart bundle + `src_web/` static assets
+alongside the output, opening the viewer at `index.html?meta=<file>`.
 
 ```
         default: batch

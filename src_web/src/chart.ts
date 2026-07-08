@@ -30,7 +30,7 @@ const GAP_PCT = 1.0;
 
 // Single source of truth for the channel order, labels, colours, and data binding.
 const CHANNELS: readonly ChannelSrc[] = [
-  { name: 'RR · ms', color: COLORS.cardiac, pick: (z) => ({ x: z.t, y: z.rr, overlay: false }) },
+  { name: 'RR · ms', color: COLORS.cardiac, pick: (z) => ({ x: z.rr_t, y: z.rr, overlay: false }) },
   { name: 'Accel mag', color: COLORS.movement, pick: (z) => ({ x: z.t, y: z.accel_mag, overlay: true }) },
   { name: 'HRV · ms', color: COLORS.hrv, pick: (z) => ({ x: z.hrv_t, y: z.hrv_rmssd, overlay: false }) },
   { name: 'Accel X', color: COLORS.movement, pick: (z) => ({ x: z.t, y: z.accel_x, overlay: false }) },

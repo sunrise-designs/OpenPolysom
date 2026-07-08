@@ -113,6 +113,7 @@ export interface ZarrData {
   readonly accel_z: Uint8Array;
   readonly accel_mag: Float32Array;
   readonly rr: Float32Array;
+  readonly rr_t: Float64Array;
   readonly hrv_t: Float64Array;
   readonly hrv_rmssd: Float32Array;
 }

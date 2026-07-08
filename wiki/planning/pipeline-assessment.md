@@ -96,13 +96,12 @@ These four problems are what the settled [decisions](../state/decisions.md)
 exist to address.
 
 1. **Three-format / three-language mess.** The sketch implied a proprietary
-   binary *plus* Zarr *plus* the legacy 5-byte `.bin` all in flight, with no
-   single provenance anchor; and three languages must now agree on the Zarr
-   contract. Resolved by collapsing formats to a clear three-layer model —
-   **EDF+/BDF+ as the raw anchor**, the **working store** (Zarr v2 + JSON
-   sidecars), a regenerated-on-demand **clinical export** — and by pinning
-   Zarr v2 + Blosc and forbidding any language-specific filter. The proprietary
-   binary is dropped; the 5-byte `.bin` is legacy and being retired. Any drift
+   binary *plus* Zarr all in flight, with no single provenance anchor; and
+   three languages must now agree on the Zarr contract. Resolved by collapsing
+   formats to a clear three-layer model — **EDF+/BDF+ as the raw anchor**, the
+   **working store** (Zarr v2 + JSON sidecars), a regenerated-on-demand
+   **clinical export** — and by pinning Zarr v2 + Blosc and forbidding any
+   language-specific filter. The proprietary binary is dropped. Any drift
    (a v3 array a v2-only lib can't read, a Python-only codec) silently breaks a
    consumer, so this remains the standing integration hazard and the reason
    packaging is heavy. See [data formats](../knowledge/data-formats.md).

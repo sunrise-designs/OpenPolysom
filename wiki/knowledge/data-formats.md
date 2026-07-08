@@ -2,7 +2,7 @@
 title: Data Formats
 domain: knowledge
 status: living
-updated: 2026-06-19
+updated: 2026-07-08
 summary: The on-disk formats across the three-layer data model — EDF+/BDF+ and FLAC as the raw anchor, the Zarr v2 working store as the language-neutral boundary, and the JSON sidecars — plus the three-format history and its resolution.
 ---
 
@@ -114,15 +114,14 @@ the **common subset** every library understands:
 - **Chunk along time.** A window request (`/window?start&end`) then touches a bounded
   set of contiguous chunks rather than the whole array.
 
-> The current `src_python/export_zarr.py` is a transitional helper, not the canonical
-> writer. It opens the group with `zarr_format=2` (`export_zarr.py:56`) but, for the
-> tiny legacy ESP32 sample, writes **one chunk per array** (`chunks=data.shape`,
-> `export_zarr.py:71`) and uses Zarr defaults rather than the Blosc(zstd, shuffle)
-> codec. It also predates the C++-ingest/Python-processing split — it is Python doing
-> the *ingest*-shaped job of turning the legacy `.bin` into Zarr. The canonical
-> chunk-along-time + Blosc store is the raw Zarr written by C++ ingest and the derived
-> Zarr written by Python processing; see the
-> [zarr schema spec](../planning/zarr-schema-spec.md).
+> `src_python/export_zarr.py` is a transitional derived-layer helper, not the canonical
+> C++ raw-Zarr ingest. It opens the group with `zarr_format=2` (`export_zarr.py:56`) but
+> writes **one chunk per array** (`chunks=data.shape`) and Zarr's default codec rather
+> than Blosc(zstd, shuffle) — that gap is still open. It takes physical-unit arrays that
+> `read_log.py` reads straight from the EDF+ raw anchor via `edf_reader.py`, rather than
+> from a raw Zarr (C++ ingest doesn't exist yet). The canonical chunk-along-time + Blosc
+> store is the raw Zarr written by C++ ingest and the derived Zarr written by Python
+> processing; see the [zarr schema spec](../planning/zarr-schema-spec.md).
 
 ### The `storage` attribute
 
@@ -146,10 +145,9 @@ and the [zarr schema spec](../planning/zarr-schema-spec.md).
 ### Schema at a glance
 
 One array per dense signal, chunked along time; sparse annotations and metadata live
-in JSON sidecars, not in Zarr. The legacy `export_zarr.py` arrays
-(`export_zarr.py:58-67`) hint at the shape — a shared `t` time axis plus per-signal
-arrays (`rr`, `accel_x/y/z`, `accel_mag`, `hrv_*`) — but the canonical per-channel
-schema, dtypes, chunk sizes, and attribute set are defined in the
+in JSON sidecars, not in Zarr. `export_zarr.py` writes a shared `t` time axis plus
+per-signal arrays (`rr`, `accel_x/y/z`, `accel_mag`, `hrv_*`) — a subset of the
+canonical per-channel schema, dtypes, chunk sizes, and attribute set defined in the
 **[full zarr schema spec](../planning/zarr-schema-spec.md)**.
 
 ---
@@ -162,27 +160,30 @@ everything that is *not* a dense time series.
 ### `events.json` — sparse annotations
 
 Sparse, irregular annotations that would waste space as dense arrays: scored events
-and their spans. The legacy `_meta.json` already carries the relevant shapes —
-`lm_events` (LM event `[start, end]` pairs) and `plm_groups` (grouped PLM runs)
-from AASM PLM scoring (`export_zarr.py:92-93`). In the canonical store these sparse
-annotations are split out into `events.json`.
+and their spans. `export_zarr.py` writes it as a sidecar next to `meta.json` —
+`limb_movement` events and `plm_series` groups scored from AASM PLM/LM, in the
+schema's `scorings[].events[]` / `scorings[].groups[]` shape.
 
 ### `meta.json` — metadata + provenance
 
-Recording metadata, patient block, processing stats, and the **provenance block**. The
-legacy `_meta.json` (`export_zarr.py:79-96`) shows the seed fields:
+Recording metadata, subject block, processing stats, and the **provenance block**.
+`export_zarr.py` writes:
 
-- `patient` and `recording` blocks (PII kept in a **separable block** — the clinical
-  export scrubs the EDF+ header name/DOB; see [privacy](../standards/privacy.md)),
-- `stats` — processing outputs (`total_lms`, `total_plms`, `plmi`, `hrv_overall`, plus
-  the scoring params `threshold`, `window_sec`, `fs`),
-- **provenance** — currently seeded by `git_hash` (`_git_short_hash()`,
-  `export_zarr.py:13-22`) and `zarr_path`. In the canonical store the provenance block
-  stamps each derived product with the processing-code version, the content hash of the
-  raw anchor it was derived from, and the parameters used — so any re-score or re-export
-  is auditable back to the immutable raw layer.
+- `subject` — a de-identified `subject_id` at the top level, with any real PII
+  (name/DOB/NHS number) kept in a **separable `pii` block** — the clinical export
+  scrubs the EDF+ header name/DOB; see [privacy](../standards/privacy.md),
+- `recording` — `start_iso`, `duration_s`, `n_samples`, `sample_rate_hz`,
+- `stats` — processing outputs (`total_lms`, `total_plms`, `plmi`,
+  `hrv_rmssd_overall`, plus the scoring params `threshold`, `window_sec`, `fs`),
+- `layers` — `layers.raw.biosignals[]` (the EDF+ source path + content hash) and
+  `layers.working.path` (the Zarr store the TS web app resolves against),
+- `provenance` — the full git SHA + dirty flag + branch (`provenance.pipeline.git`)
+  and `input_preparation` (seconds trimmed before DSP), so a derived product traces
+  back to the code and inputs that produced it.
 
-Full field definitions are in the [zarr schema spec](../planning/zarr-schema-spec.md).
+Full field definitions are in the [zarr schema spec](../planning/zarr-schema-spec.md);
+`export_zarr.py` implements this shape but not yet the `device.channels` registry or
+per-array `value_digests` it also defines.
 
 ---
 
@@ -197,28 +198,20 @@ while the dense signals remain intact (see [privacy](../standards/privacy.md)).
 
 ## Format history and its resolution
 
-Three biosignal storage formats were on the table. The resolution is settled — see
+Two biosignal storage formats were on the table. The resolution is settled — see
 [decisions](../state/decisions.md).
 
-1. **Legacy 5-byte `.bin`** — the original ESP32 wrist-device log: 5 bytes per record
-   (3 × `uint8` accel X/Y/Z + 1 × `uint16` RR), sampled at 10 Hz. The committed
-   `biometric_filtered.bin` is the one surviving example. It is **anonymous sample
-   biometric data** (accel + RR, no identifiers), kept only so the legacy pipeline has
-   something to run against; `.gitignore` carries an explicit `!biometric_filtered.bin`
-   exception (see [privacy](../standards/privacy.md)). **Status: legacy, being retired.**
-   Current hardware writes EDF+.
-
-2. **Proposed proprietary binary** — a custom on-disk format was considered for the raw
+1. **Proposed proprietary binary** — a custom on-disk format was considered for the raw
    anchor. **Status: dropped.** It would have meant maintaining our own reader/writer
    across the boundary and forfeiting tool interop, for no gain over EDF+.
 
-3. **EDF+ (+ BDF+ for future EEG)** — **the chosen raw anchor.** Self-describing,
+2. **EDF+ (+ BDF+ for future EEG)** — **the chosen raw anchor.** Self-describing,
    16/24-bit, readable by edflib and by every clinical tool (EDFBrowser), and already
    what `main.cpp` and `logger.cpp` write. Audio is the FLAC sidecar.
 
 **Resolution:** EDF+/BDF+ is the raw anchor for biosignals; FLAC is the audio sidecar;
-the proprietary binary is dropped; the legacy `.bin` is retired down to the single
-sample. Everything downstream of the raw anchor lives in the Zarr working store and the
+the proprietary binary is dropped. Everything downstream of the
+raw anchor lives in the Zarr working store and the
 JSON sidecars described above — the language-neutral boundary between C++ ingest +
 Python processing and the TS web app.
 
