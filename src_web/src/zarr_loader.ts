@@ -54,7 +54,7 @@ async function readOptionalArray(root: zarr.Location<zarr.Readable>, name: strin
  */
 export async function loadZarr(store: zarr.Readable): Promise<ZarrData> {
   const root = zarr.root(store);
-  const [t, accelX, accelY, accelZ, accelMag, accel1Mag, accelCombinedMag, rr, rrT, hrvT, hrvRmssd] = await Promise.all([
+  const [t, accelX, accelY, accelZ, accelMag, accel1Mag, accelCombinedMag, thoracic, abdomen, flow, rr, rrT, hrvT, hrvRmssd] = await Promise.all([
     readArray(root, 't'),
     readArray(root, 'accel_x'),
     readArray(root, 'accel_y'),
@@ -62,6 +62,9 @@ export async function loadZarr(store: zarr.Readable): Promise<ZarrData> {
     readArray(root, 'accel_mag'),
     readOptionalArray(root, 'accel1_mag'),
     readOptionalArray(root, 'accel_combined_mag'),
+    readOptionalArray(root, 'thoracic'),
+    readOptionalArray(root, 'abdomen'),
+    readOptionalArray(root, 'flow'),
     readArray(root, 'rr'),
     readArray(root, 'rr_t'),
     readArray(root, 'hrv_t'),
@@ -75,6 +78,9 @@ export async function loadZarr(store: zarr.Readable): Promise<ZarrData> {
     accel_mag: accelMag as Float32Array,
     accel1_mag: accel1Mag as Float32Array,
     accel_combined_mag: accelCombinedMag as Float32Array,
+    thoracic: thoracic as Float32Array,
+    abdomen: abdomen as Float32Array,
+    flow: flow as Float32Array,
     rr: rr as Float32Array,
     rr_t: rrT as Float64Array,
     hrv_t: hrvT as Float64Array,

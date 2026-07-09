@@ -131,6 +131,69 @@ export interface StudySummary {
   readonly deployed_at: string;
 }
 
+// ── windowed metrics service (POST /v1/recordings/{recording_id}/metrics) ────
+
+export interface MetricWindow {
+  readonly start_s: number;
+  readonly end_s: number;
+}
+
+export interface MetricRequestItem {
+  readonly metric: string;
+  readonly channel: string;
+  readonly params?: Readonly<Record<string, number>>;
+}
+
+export interface MetricsRequest {
+  readonly window: MetricWindow;
+  readonly metrics: readonly MetricRequestItem[];
+}
+
+export interface MetricError {
+  readonly code: string;
+  readonly message: string;
+}
+
+export interface MetricWindowUsed {
+  readonly start_s: number;
+  readonly end_s: number;
+  readonly context_before_s: number;
+  readonly context_after_s: number;
+  readonly padded_start_s: number;
+  readonly padded_end_s: number;
+  readonly clipped_to_recording_bounds: boolean;
+}
+
+/** The `plmi` metric's result fields — mirrors `Stats`/`LegStats`' naming. Each field is optional so a future metric (e.g. windowed HRV) can reuse this shape without every field applying. */
+export interface MetricValue {
+  readonly plmi?: number;
+  readonly total_lms?: number;
+  readonly total_plms?: number;
+  readonly total_hours?: number;
+}
+
+/** One requested metric's result — `status: 'ok'` carries `value`/`window_used`; `status: 'error'` carries `error` instead. */
+export interface MetricResult {
+  readonly metric: string;
+  readonly channel: string;
+  readonly status: 'ok' | 'error';
+  readonly params?: Readonly<Record<string, number>>;
+  readonly window_used?: MetricWindowUsed;
+  readonly value?: MetricValue;
+  readonly error?: MetricError;
+}
+
+export interface MetricsResponse {
+  readonly recording_id: string;
+  readonly requested_window: MetricWindow;
+  readonly results: readonly MetricResult[];
+  readonly provenance: {
+    readonly git: GitProvenance;
+    readonly service: string;
+    readonly computed_at: string;
+  };
+}
+
 // ── Zarr working store (decoded) ─────────────────────────────────────────────
 
 /** Decoded dense signals from the working store. */
@@ -144,6 +207,12 @@ export interface ZarrData {
   readonly accel1_mag: Float32Array;
   /** Bilateral combined (either-leg envelope) vector magnitude. Empty when only one accelerometer was scored. */
   readonly accel_combined_mag: Float32Array;
+  /** Thoracic RIP belt (nH). Empty on wrist-only (ESP32-S3) recordings with no respiratory device. */
+  readonly thoracic: Float32Array;
+  /** Abdomen RIP belt (nH). Empty on wrist-only (ESP32-S3) recordings with no respiratory device. */
+  readonly abdomen: Float32Array;
+  /** Nasal airflow (mbar). Empty on wrist-only (ESP32-S3) recordings with no respiratory device. */
+  readonly flow: Float32Array;
   readonly rr: Float32Array;
   readonly rr_t: Float64Array;
   readonly hrv_t: Float64Array;

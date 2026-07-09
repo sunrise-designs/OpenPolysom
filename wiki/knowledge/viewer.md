@@ -3,7 +3,7 @@ title: The TS Web App (Viewer)
 domain: knowledge
 status: living
 updated: 2026-07-09
-summary: The TS web app reads the Zarr boundary plus metadata and displays it — synced multi-pane charts (both accelerometers plus the combined bilateral score), channel-filtered event markArea overlays, an audio spectrogram, and a landing page listing every deployed study — never writing Zarr.
+summary: The TS web app reads the Zarr boundary plus metadata and displays it — synced multi-pane charts (both accelerometers plus the combined bilateral score), channel-filtered event markArea overlays, an audio spectrogram, a brush-selected windowed-metrics card, and a landing page listing every deployed study — never writing Zarr.
 ---
 
 # The TS Web App (Viewer)
@@ -170,7 +170,25 @@ filesystem or an HTTP endpoint. Explicitly: pyramids are part of the derived lay
 [Python processing](signal-processing.md), never by the viewer; they change only how the slicing server answers
 `/window`, not the API and not the chart.
 
-### The windowed API
+### Windowed clinical metrics — a separate, already-built service (not the slicing server below)
+
+Distinct from the deferred raw-sample slicing server (O10, below): a brush-drag selection on any
+chart (`chart.ts`'s `brushOption`, wired in `main.ts`'s `wireBrushSync`) POSTs the selected
+`[start_s, end_s]` window to a small standalone **FastAPI** service
+([`src_python/metrics_service.py`](../../src_python/metrics_service.py), run via
+[`serve_metrics.py`](../../src_python/serve_metrics.py) on its own port — see
+[decisions § S10](../state/decisions.md)) and renders a computed metric (currently windowed PLMI)
+into a right-rail card (`shell.ts`'s `windowMetricsCard`). This is a *derived clinical number*
+computed on demand, not a decimated-sample fetch for rendering — the two features solve different
+problems and are **not** the same server. The metric-registry pattern
+([`metrics_registry.py`](../../src_python/metrics_registry.py)) is the extensibility seam for
+future windowed metrics (HRV, apnea, …); [`metrics_windowing.py`](../../src_python/metrics_windowing.py)
+documents the boundary-padding strategy AASM-style scoring needs so a windowed score means the same
+thing as the existing full-night score. The service is quietly unavailable (no card shown) when
+`window.PROTOSOM_METRICS_URL` isn't configured (`src_web/metrics-config.js`) — the chart works fine
+without it.
+
+### The windowed API (raw-sample slicing server — deferred, O10)
 
 When the slicing server exists, the viewer talks to it over a small HTTP windowed API:
 

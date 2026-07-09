@@ -2,7 +2,7 @@
 title: Decision Log
 domain: state
 status: living
-updated: 2026-07-08
+updated: 2026-07-09
 summary: The settled architecture decisions for ProtoSom Component 2 and the open forks still owed to Leon and Dmitry.
 ---
 
@@ -35,6 +35,7 @@ Each is considered closed for the PoC. Reopen only by editing this page with a d
 | S7 | **Drop the proposed "proprietary binary" capture format.** | EDF+ (biosignals) + FLAC (audio) cover the raw anchor with standard, tooling-supported formats; a bespoke format adds no value and harms auditability. |
 | S8 | **Clinical EDF+/BDF+ export, regenerated on demand, never stored.** | EDFBrowser interop without a third persisted copy; the export scrubs the EDF+ header (patient name/DOB) for a de-identified shareable file. May be owned by C++ ingest. |
 | S9 | **Cross-platform: the TS web app is the single core — installable PWA now, webview-wrap later (Capacitor = mobile, Tauri 2 = desktop/air-gapped). NOT React Native or non-JS (Flutter/KMP/.NET MAUI).** (decided 2026-06-20) | A stack survey confirmed RN's Hermes engine has **no production WebAssembly** ([Polygen is build-time `wasm2c` only](https://github.com/callstackincubator/polygen)) — breaking zarrita's Blosc decode — and RN-native can't render ECharts (canvas), so RN/non-JS would force rewriting the charts **and** the Zarr boundary (the two crown jewels). Webview wrappers reuse ~100% of the TS + ECharts + zarrita stack; [Tauri 2](https://v2.tauri.app/)'s Rust shell can also spawn the C++ ingest / Python processing per the on-demand model. Shipped now as an installable, offline-capable PWA. |
+| S10 | **Windowed clinical-metrics service: a new, separate on-demand compute API — FastAPI (Python) now, Rust-compatible HTTP contract for later — for computing a derived metric (e.g. windowed PLMI) over a user brush-selected chart window.** (decided 2026-07-09) | Distinct from **O10**: O10 is the deferred *raw-sample* slicing server (`/window?start&end&channels&res`, decimated samples for chart rendering, explicitly TS-only). This is a different concern — an on-demand *computed clinical number*, not raw samples — and the user (owner of Python processing + C++ ingest) directed it Python-now/Rust-later. Runs as its own process/port (`src_python/metrics_service.py` + `serve_metrics.py`), separate from the static viewer server, so the static site (Netlify) and the compute service can be deployed/scaled independently and the compute layer can be swapped for Rust without touching the TS side. See `src_python/metrics_registry.py` (the per-metric extensibility seam) and `src_python/metrics_windowing.py` (the boundary-padding strategy AASM-style windowed metrics need). |
 
 Canonical terms used throughout the wiki: **raw anchor**, **working store**, **derived layer**,
 **clinical export**, **C++ ingest**, **Python processing**, **the TS web app**, **the slicing

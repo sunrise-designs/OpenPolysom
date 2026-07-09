@@ -8,7 +8,28 @@ Notes on the arguments (see `src_python/read_log.py`):
 - `--skip` / `--ignore_last` are seconds, not sample counts (the EDF's channels run at different native rates — 50 Hz accel vs 1 Hz RR — so a sample count is ambiguous).
 - `--threshold` is an accelerometer amplitude threshold in **mg** (physical units read from the EDF+)
 
-3. Then to deploy to a netlify server, run
+3. If the read_log.py runs successfully, it will show the next suggested command, to render the results locally, for example:
+
+`python src_python/serve.py --meta biometric_2026-07-09_18-15-01_meta.json`
+
+3b. (optional) To use the "Windowed PLMI" card — drag-select a range on a chart to
+compute PLMI for just that window — also run the metrics service, in a separate
+terminal, from the repo root:
+
+`python src_python/serve_metrics.py`
+
+This starts a small API on `http://localhost:8800` (the default `src_web/metrics-config.js`
+points at) and reads recordings from the current directory (override with
+`--recordings-root`). The chart works fine without it — you'll just see "metrics service
+unavailable" in that card instead of a value if it isn't running.
+
+4. (only if required) run npm build:
+```
+cd src_web
+npm.cmd run build
+```
+
+5. Then to deploy to a netlify server, run
 
 `python src_python/deploy.py`
 

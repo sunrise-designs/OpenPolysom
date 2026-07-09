@@ -35,9 +35,11 @@ const BOTTOM_PCT = 8.5;
 const GAP_PCT = 1.0;
 
 // Single source of truth for the channel order, labels, colours, and data binding.
-// Accel1 mag / Combined LM are `optional`: only scored (and only rendered) when a
-// second accelerometer was carried through the pipeline alongside Accel0 — see
-// wiki/knowledge/signal-processing.md (bilateral PLM scoring).
+// Accel1 mag / Combined LM / Thoracic / Abdomen / Flow are all `optional`: only
+// present (and only rendered) when the recording device captured them — Accel1 when
+// a second accelerometer was scored (see wiki/knowledge/signal-processing.md,
+// bilateral PLM scoring), Thoracic/Abdomen/Flow on the RPi5 6-channel and ESP32-C6
+// 11-channel devices but not the wrist-only ESP32-S3 log (see wiki/knowledge/hardware.md).
 const CHANNELS: readonly ChannelSrc[] = [
   { name: 'RR · ms', color: COLORS.cardiac, pick: (z) => ({ x: z.rr_t, y: z.rr, overlay: false }) },
   { name: 'Accel mag', color: COLORS.movement, channelKey: 'accel_mag', pick: (z) => ({ x: z.t, y: z.accel_mag, overlay: true }) },
@@ -45,6 +47,9 @@ const CHANNELS: readonly ChannelSrc[] = [
   { name: 'Accel X', color: COLORS.movement, pick: (z) => ({ x: z.t, y: z.accel_x, overlay: false }) },
   { name: 'Accel Y', color: COLORS.movement2, pick: (z) => ({ x: z.t, y: z.accel_y, overlay: false }) },
   { name: 'Accel Z', color: COLORS.movement3, pick: (z) => ({ x: z.t, y: z.accel_z, overlay: false }) },
+  { name: 'Thoracic', color: COLORS.respir, optional: true, pick: (z) => ({ x: z.t, y: z.thoracic, overlay: false }) },
+  { name: 'Abdomen', color: COLORS.respir, optional: true, pick: (z) => ({ x: z.t, y: z.abdomen, overlay: false }) },
+  { name: 'Flow', color: COLORS.respir, optional: true, pick: (z) => ({ x: z.t, y: z.flow, overlay: false }) },
   { name: 'Accel1 mag (leg 2)', color: COLORS.movement2, channelKey: 'accel1_mag', optional: true, pick: (z) => ({ x: z.t, y: z.accel1_mag, overlay: true }) },
   { name: 'Combined LM (bilateral)', color: COLORS.evtPlm, channelKey: 'accel_combined_mag', optional: true, pick: (z) => ({ x: z.t, y: z.accel_combined_mag, overlay: true }) },
 ];
@@ -58,10 +63,21 @@ const channels = (zarr: ZarrData): readonly ChannelDef[] =>
 export const channelMeta = (zarr: ZarrData): readonly { readonly name: string; readonly color: string }[] =>
   channels(zarr).map((c) => ({ name: c.name, color: c.color }));
 
-const zipStrided = (x: Float64Array, y: ArrayLike<number>, stride: number): readonly (readonly [number, number])[] => {
+/**
+ * A channel's rendered position, by name — the montage rail (shell.ts) uses this
+ * to wire a toggle's `data-idx` to whichever panes are actually present, instead of
+ * assuming a fixed trailing position. Optional channels shift the index of anything
+ * after them once filtered, so hardcoding "the last two" (or any other fixed
+ * offset) silently breaks the moment two different optional channel groups are
+ * present in the same recording (e.g. Accel1 + respiratory, as of this fixture).
+ * -1 when the channel isn't present in this recording.
+ */
+export const channelIndex = (zarr: ZarrData, name: string): number =>
+  channels(zarr).findIndex((c) => c.name === name);
+
+const zip = (x: Float64Array, y: ArrayLike<number>): readonly (readonly [number, number])[] => {
   const n = Math.min(x.length, y.length);
-  const count = Math.floor(n / stride);
-  return Array.from({ length: count }, (_, i): readonly [number, number] => [x[i * stride] ?? 0, y[i * stride] ?? 0]);
+  return Array.from({ length: n }, (_, i): readonly [number, number] => [x[i] ?? 0, y[i] ?? 0]);
 };
 
 // An event/group with no `channels` tag predates the multi-accelerometer schema
@@ -103,7 +119,43 @@ const overlayMarkArea = (events: EventsDoc, channelKey: string): unknown[] => {
 };
 
 const tMaxOf = (zarr: ZarrData): number => (zarr.t.length > 0 ? (zarr.t[zarr.t.length - 1] ?? 0) : 0);
-const strideFor = (name: string): number => (name.startsWith('Accel ') && name !== 'Accel mag' ? 3 : 1);
+
+// Below this many "widths" zoomed in, a series stays fully decimated (ECharts' own LTTB
+// over the whole recording) — cheap and responsive for the initial full-night view. Past
+// it, only the samples actually inside the visible time window render (undecimated), since
+// at that zoom level the window itself holds few enough real samples to draw directly.
+export const DECIMATION_ZOOM_FACTOR = 5;
+
+const isZoomedIn = (start: number, end: number): boolean => {
+  const span = end - start;
+  return span > 0 && span <= 100 / DECIMATION_ZOOM_FACTOR;
+};
+
+const windowSlice = (x: Float64Array, y: ArrayLike<number>, t0: number, t1: number): readonly (readonly [number, number])[] => {
+  const n = Math.min(x.length, y.length);
+  return Array.from({ length: n }, (_, i): readonly [number, number] => [x[i] ?? 0, y[i] ?? 0])
+    .filter(([t]) => t >= t0 && t <= t1);
+};
+
+/**
+ * The series `data`/`sampling` update for one chart at its current dataZoom [start,end]
+ * (percent, 0-100) — meant to be merged via `chart.setOption(...)` on every 'dataZoom'
+ * event. Zoomed out (span > 100/DECIMATION_ZOOM_FACTOR %): the whole series with ECharts'
+ * own LTTB decimation. Zoomed in past that: only the samples inside the visible time
+ * window, at full resolution — "the data the chart needs" is the visible window (see
+ * wiki/knowledge/concepts.md's Decimation entry), not the whole recording re-thinned.
+ */
+export function seriesOptionForZoom(zarr: ZarrData, index: number, start: number, end: number): EChartsOption {
+  const ch = channels(zarr)[index];
+  if (ch === undefined) return {};
+  if (!isZoomedIn(start, end)) {
+    return { series: [{ data: zip(ch.x, ch.y) as unknown as number[][], sampling: 'lttb' }] } as EChartsOption;
+  }
+  const tMax = tMaxOf(zarr);
+  const t0 = (start / 100) * tMax;
+  const t1 = (end / 100) * tMax;
+  return { series: [{ data: windowSlice(ch.x, ch.y, t0, t1) as unknown as number[][], sampling: 'none' }] } as EChartsOption;
+}
 
 export function channelCount(zarr: ZarrData): number {
   return channels(zarr).length;
@@ -172,7 +224,7 @@ export function buildBubbleOption(zarr: ZarrData, events: EventsDoc, index: numb
   const series = {
     name: ch.name,
     type: 'line' as const,
-    data: zipStrided(ch.x, ch.y, strideFor(ch.name)) as unknown as number[][],
+    data: zip(ch.x, ch.y) as unknown as number[][],
     showSymbol: false,
     animation: false,
     lineStyle: { color: ch.color, width: 1.1 },
@@ -243,7 +295,7 @@ export function buildSingleChannelOption(zarr: ZarrData, events: EventsDoc, inde
   const oneSeries = {
     name: ch.name,
     type: 'line' as const,
-    data: zipStrided(ch.x, ch.y, 1) as unknown as number[][],
+    data: zip(ch.x, ch.y) as unknown as number[][],
     showSymbol: false,
     animation: false,
     lineStyle: { color: ch.color, width: 1.2 },
@@ -322,7 +374,7 @@ export function buildChartOption(zarr: ZarrData, events: EventsDoc, touch = fals
   }));
   const series = rows.map((ch, r) => ({
     name: ch.name, type: 'line' as const, xAxisIndex: r, yAxisIndex: r,
-    data: zipStrided(ch.x, ch.y, strideFor(ch.name)) as unknown as number[][],
+    data: zip(ch.x, ch.y) as unknown as number[][],
     showSymbol: false, animation: false, lineStyle: { color: ch.color, width: 1.1 },
     large: true, largeThreshold: 2000, sampling: 'lttb' as const,
     ...(ch.overlay ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events, ch.channelKey ?? 'accel_mag') as unknown as never } } : {}),

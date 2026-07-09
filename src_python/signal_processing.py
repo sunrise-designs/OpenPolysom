@@ -74,8 +74,8 @@ def count_plm(ax, ay, az, threshold=8, fs=50):
 
     print(f"Recording duration : {result['total_hours']:.2f} hours")
     print(f"LMs detected       : {result['total_lms']}")
-    print(f"PLMs (series ≥4, 5–90 s apart): {result['total_plms']}")
-    print(f"PLMI               : {result['plmi']:.1f} /hour  [AASM threshold ≥15/hour for adults]")
+    print(f"PLMs (series >=4, 5-90 s apart): {result['total_plms']}")
+    print(f"PLMI               : {result['plmi']:.1f} /hour  [AASM threshold >=15/hour for adults]")
 
     return result
 

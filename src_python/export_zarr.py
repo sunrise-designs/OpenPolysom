@@ -113,7 +113,7 @@ def _build_events(recording_id, t0_iso, stats, leg_stats=None):
 
 def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
                    stats, recording_meta, source_path=None, skip_s=0.0, rr_t=None,
-                   accel1_mag=None, leg_stats=None):
+                   accel1_mag=None, leg_stats=None, accel1_raw=None, respiratory_raw=None):
     """Write time series to a Zarr v2 store and metadata + events to JSON sidecars.
 
     Parameters
@@ -140,6 +140,17 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
     leg_stats   : dict | None   — {'accel0': count_plm() result, 'accel1': count_plm()
                   result} — the per-leg breakdown backing `meta.json`'s `stats.legs` and
                   each leg's own `events.json` scoring
+    accel1_raw  : tuple(list, list, list) | None — raw Accel1 X, Y, Z channels (physical
+                  units), parallel to `accel_raw`. Written as `accel1_x/y/z` so a
+                  windowed-metrics service can recompute PLM for Accel1/combined over an
+                  arbitrary sub-window (baseline removal isn't correctly re-runnable on
+                  the already-filtered `accel1_mag` trace for a new, smaller window).
+    respiratory_raw : tuple(list, list, list) | None — Thoracic, Abdomen, Flow (physical
+                  units: nH, nH, mbar), present on the RPi5 6-channel and ESP32-C6
+                  11-channel devices, absent on the wrist-only ESP32-S3 log. Written as
+                  `thoracic`/`abdomen`/`flow`, sharing the accelerometer time axis `t`
+                  (same 50 Hz source rate, trimmed identically). No DSP applied yet — the
+                  raw physical-unit trace, for display only.
     """
     stem = Path(stem)
     zarr_path = stem.with_suffix('.zarr')
@@ -165,6 +176,14 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
     }
     if accel1_mag is not None:
         arrays['accel1_mag'] = np.asarray(accel1_mag, dtype=np.float32)
+    if accel1_raw is not None:
+        arrays['accel1_x'] = np.asarray(accel1_raw[0], dtype=np.float32)
+        arrays['accel1_y'] = np.asarray(accel1_raw[1], dtype=np.float32)
+        arrays['accel1_z'] = np.asarray(accel1_raw[2], dtype=np.float32)
+    if respiratory_raw is not None:
+        arrays['thoracic'] = np.asarray(respiratory_raw[0], dtype=np.float32)
+        arrays['abdomen'] = np.asarray(respiratory_raw[1], dtype=np.float32)
+        arrays['flow'] = np.asarray(respiratory_raw[2], dtype=np.float32)
     if leg_stats is not None:
         # `accel_mag` above stays Accel0's own trace; the combined bilateral
         # envelope (what `stats`/`accel_mag` used to mean before both legs

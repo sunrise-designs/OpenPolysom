@@ -5,3 +5,7 @@ matplotlib
 requests
 zarr
 edfio
+fastapi
+uvicorn[standard]
+httpx
+pytest

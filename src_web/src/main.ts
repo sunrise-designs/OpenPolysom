@@ -1,12 +1,14 @@
 import * as echarts from 'echarts';
 import { loadMeta, loadEvents, loadZarr, loadStudies, httpStore } from './zarr_loader';
-import { buildBubbleOption, buildSingleChannelOption, channelCount, brushRangeFromEvent } from './chart';
+import { buildBubbleOption, buildSingleChannelOption, channelCount, brushRangeFromEvent, seriesOptionForZoom } from './chart';
 import type { BrushRange } from './chart';
-import { renderShell, NO_RANGE_TEXT } from './shell';
+import { renderShell, NO_RANGE_TEXT, renderWindowMetricsBody } from './shell';
 import { renderLanding } from './landing';
 import { buildNarrative } from './narrative';
 import { formatElapsed } from './format';
-import type { Meta, EventsDoc, ZarrData } from './types';
+import { metricsBaseUrl } from './metrics_config';
+import { requestWindowedMetrics } from './metrics_client';
+import type { Meta, EventsDoc, MetricRequestItem, ZarrData } from './types';
 
 const CONNECT_GROUP = 'protosom-signals';
 
@@ -77,6 +79,7 @@ function createFullscreen(zarr: ZarrData, events: EventsDoc): (index: number) =>
     const chart = echarts.init(canvas, null, { renderer: 'canvas' });
     fsChart = chart;
     chart.setOption(buildSingleChannelOption(zarr, events, index));
+    wireChartZoomDecimation(chart, zarr, index);
     void (async (): Promise<void> => {
       try { await overlay.requestFullscreen(); } catch { /* unsupported */ }
       try { await screen.orientation.lock('landscape'); } catch { /* unsupported (e.g. iOS) */ }
@@ -104,7 +107,50 @@ function rangesEqual(a: BrushRange | undefined, b: BrushRange | undefined): bool
  * calls) is idempotent regardless of that timing, so the cascade always
  * terminates instead of ping-ponging between charts.
  */
-function wireBrushSync(charts: readonly echarts.ECharts[]): void {
+/**
+ * Fire a windowed-PLMI request for a brush selection and render the result
+ * into `#window-metrics-body`. `metricsUrl === undefined` means the feature
+ * is unconfigured (see `metrics_config.ts`) — the caller hides the whole
+ * card in that case, so this is a no-op then. A monotonically increasing
+ * request sequence number discards a stale response that resolves after a
+ * newer selection has already superseded it (the brush's own 200ms
+ * throttle — `chart.ts`'s `brushOption.throttleDelay` — makes overlapping
+ * requests a real possibility on a fast drag).
+ */
+function wireWindowMetrics(recordingId: string, metricsUrl: string | undefined): (range: BrushRange | undefined) => void {
+  const bodyEl = document.getElementById('window-metrics-body');
+  let requestSeq = 0;
+
+  return (range: BrushRange | undefined): void => {
+    if (bodyEl === null || metricsUrl === undefined) return;
+    if (range === undefined) {
+      bodyEl.innerHTML = renderWindowMetricsBody({ kind: 'empty' });
+      return;
+    }
+    const seq = ++requestSeq;
+    bodyEl.innerHTML = renderWindowMetricsBody({ kind: 'computing' });
+    const items: readonly MetricRequestItem[] = [{ metric: 'plmi', channel: 'accel_mag' }];
+    requestWindowedMetrics(metricsUrl, recordingId, range, items)
+      .then((res) => {
+        if (seq !== requestSeq) return; // superseded by a newer selection
+        if (!res.ok) {
+          bodyEl.innerHTML = renderWindowMetricsBody({ kind: 'unavailable', reason: res.reason });
+          return;
+        }
+        if (res.data.results.length === 0) {
+          bodyEl.innerHTML = renderWindowMetricsBody({ kind: 'unavailable', reason: 'metrics service returned no results' });
+          return;
+        }
+        const [first] = res.data.results;
+        bodyEl.innerHTML = renderWindowMetricsBody({ kind: 'result', result: first });
+      })
+      .catch(() => {
+        if (seq === requestSeq) bodyEl.innerHTML = renderWindowMetricsBody({ kind: 'unavailable', reason: 'metrics service unavailable' });
+      });
+  };
+}
+
+function wireBrushSync(charts: readonly echarts.ECharts[], onRangeChange: (range: BrushRange | undefined) => void): void {
   const rangeEl = document.getElementById('sig-range');
   let lastRange: BrushRange | undefined = undefined;
 
@@ -117,6 +163,7 @@ function wireBrushSync(charts: readonly echarts.ECharts[]): void {
       if (rangeEl !== null) {
         rangeEl.textContent = range === undefined ? NO_RANGE_TEXT : formatElapsed(range[1] - range[0]);
       }
+      onRangeChange(range);
       charts.forEach((other, j) => {
         if (j === i) return;
         other.dispatchAction(range === undefined
@@ -182,6 +229,20 @@ function wireCtrlZoom(charts: readonly echarts.ECharts[]): void {
   });
 }
 
+/**
+ * Re-derives one chart's series `data`/`sampling` on every 'dataZoom' event, via
+ * `chart.ts`'s `seriesOptionForZoom` — the whole recording, LTTB-decimated, while zoomed
+ * out; just the visible time window, undecimated, once zoomed in past
+ * `DECIMATION_ZOOM_FACTOR`. Panning while already zoomed in re-windows on every event too,
+ * so the rendered slice keeps tracking whatever's actually on screen.
+ */
+function wireChartZoomDecimation(chart: echarts.ECharts, zarr: ZarrData, index: number): void {
+  chart.on('dataZoom', () => {
+    const { start, end } = currentZoomRange(chart);
+    chart.setOption(seriesOptionForZoom(zarr, index, start, end));
+  });
+}
+
 async function run(app: HTMLElement, metaUrl: string): Promise<void> {
   const meta: Meta = await loadMeta(metaUrl);
   const base = baseDirOf(metaUrl);
@@ -191,6 +252,15 @@ async function run(app: HTMLElement, metaUrl: string): Promise<void> {
   ]);
 
   app.innerHTML = renderShell(meta, buildNarrative(meta.stats), zarrData);
+
+  // Windowed-metrics card: hidden entirely when no metrics service is
+  // configured for this deployment (see metrics_config.ts) rather than
+  // shown in a permanently-broken state.
+  const metricsUrl = metricsBaseUrl(window.location);
+  const metricsCard = document.getElementById('window-metrics-card');
+  if (metricsUrl === undefined && metricsCard instanceof HTMLElement) {
+    metricsCard.style.display = 'none';
+  }
 
   // On touch: drop tooltip + inside-zoom (so swipes scroll) and enable tap-to-fullscreen.
   const touch = window.matchMedia('(pointer: coarse), (max-width: 760px)').matches;
@@ -206,12 +276,13 @@ async function run(app: HTMLElement, metaUrl: string): Promise<void> {
     if (openFs !== undefined) {
       c.getZr().on('click', () => { openFs(i); });
     }
+    if (!touch) wireChartZoomDecimation(c, zarrData, i);
     return c;
   }).filter((c): c is echarts.ECharts => c !== undefined);
 
   echarts.connect(CONNECT_GROUP);
   if (!touch) {
-    wireBrushSync(charts);
+    wireBrushSync(charts, wireWindowMetrics(meta.recording_id, metricsUrl));
     wireCtrlZoom(charts);
   }
   wireMontageToggles();

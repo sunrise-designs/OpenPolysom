@@ -3,7 +3,7 @@ title: Current State
 domain: state
 status: living
 updated: 2026-07-09
-summary: What exists in the repo today (C++ EDF+ writers, Python DSP reading EDF+ directly via edfio, a prototype ECharts/Zarr TS viewer that now carries both accelerometers plus a combined bilateral score, and a multi-study Netlify landing page) versus the planned three-layer pipeline — and where the gaps are.
+summary: What exists in the repo today (C++ EDF+ writers, Python DSP reading EDF+ directly via edfio, a prototype ECharts/Zarr TS viewer that now carries both accelerometers plus a combined bilateral score and a brush-selected windowed-metrics card, a standalone FastAPI windowed-metrics service, and a multi-study Netlify landing page) versus the planned three-layer pipeline — and where the gaps are.
 ---
 
 # Current State
@@ -110,6 +110,16 @@ Netlify's SHA1-digest manifest API (folding in the previous deploy's file list) 
 only new/changed bytes are actually uploaded — the shared viewer shell and any
 already-deployed study's data are not re-shipped on every deploy. See
 [viewer § multi-study hosting](../knowledge/viewer.md) for the mechanics.
+
+### Windowed clinical metrics — a new standalone FastAPI service (built)
+[`src_python/metrics_service.py`](../../src_python/metrics_service.py) is a real, separate FastAPI
+process (`serve_metrics.py`, own port) computing a metric (currently windowed PLMI, via
+[`metrics_registry.py`](../../src_python/metrics_registry.py)) over a brush-selected chart window.
+The viewer POSTs to it from `main.ts`'s `wireBrushSync` and renders the result into a right-rail
+card. This is distinct from the deferred raw-sample slicing server (O10) below — see
+[decisions § S10](decisions.md) and [viewer](../knowledge/viewer.md). It requires `accel1_x/y/z`
+raw arrays in the derived Zarr (now written by `export_zarr.py` when a second accelerometer is
+scored) to recompute PLM for Accel1/the bilateral-combined channel over an arbitrary window.
 
 ### Serving — a Python dev server, not a TS slicing server
 There is **no TS slicing server**. `export_zarr.py:serve_and_open` spins up a

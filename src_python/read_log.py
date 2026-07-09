@@ -67,6 +67,20 @@ def main():
     t = [i / fs_accel for i in range(len(a0x))]
     t_rr = [i / fs_rr for i in range(len(rr))]
     raw = ([float(v) for v in a0x], [float(v) for v in a0y], [float(v) for v in a0z])
+    raw1 = ([float(v) for v in a1x], [float(v) for v in a1y], [float(v) for v in a1z])
+
+    # Respiratory (Thoracic/Abdomen/Flow) — present on the RPi5 6-channel and
+    # ESP32-C6 11-channel devices, absent on the wrist-only ESP32-S3 log.
+    # No DSP yet (RIP baseline removal / airflow filtering is future work, see
+    # wiki/knowledge/signal-processing.md); pass the physical-unit trace
+    # straight through so the viewer can at least display it.
+    respiratory = None
+    if 'Thoracic' in recording.signals and 'Abdomen' in recording.signals and 'Flow' in recording.signals:
+        respiratory = (
+            [float(v) for v in trimmed('Thoracic')],
+            [float(v) for v in trimmed('Abdomen')],
+            [float(v) for v in trimmed('Flow')],
+        )
 
     if args.count:
         print("--- Accel0 ---")
@@ -103,6 +117,8 @@ def main():
                 rr_t=t_rr,
                 accel1_mag=result1['vm'],
                 leg_stats={'accel0': result0, 'accel1': result1},
+                accel1_raw=raw1,
+                respiratory_raw=respiratory,
             )
             print(f"To view: python src_python/serve.py --meta {meta_path}")
         else:

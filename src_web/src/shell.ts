@@ -1,11 +1,48 @@
-import type { Meta, ZarrData } from './types';
+import type { Meta, MetricResult, ZarrData } from './types';
 import type { Narrative } from './narrative';
 import { formatDuration, formatRecordedAt, shortSha, escHtml as esc } from './format';
 import { PLMI_ABNORMAL_THRESHOLD } from './narrative';
-import { channelMeta } from './chart';
+import { channelIndex, channelMeta } from './chart';
 
 /** Shown in the toolbar's range readout before any drag-selection is made. */
 export const NO_RANGE_TEXT = 'Drag on a chart to select a range';
+
+/** Shown in the windowed-metrics card before any drag-selection is made. */
+export const NO_WINDOW_METRICS_TEXT = 'Select a range on a chart to compute PLMI for that window.';
+
+/** The windowed-metrics card body's four states — driven from main.ts on each brush selection. */
+export type WindowMetricsState =
+  | { readonly kind: 'empty' }
+  | { readonly kind: 'computing' }
+  | { readonly kind: 'unavailable'; readonly reason: string }
+  | { readonly kind: 'result'; readonly result: MetricResult };
+
+/** Render the `#window-metrics-body` inner HTML for a given state. Pure — main.ts owns the DOM write. */
+export function renderWindowMetricsBody(state: WindowMetricsState): string {
+  if (state.kind === 'empty') return `<div class="wm-empty">${esc(NO_WINDOW_METRICS_TEXT)}</div>`;
+  if (state.kind === 'computing') return `<div class="wm-status">Computing…</div>`;
+  if (state.kind === 'unavailable') return `<div class="wm-status wm-err">${esc(state.reason)}</div>`;
+
+  const r = state.result;
+  if (r.status === 'error') {
+    return `<div class="wm-status wm-err">${esc(r.error?.message ?? 'unable to compute')}</div>`;
+  }
+  const v = r.value ?? {};
+  const plmi = v.plmi;
+  return `
+    <div class="wm-metric">
+      <div class="wm-label">PLMI <span class="wm-chan">${esc(r.channel)}</span></div>
+      <div class="wm-value num">${plmi === undefined ? '—' : plmi.toFixed(1)}<span class="u"> /hr</span></div>
+      <div class="wm-sub">${esc(String(v.total_plms ?? 0))} periodic of ${esc(String(v.total_lms ?? 0))} moves</div>
+    </div>`;
+}
+
+/** Right-rail card: PLMI computed on demand for a brush-selected chart window. Content-only — the caller wraps it in `.card.card-pad`. */
+export function windowMetricsCard(): string {
+  return `
+  <div class="section-title">Windowed PLMI <span class="st-line"></span></div>
+  <div class="wm-body" id="window-metrics-body">${renderWindowMetricsBody({ kind: 'empty' })}</div>`;
+}
 
 function clockUTC(ms: number): string {
   const d = new Date(ms);
@@ -159,26 +196,54 @@ function kpiCards(meta: Meta, narrative: Narrative): string {
 
 /**
  * Leg 2 (Accel1) + Combined bilateral rows — only present when `channels()` in
- * chart.ts kept those two panes (i.e. a second accelerometer was scored). They
- * are always the last two channel indices when present, mirroring their fixed,
- * trailing position in chart.ts's `CHANNELS` array.
+ * chart.ts kept those two panes (i.e. a second accelerometer was scored). Looked
+ * up by name (`channelIndex`), not a fixed trailing position — a recording can
+ * carry both this and the respiratory montage below at once (e.g. the ESP32-C6
+ * 11-channel device), and either group being present shifts everything after it
+ * once `channels()` filters out whichever optional panes are absent.
  */
-function movementDetailRows(zarr: ZarrData, lastIdx: number): string {
-  if (zarr.accel1_mag.length === 0) return '';
+function movementDetailRows(zarr: ZarrData): string {
+  const accel1Idx = channelIndex(zarr, 'Accel1 mag (leg 2)');
+  const combinedIdx = channelIndex(zarr, 'Combined LM (bilateral)');
+  if (accel1Idx < 0 || combinedIdx < 0) return '';
   return `
-    <div class="mont" data-idx="${String(lastIdx - 1)}">
+    <div class="mont" data-idx="${String(accel1Idx)}">
       <div class="m-ico" style="background:rgba(154,240,230,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 12c2 0 2-5 4-5s2 10 4 10 2-10 4-10 2 5 4 5" stroke="var(--movement-2)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div><div class="m-name">Leg 2 (Accel1)</div><div class="m-sub">Accel1 mag · live</div></div>
       <div class="m-right"><div class="toggle on"></div></div>
     </div>
-    <div class="mont" data-idx="${String(lastIdx)}">
+    <div class="mont" data-idx="${String(combinedIdx)}">
       <div class="m-ico" style="background:rgba(95,208,196,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12h3l2-5 3 10 2-7 2 4h4" stroke="var(--movement)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div><div class="m-name">Combined LM (bilateral)</div><div class="m-sub">Either-leg envelope · live</div></div>
       <div class="m-right"><div class="toggle on"></div></div>
     </div>`;
 }
 
-function montage(zarr: ZarrData, count: number): string {
+/**
+ * Respiratory row: wired to the Thoracic/Abdomen/Flow panes (one switch, three
+ * panes, mirroring the "Movement" row's `data-idx="1,3,4,5"` grouping) when the
+ * device captured them; otherwise the original static "awaiting device" row.
+ * Looked up by name via `channelIndex`, same reasoning as `movementDetailRows`.
+ */
+function respiratoryRow(zarr: ZarrData): string {
+  const idxs = [channelIndex(zarr, 'Thoracic'), channelIndex(zarr, 'Abdomen'), channelIndex(zarr, 'Flow')];
+  if (idxs.some((i) => i < 0)) {
+    return `
+    <div class="mont dev">
+      <div class="m-ico" style="background:rgba(247,178,103,.10)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 4v7m0 0c0 4-3 5-4 5s-3-1-3-5V9m7 2c0 4 3 5 4 5s3-1 3-5V9" stroke="var(--respir)" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+      <div><div class="m-name">Respiratory</div><div class="m-sub">Thoracic · Abdomen · Flow — awaiting device</div></div>
+      <div class="m-right"><div class="toggle off"></div></div>
+    </div>`;
+  }
+  return `
+    <div class="mont" data-idx="${idxs.join(',')}">
+      <div class="m-ico" style="background:rgba(247,178,103,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 4v7m0 0c0 4-3 5-4 5s-3-1-3-5V9m7 2c0 4 3 5 4 5s3-1 3-5V9" stroke="var(--respir)" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+      <div><div class="m-name">Respiratory</div><div class="m-sub">Thoracic · Abdomen · Flow · live</div></div>
+      <div class="m-right"><div class="toggle on"></div></div>
+    </div>`;
+}
+
+function montage(zarr: ZarrData): string {
   return `
   <div class="section-title">Montage <span class="st-line"></span></div>
   <div class="mont-list">
@@ -197,12 +262,8 @@ function montage(zarr: ZarrData, count: number): string {
       <div><div class="m-name">HRV trend</div><div class="m-sub">RMSSD · live</div></div>
       <div class="m-right"><div class="toggle on"></div></div>
     </div>
-    ${movementDetailRows(zarr, count - 1)}
-    <div class="mont dev">
-      <div class="m-ico" style="background:rgba(247,178,103,.10)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 4v7m0 0c0 4-3 5-4 5s-3-1-3-5V9m7 2c0 4 3 5 4 5s3-1 3-5V9" stroke="var(--respir)" stroke-width="1.6" stroke-linecap="round"/></svg></div>
-      <div><div class="m-name">Respiratory</div><div class="m-sub">Thoracic · Abdomen · Flow — awaiting device</div></div>
-      <div class="m-right"><div class="toggle off"></div></div>
-    </div>
+    ${movementDetailRows(zarr)}
+    ${respiratoryRow(zarr)}
     <div class="mont dev">
       <div class="m-ico" style="background:rgba(240,120,154,.10)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 14h6l2-6 3 12 2-8 2 4h7" stroke="var(--cardiac)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div><div class="m-name">ECG / HR</div><div class="m-sub">Awaiting device</div></div>
@@ -240,6 +301,9 @@ export function renderShell(meta: Meta, narrative: Narrative, zarr: ZarrData): s
   const hrv = s.hrv_rmssd_overall;
   const periodic = s.total_plms > 0 ? `${esc(String(s.total_plms))} periodic` : 'none periodic';
   const chMeta = channelMeta(zarr);
+  const awaitingDevice = zarr.thoracic.length > 0
+    ? ['ECG/HR', 'EEG']
+    : ['Thoracic', 'Abdomen', 'Flow', 'ECG/HR', 'EEG'];
 
   return `
   <div class="wrap">
@@ -295,15 +359,17 @@ export function renderShell(meta: Meta, narrative: Narrative, zarr: ZarrData): s
           <div class="sig-grid">
             ${chMeta.map((m, i) => `<div class="card sig-card"><div class="sig-head"><span class="gdot" style="background:${m.color}"></span>${esc(m.name)}</div><div class="sig-plot" id="sig-${String(i)}"></div></div>`).join('')}
           </div>
+          ${awaitingDevice.length > 0 ? `
           <div class="viewer-note">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="var(--text-dim)" stroke-width="1.6"/><path d="M12 8h.01M11 12h1v4h1" stroke="var(--text-dim)" stroke-width="1.6" stroke-linecap="round"/></svg>
-            <span><b>5 device channels</b> (Thoracic, Abdomen, Flow, ECG/HR, EEG) await hardware for this study — listed in the Montage.</span>
-          </div>
+            <span><b>${esc(String(awaitingDevice.length))} device channel${awaitingDevice.length === 1 ? '' : 's'}</b> (${esc(awaitingDevice.join(', '))}) await hardware for this study — listed in the Montage.</span>
+          </div>` : ''}
         </section>
       </div>
 
       <aside class="right-rail">
-        <div class="card card-pad">${montage(zarr, chMeta.length)}</div>
+        <div class="card card-pad">${montage(zarr)}</div>
+        <div class="card card-pad" id="window-metrics-card">${windowMetricsCard()}</div>
         <div class="card card-pad">${SPECTRO}</div>
       </aside>
     </div>

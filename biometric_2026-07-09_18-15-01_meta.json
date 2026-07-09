@@ -1,0 +1,83 @@
+{
+  "schema_versions": {
+    "meta": "0.1.0",
+    "events": "1.0.0",
+    "zarr_arrays": "0.1.0"
+  },
+  "recording_id": "biometric_2026-07-09_18-15-01",
+  "subject": {
+    "subject_id": "ACEBE6FFFE1D",
+    "sex": null,
+    "dob": null,
+    "pii": {
+      "name": "Dmitry Ignatyev",
+      "dob": "02/11/1989",
+      "nhs_number": "650 673 4159",
+      "email": "d.ignatyev1@gmail.com"
+    }
+  },
+  "recording": {
+    "start_iso": "2026-07-09T18:15:01",
+    "duration_s": 596.0,
+    "n_samples": 29800,
+    "sample_rate_hz": 50.0,
+    "source": "ACEBE6FFFE1D"
+  },
+  "stats": {
+    "plmi": 72.48322147651007,
+    "total_lms": 114,
+    "total_plms": 12,
+    "total_hours": 0.16555555555555557,
+    "hrv_rmssd_overall": 53.82480824935214,
+    "threshold": 3.0,
+    "window_sec": 30.0,
+    "fs": 50.0,
+    "legs": {
+      "accel0": {
+        "plmi": 24.161073825503355,
+        "total_lms": 29,
+        "total_plms": 4,
+        "total_hours": 0.16555555555555557
+      },
+      "accel1": {
+        "plmi": 0.0,
+        "total_lms": 15,
+        "total_plms": 0,
+        "total_hours": 0.16555555555555557
+      }
+    }
+  },
+  "layers": {
+    "raw": {
+      "biosignals": [
+        {
+          "path": "biometric_2026-07-09_18-15-01.edf",
+          "format": "EDF+",
+          "hash": {
+            "algorithm": "sha256",
+            "value": "0ff800d56b60616afe1a7eda7698fc148b3c33140a8bab97c79fe9706c189d98"
+          }
+        }
+      ]
+    },
+    "working": {
+      "path": "biometric_2026-07-09_18-15-01.zarr",
+      "zarr_format": 2
+    }
+  },
+  "provenance": {
+    "generated_at": "2026-07-09T20:04:05.437988+00:00",
+    "pipeline": {
+      "repo": "sunrise-designs/ProtoSom",
+      "git": {
+        "sha": "97e4ba951298ad7ffe98e6abd82789194cb27920",
+        "dirty": true,
+        "branch": "main"
+      }
+    },
+    "input_preparation": {
+      "skip_samples": 100,
+      "note": "leading 2.0 s dropped before DSP"
+    }
+  }
+}

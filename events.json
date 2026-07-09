@@ -1,17 +1,1526 @@
 {
   "schema": "protosom.events",
   "schema_version": "1.0.0",
-  "recording_id": "biometric_2026-07-08_01-57-52",
+  "recording_id": "biometric_2026-07-09_18-15-01",
   "time_base": {
     "reference": "recording_start",
-    "start_iso": "2026-07-08T01:57:52",
+    "start_iso": "2026-07-09T18:15:01",
     "unit": "s"
   },
   "channels_ref": "working.zarr",
   "scorings": [
     {
-      "scoring_id": "plm-auto-v0",
-      "events": [],
+      "scoring_id": "plm-auto-v0-combined",
+      "events": [
+        {
+          "id": "plm-auto-v0-combined_ev_0001",
+          "type": "limb_movement",
+          "onset_s": 55.3,
+          "duration_s": 0.8200000000000003,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0002",
+          "type": "limb_movement",
+          "onset_s": 56.86,
+          "duration_s": 0.5200000000000031,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0003",
+          "type": "limb_movement",
+          "onset_s": 61.26,
+          "duration_s": 0.7199999999999989,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0004",
+          "type": "limb_movement",
+          "onset_s": 62.74,
+          "duration_s": 0.7199999999999989,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0005",
+          "type": "limb_movement",
+          "onset_s": 68.14,
+          "duration_s": 0.7199999999999989,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0006",
+          "type": "limb_movement",
+          "onset_s": 70.72,
+          "duration_s": 0.6599999999999966,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0007",
+          "type": "limb_movement",
+          "onset_s": 72.1,
+          "duration_s": 0.6000000000000085,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0008",
+          "type": "limb_movement",
+          "onset_s": 76.02,
+          "duration_s": 0.5400000000000063,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0009",
+          "type": "limb_movement",
+          "onset_s": 76.82,
+          "duration_s": 0.7600000000000051,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0010",
+          "type": "limb_movement",
+          "onset_s": 81.2,
+          "duration_s": 0.7800000000000011,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0011",
+          "type": "limb_movement",
+          "onset_s": 82.04,
+          "duration_s": 0.7199999999999989,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0012",
+          "type": "limb_movement",
+          "onset_s": 88.44,
+          "duration_s": 0.7199999999999989,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0013",
+          "type": "limb_movement",
+          "onset_s": 94.54,
+          "duration_s": 0.8799999999999955,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0014",
+          "type": "limb_movement",
+          "onset_s": 95.8,
+          "duration_s": 0.9399999999999977,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0015",
+          "type": "limb_movement",
+          "onset_s": 98.32,
+          "duration_s": 1.0400000000000063,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0016",
+          "type": "limb_movement",
+          "onset_s": 102.74,
+          "duration_s": 0.7000000000000028,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0017",
+          "type": "limb_movement",
+          "onset_s": 103.56,
+          "duration_s": 0.7000000000000028,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0018",
+          "type": "limb_movement",
+          "onset_s": 104.28,
+          "duration_s": 0.7000000000000028,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0019",
+          "type": "limb_movement",
+          "onset_s": 105.78,
+          "duration_s": 0.539999999999992,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0020",
+          "type": "limb_movement",
+          "onset_s": 106.34,
+          "duration_s": 0.6199999999999903,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0021",
+          "type": "limb_movement",
+          "onset_s": 108.04,
+          "duration_s": 0.6400000000000006,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0022",
+          "type": "limb_movement",
+          "onset_s": 109.08,
+          "duration_s": 1.0799999999999983,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0023",
+          "type": "limb_movement",
+          "onset_s": 110.18,
+          "duration_s": 0.7199999999999989,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0024",
+          "type": "limb_movement",
+          "onset_s": 111.7,
+          "duration_s": 1.7000000000000028,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0025",
+          "type": "limb_movement",
+          "onset_s": 118.4,
+          "duration_s": 0.6999999999999886,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0026",
+          "type": "limb_movement",
+          "onset_s": 122.6,
+          "duration_s": 0.5400000000000063,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0027",
+          "type": "limb_movement",
+          "onset_s": 125.24,
+          "duration_s": 0.5,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0028",
+          "type": "limb_movement",
+          "onset_s": 133.4,
+          "duration_s": 0.5199999999999818,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0029",
+          "type": "limb_movement",
+          "onset_s": 136.68,
+          "duration_s": 1.3400000000000034,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0030",
+          "type": "limb_movement",
+          "onset_s": 140.9,
+          "duration_s": 1.0,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0031",
+          "type": "limb_movement",
+          "onset_s": 141.92,
+          "duration_s": 1.1800000000000068,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0032",
+          "type": "limb_movement",
+          "onset_s": 143.54,
+          "duration_s": 0.5999999999999943,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0033",
+          "type": "limb_movement",
+          "onset_s": 145.92,
+          "duration_s": 0.5200000000000102,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0034",
+          "type": "limb_movement",
+          "onset_s": 147.78,
+          "duration_s": 0.5800000000000125,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0035",
+          "type": "limb_movement",
+          "onset_s": 153.16,
+          "duration_s": 0.8199999999999932,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0036",
+          "type": "limb_movement",
+          "onset_s": 162.92,
+          "duration_s": 0.7400000000000091,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0037",
+          "type": "limb_movement",
+          "onset_s": 167.16,
+          "duration_s": 0.5,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0038",
+          "type": "limb_movement",
+          "onset_s": 167.68,
+          "duration_s": 0.5,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0039",
+          "type": "limb_movement",
+          "onset_s": 176.96,
+          "duration_s": 0.5199999999999818,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0040",
+          "type": "limb_movement",
+          "onset_s": 185.58,
+          "duration_s": 0.5199999999999818,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0041",
+          "type": "limb_movement",
+          "onset_s": 193.04,
+          "duration_s": 0.6800000000000068,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0042",
+          "type": "limb_movement",
+          "onset_s": 195.82,
+          "duration_s": 0.5,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0043",
+          "type": "limb_movement",
+          "onset_s": 214.72,
+          "duration_s": 0.7599999999999909,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0044",
+          "type": "limb_movement",
+          "onset_s": 225.56,
+          "duration_s": 0.5999999999999943,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0045",
+          "type": "limb_movement",
+          "onset_s": 226.82,
+          "duration_s": 0.7600000000000193,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0046",
+          "type": "limb_movement",
+          "onset_s": 239.06,
+          "duration_s": 0.6599999999999966,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0047",
+          "type": "limb_movement",
+          "onset_s": 250.86,
+          "duration_s": 0.7799999999999727,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0048",
+          "type": "limb_movement",
+          "onset_s": 252.9,
+          "duration_s": 0.7199999999999989,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0049",
+          "type": "limb_movement",
+          "onset_s": 255.18,
+          "duration_s": 1.1800000000000068,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0050",
+          "type": "limb_movement",
+          "onset_s": 256.76,
+          "duration_s": 0.5799999999999841,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0051",
+          "type": "limb_movement",
+          "onset_s": 258.56,
+          "duration_s": 1.160000000000025,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0052",
+          "type": "limb_movement",
+          "onset_s": 267.96,
+          "duration_s": 2.7800000000000296,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0053",
+          "type": "limb_movement",
+          "onset_s": 270.76,
+          "duration_s": 0.8199999999999932,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0054",
+          "type": "limb_movement",
+          "onset_s": 271.6,
+          "duration_s": 0.5999999999999659,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0055",
+          "type": "limb_movement",
+          "onset_s": 272.22,
+          "duration_s": 5.099999999999966,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0056",
+          "type": "limb_movement",
+          "onset_s": 280.24,
+          "duration_s": 0.5799999999999841,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0057",
+          "type": "limb_movement",
+          "onset_s": 286.8,
+          "duration_s": 1.0,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0058",
+          "type": "limb_movement",
+          "onset_s": 288.06,
+          "duration_s": 0.7400000000000091,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0059",
+          "type": "limb_movement",
+          "onset_s": 289.42,
+          "duration_s": 0.5799999999999841,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0060",
+          "type": "limb_movement",
+          "onset_s": 290.94,
+          "duration_s": 1.1800000000000068,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0061",
+          "type": "limb_movement",
+          "onset_s": 292.14,
+          "duration_s": 1.240000000000009,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0062",
+          "type": "limb_movement",
+          "onset_s": 293.4,
+          "duration_s": 3.4399999999999977,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0063",
+          "type": "limb_movement",
+          "onset_s": 296.86,
+          "duration_s": 2.019999999999982,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0064",
+          "type": "limb_movement",
+          "onset_s": 299.0,
+          "duration_s": 1.0,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0065",
+          "type": "limb_movement",
+          "onset_s": 300.12,
+          "duration_s": 0.6000000000000227,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0066",
+          "type": "limb_movement",
+          "onset_s": 300.74,
+          "duration_s": 1.2199999999999704,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0067",
+          "type": "limb_movement",
+          "onset_s": 301.98,
+          "duration_s": 0.6399999999999864,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0068",
+          "type": "limb_movement",
+          "onset_s": 302.64,
+          "duration_s": 0.8600000000000136,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0069",
+          "type": "limb_movement",
+          "onset_s": 304.08,
+          "duration_s": 0.5800000000000409,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0070",
+          "type": "limb_movement",
+          "onset_s": 305.16,
+          "duration_s": 0.7199999999999704,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0071",
+          "type": "limb_movement",
+          "onset_s": 312.9,
+          "duration_s": 0.82000000000005,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0072",
+          "type": "limb_movement",
+          "onset_s": 318.06,
+          "duration_s": 0.7799999999999727,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0073",
+          "type": "limb_movement",
+          "onset_s": 323.84,
+          "duration_s": 0.5600000000000023,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0074",
+          "type": "limb_movement",
+          "onset_s": 325.94,
+          "duration_s": 0.5199999999999818,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0075",
+          "type": "limb_movement",
+          "onset_s": 328.42,
+          "duration_s": 0.5799999999999841,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0076",
+          "type": "limb_movement",
+          "onset_s": 330.38,
+          "duration_s": 0.5799999999999841,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0077",
+          "type": "limb_movement",
+          "onset_s": 333.86,
+          "duration_s": 0.5600000000000023,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0078",
+          "type": "limb_movement",
+          "onset_s": 336.32,
+          "duration_s": 0.6999999999999886,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0079",
+          "type": "limb_movement",
+          "onset_s": 343.96,
+          "duration_s": 0.5400000000000205,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0080",
+          "type": "limb_movement",
+          "onset_s": 345.88,
+          "duration_s": 0.7800000000000296,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0081",
+          "type": "limb_movement",
+          "onset_s": 349.46,
+          "duration_s": 0.7800000000000296,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0082",
+          "type": "limb_movement",
+          "onset_s": 350.32,
+          "duration_s": 0.9599999999999795,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0083",
+          "type": "limb_movement",
+          "onset_s": 351.3,
+          "duration_s": 0.8999999999999773,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0084",
+          "type": "limb_movement",
+          "onset_s": 353.64,
+          "duration_s": 0.5400000000000205,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0085",
+          "type": "limb_movement",
+          "onset_s": 356.02,
+          "duration_s": 0.7200000000000273,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0086",
+          "type": "limb_movement",
+          "onset_s": 357.68,
+          "duration_s": 0.9200000000000159,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0087",
+          "type": "limb_movement",
+          "onset_s": 361.96,
+          "duration_s": 0.5,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0088",
+          "type": "limb_movement",
+          "onset_s": 364.76,
+          "duration_s": 0.5,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0089",
+          "type": "limb_movement",
+          "onset_s": 369.2,
+          "duration_s": 0.5,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0090",
+          "type": "limb_movement",
+          "onset_s": 372.3,
+          "duration_s": 0.5,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0091",
+          "type": "limb_movement",
+          "onset_s": 375.12,
+          "duration_s": 0.5400000000000205,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0092",
+          "type": "limb_movement",
+          "onset_s": 375.94,
+          "duration_s": 0.660000000000025,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0093",
+          "type": "limb_movement",
+          "onset_s": 377.04,
+          "duration_s": 0.6800000000000068,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0094",
+          "type": "limb_movement",
+          "onset_s": 380.88,
+          "duration_s": 0.5400000000000205,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0095",
+          "type": "limb_movement",
+          "onset_s": 391.34,
+          "duration_s": 0.7400000000000091,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0096",
+          "type": "limb_movement",
+          "onset_s": 393.64,
+          "duration_s": 0.5600000000000023,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0097",
+          "type": "limb_movement",
+          "onset_s": 395.04,
+          "duration_s": 0.8799999999999955,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0098",
+          "type": "limb_movement",
+          "onset_s": 396.5,
+          "duration_s": 0.5,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0099",
+          "type": "limb_movement",
+          "onset_s": 411.8,
+          "duration_s": 0.6599999999999682,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0100",
+          "type": "limb_movement",
+          "onset_s": 415.08,
+          "duration_s": 0.660000000000025,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0101",
+          "type": "limb_movement",
+          "onset_s": 434.1,
+          "duration_s": 0.5600000000000023,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0102",
+          "type": "limb_movement",
+          "onset_s": 435.82,
+          "duration_s": 5.579999999999984,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0103",
+          "type": "limb_movement",
+          "onset_s": 441.7,
+          "duration_s": 0.6399999999999864,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0104",
+          "type": "limb_movement",
+          "onset_s": 442.42,
+          "duration_s": 0.8199999999999932,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0105",
+          "type": "limb_movement",
+          "onset_s": 444.28,
+          "duration_s": 0.5200000000000387,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0106",
+          "type": "limb_movement",
+          "onset_s": 460.22,
+          "duration_s": 0.6199999999999477,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0107",
+          "type": "limb_movement",
+          "onset_s": 470.6,
+          "duration_s": 0.6200000000000045,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0108",
+          "type": "limb_movement",
+          "onset_s": 504.56,
+          "duration_s": 0.6800000000000068,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0109",
+          "type": "limb_movement",
+          "onset_s": 505.28,
+          "duration_s": 0.6400000000000432,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0110",
+          "type": "limb_movement",
+          "onset_s": 516.18,
+          "duration_s": 0.5800000000000409,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0111",
+          "type": "limb_movement",
+          "onset_s": 521.56,
+          "duration_s": 0.6000000000000227,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0112",
+          "type": "limb_movement",
+          "onset_s": 524.02,
+          "duration_s": 0.8799999999999955,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0113",
+          "type": "limb_movement",
+          "onset_s": 530.84,
+          "duration_s": 0.7599999999999909,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-combined_ev_0114",
+          "type": "limb_movement",
+          "onset_s": 575.88,
+          "duration_s": 0.5399999999999636,
+          "channels": [
+            "accel_combined_mag"
+          ]
+        }
+      ],
+      "groups": [
+        {
+          "id": "plm-auto-v0-combined_grp_plm_001",
+          "type": "plm_series",
+          "member_ids": [
+            "plm-auto-v0-combined_ev_0038",
+            "plm-auto-v0-combined_ev_0039",
+            "plm-auto-v0-combined_ev_0040",
+            "plm-auto-v0-combined_ev_0041"
+          ],
+          "onset_s": 167.68,
+          "duration_s": 26.039999999999992,
+          "channels": [
+            "accel_combined_mag"
+          ],
+          "params": {
+            "n_movements": 4
+          }
+        },
+        {
+          "id": "plm-auto-v0-combined_grp_plm_002",
+          "type": "plm_series",
+          "member_ids": [
+            "plm-auto-v0-combined_ev_0070",
+            "plm-auto-v0-combined_ev_0071",
+            "plm-auto-v0-combined_ev_0072",
+            "plm-auto-v0-combined_ev_0073"
+          ],
+          "onset_s": 305.16,
+          "duration_s": 19.239999999999952,
+          "channels": [
+            "accel_combined_mag"
+          ],
+          "params": {
+            "n_movements": 4
+          }
+        },
+        {
+          "id": "plm-auto-v0-combined_grp_plm_003",
+          "type": "plm_series",
+          "member_ids": [
+            "plm-auto-v0-combined_ev_0105",
+            "plm-auto-v0-combined_ev_0106",
+            "plm-auto-v0-combined_ev_0107",
+            "plm-auto-v0-combined_ev_0108"
+          ],
+          "onset_s": 444.28,
+          "duration_s": 60.960000000000036,
+          "channels": [
+            "accel_combined_mag"
+          ],
+          "params": {
+            "n_movements": 4
+          }
+        }
+      ]
+    },
+    {
+      "scoring_id": "plm-auto-v0-accel0",
+      "events": [
+        {
+          "id": "plm-auto-v0-accel0_ev_0001",
+          "type": "limb_movement",
+          "onset_s": 54.08,
+          "duration_s": 0.5200000000000031,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0002",
+          "type": "limb_movement",
+          "onset_s": 102.78,
+          "duration_s": 0.6200000000000045,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0003",
+          "type": "limb_movement",
+          "onset_s": 104.28,
+          "duration_s": 0.7000000000000028,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0004",
+          "type": "limb_movement",
+          "onset_s": 109.56,
+          "duration_s": 0.5999999999999943,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0005",
+          "type": "limb_movement",
+          "onset_s": 110.18,
+          "duration_s": 0.5,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0006",
+          "type": "limb_movement",
+          "onset_s": 111.7,
+          "duration_s": 0.6199999999999903,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0007",
+          "type": "limb_movement",
+          "onset_s": 112.34,
+          "duration_s": 1.019999999999996,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0008",
+          "type": "limb_movement",
+          "onset_s": 136.68,
+          "duration_s": 1.039999999999992,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0009",
+          "type": "limb_movement",
+          "onset_s": 141.92,
+          "duration_s": 0.5200000000000102,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0010",
+          "type": "limb_movement",
+          "onset_s": 142.46,
+          "duration_s": 0.6399999999999864,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0011",
+          "type": "limb_movement",
+          "onset_s": 143.54,
+          "duration_s": 0.5999999999999943,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0012",
+          "type": "limb_movement",
+          "onset_s": 255.54,
+          "duration_s": 0.6400000000000148,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0013",
+          "type": "limb_movement",
+          "onset_s": 268.74,
+          "duration_s": 0.7199999999999704,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0014",
+          "type": "limb_movement",
+          "onset_s": 269.58,
+          "duration_s": 0.7599999999999909,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0015",
+          "type": "limb_movement",
+          "onset_s": 271.62,
+          "duration_s": 0.5799999999999841,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0016",
+          "type": "limb_movement",
+          "onset_s": 272.24,
+          "duration_s": 5.079999999999984,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0017",
+          "type": "limb_movement",
+          "onset_s": 280.3,
+          "duration_s": 0.5199999999999818,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0018",
+          "type": "limb_movement",
+          "onset_s": 287.1,
+          "duration_s": 0.6999999999999886,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0019",
+          "type": "limb_movement",
+          "onset_s": 293.94,
+          "duration_s": 0.5,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0020",
+          "type": "limb_movement",
+          "onset_s": 295.54,
+          "duration_s": 0.5999999999999659,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0021",
+          "type": "limb_movement",
+          "onset_s": 400.14,
+          "duration_s": 8.060000000000002,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0022",
+          "type": "limb_movement",
+          "onset_s": 408.22,
+          "duration_s": 0.6399999999999864,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0023",
+          "type": "limb_movement",
+          "onset_s": 408.94,
+          "duration_s": 0.5199999999999818,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0024",
+          "type": "limb_movement",
+          "onset_s": 409.48,
+          "duration_s": 0.6200000000000045,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0025",
+          "type": "limb_movement",
+          "onset_s": 436.64,
+          "duration_s": 0.9200000000000159,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0026",
+          "type": "limb_movement",
+          "onset_s": 437.58,
+          "duration_s": 1.4399999999999977,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0027",
+          "type": "limb_movement",
+          "onset_s": 439.1,
+          "duration_s": 0.7399999999999523,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0028",
+          "type": "limb_movement",
+          "onset_s": 439.86,
+          "duration_s": 1.5399999999999636,
+          "channels": [
+            "accel_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel0_ev_0029",
+          "type": "limb_movement",
+          "onset_s": 524.34,
+          "duration_s": 0.5599999999999454,
+          "channels": [
+            "accel_mag"
+          ]
+        }
+      ],
+      "groups": [
+        {
+          "id": "plm-auto-v0-accel0_grp_plm_001",
+          "type": "plm_series",
+          "member_ids": [
+            "plm-auto-v0-accel0_ev_0016",
+            "plm-auto-v0-accel0_ev_0017",
+            "plm-auto-v0-accel0_ev_0018",
+            "plm-auto-v0-accel0_ev_0019"
+          ],
+          "onset_s": 272.24,
+          "duration_s": 22.19999999999999,
+          "channels": [
+            "accel_mag"
+          ],
+          "params": {
+            "n_movements": 4
+          }
+        }
+      ]
+    },
+    {
+      "scoring_id": "plm-auto-v0-accel1",
+      "events": [
+        {
+          "id": "plm-auto-v0-accel1_ev_0001",
+          "type": "limb_movement",
+          "onset_s": 38.16,
+          "duration_s": 2.3400000000000034,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0002",
+          "type": "limb_movement",
+          "onset_s": 40.52,
+          "duration_s": 3.6599999999999966,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0003",
+          "type": "limb_movement",
+          "onset_s": 44.2,
+          "duration_s": 6.739999999999995,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0004",
+          "type": "limb_movement",
+          "onset_s": 52.44,
+          "duration_s": 0.5399999999999991,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0005",
+          "type": "limb_movement",
+          "onset_s": 271.68,
+          "duration_s": 0.5199999999999818,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0006",
+          "type": "limb_movement",
+          "onset_s": 295.14,
+          "duration_s": 1.5,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0007",
+          "type": "limb_movement",
+          "onset_s": 400.44,
+          "duration_s": 0.5400000000000205,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0008",
+          "type": "limb_movement",
+          "onset_s": 401.42,
+          "duration_s": 6.159999999999968,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0009",
+          "type": "limb_movement",
+          "onset_s": 435.96,
+          "duration_s": 0.5,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0010",
+          "type": "limb_movement",
+          "onset_s": 438.94,
+          "duration_s": 1.6999999999999886,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0011",
+          "type": "limb_movement",
+          "onset_s": 493.02,
+          "duration_s": 0.8000000000000114,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0012",
+          "type": "limb_movement",
+          "onset_s": 493.84,
+          "duration_s": 3.3800000000000523,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0013",
+          "type": "limb_movement",
+          "onset_s": 497.32,
+          "duration_s": 0.5400000000000205,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0014",
+          "type": "limb_movement",
+          "onset_s": 499.48,
+          "duration_s": 4.0,
+          "channels": [
+            "accel1_mag"
+          ]
+        },
+        {
+          "id": "plm-auto-v0-accel1_ev_0015",
+          "type": "limb_movement",
+          "onset_s": 503.5,
+          "duration_s": 0.5400000000000205,
+          "channels": [
+            "accel1_mag"
+          ]
+        }
+      ],
       "groups": []
     }
   ]
