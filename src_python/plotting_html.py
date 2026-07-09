@@ -30,6 +30,8 @@ def _load_patient():
     p = Path(__file__).parent / 'patient.json'
     if p.exists():
         return json.loads(p.read_text())
+    print(f"[patient] {p} not found — the HTML report title will omit patient details. "
+          f"Copy patient.example.json to patient.json to include them.")
     return None
 
 

@@ -1,0 +1,7 @@
+{
+  "_instructions": "Copy this file to patient.json (gitignored) in the same folder, then replace the values below with the real patient's data.",
+  "name": "Jane Doe",
+  "dob": "01/01/1990",
+  "nhs_number": "123 456 7890",
+  "email": "jane.doe@example.com"
+}

@@ -43,6 +43,8 @@ def _load_patient():
     p = Path(__file__).parent / 'patient.json'
     if p.exists():
         return json.loads(p.read_text())
+    print(f"[patient] {p} not found — subject.pii will be omitted from meta.json. "
+          f"Copy patient.example.json to patient.json to include it.")
     return None
 
 
