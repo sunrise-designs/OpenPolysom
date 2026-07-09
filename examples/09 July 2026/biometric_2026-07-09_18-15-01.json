@@ -1,0 +1,15 @@
+{
+  "device_uid": "ACEBE6FFFE1D",
+  "recording_start_time": "2026-07-09T18:15:01",
+  "timezone": "GMT0BST,M3.5.0/1,M10.5.0",
+  "recording_end_time": null,
+  "sensors": [
+    {"name": "MMA8451 accel0", "present": true, "sample_rate_hz": 50},
+    {"name": "MMA8451 accel1", "present": true, "sample_rate_hz": 50},
+    {"name": "LDC1612 (thoracic/abdomen)", "present": true, "sample_rate_hz": 50},
+    {"name": "SDP800 flow", "present": true, "sample_rate_hz": 50},
+    {"name": "AD8232 ECG", "present": true, "sample_rate_hz": 50},
+    {"name": "DS1307 RTC", "present": false, "sample_rate_hz": null},
+    {"name": "Polar H9 (BLE HR/RR)", "present": false, "sample_rate_hz": 1}
+  ]
+}
