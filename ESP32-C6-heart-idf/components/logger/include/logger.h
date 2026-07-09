@@ -8,7 +8,7 @@ extern "C" {
 
 #define RECORD_DURATION_S  10
 #define SAMPLES_50HZ      500
-#define SAMPLES_1HZ        10
+#define SAMPLES_RR_HZ      25  // RR channel rate: 2.5 Hz x 10 s record
 
 // Capture ESP_LOG output to a buffered SD file. Call once, first thing in
 // app_main, before any other init, so early boot logs aren't missed.

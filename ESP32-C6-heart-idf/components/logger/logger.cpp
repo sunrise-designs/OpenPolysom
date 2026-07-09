@@ -16,6 +16,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <math.h>
 
 static const char *TAG = "logger";
 
@@ -153,7 +154,7 @@ static int flow_buf[SAMPLES_50HZ];
 static int ecg_buf[SAMPLES_50HZ];
 static int a0x_buf[SAMPLES_50HZ], a0y_buf[SAMPLES_50HZ], a0z_buf[SAMPLES_50HZ];
 static int a1x_buf[SAMPLES_50HZ], a1y_buf[SAMPLES_50HZ], a1z_buf[SAMPLES_50HZ];
-static int rr_buf[SAMPLES_1HZ];
+static int rr_buf[SAMPLES_RR_HZ];
 
 static int sample_idx = 0;
 static int rr_idx     = 0;
@@ -314,7 +315,7 @@ static bool open_edf(void)
     // 10-second data records (1 000 000 × 10 µs)
     edf_set_datarecord_duration(edf_handle, 1000000);
 
-    typedef struct { const char *label, *transducer, *dim; int rate, dmax, dmin;
+    typedef struct { const char *label, *transducer, *dim; double rate; int dmax, dmin;
                      double pmax, pmin; } SigDef;
     static const SigDef sigs[NUM_SIGNALS] = {
         {"Thoracic","LDC1612 CH0",  "counts",50, 32767,-32767,  1e6, -1e6},
@@ -327,7 +328,7 @@ static bool open_edf(void)
         {"Accel1X", "MMA8451 ch1",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
         {"Accel1Y", "MMA8451 ch1",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
         {"Accel1Z", "MMA8451 ch1",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
-        {"RR",      "Polar H9 BLE", "ms",     1,  2000,     0, 2000.0, 0.0},
+        {"RR",      "Polar H9 BLE", "ms",   2.5,  2000,     0, 2000.0, 0.0},
     };
 
     for (int i = 0; i < NUM_SIGNALS; i++) {
@@ -335,7 +336,9 @@ static bool open_edf(void)
         edf_set_transducer(edf_handle, i, sigs[i].transducer);
         // edf_set_samplefrequency() actually takes samples-per-datarecord, not Hz;
         // effective rate = samplefrequency / datarecord duration (edflib.h).
-        edf_set_samplefrequency(edf_handle, i, sigs[i].rate * RECORD_DURATION_S);
+        // lround() guards the RR channel's fractional 2.5 Hz (25 samples/record)
+        // against float truncation landing on 24.
+        edf_set_samplefrequency(edf_handle, i, (int)lround(sigs[i].rate * RECORD_DURATION_S));
         edf_set_digital_maximum(edf_handle, i, sigs[i].dmax);
         edf_set_digital_minimum(edf_handle, i, sigs[i].dmin);
         edf_set_physical_maximum(edf_handle, i, sigs[i].pmax);
@@ -397,7 +400,8 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
     a1y_buf[sample_idx] = a1y;
     a1z_buf[sample_idx] = a1z;
 
-    if (sample_idx % 50 == 49 && rr_idx < SAMPLES_1HZ)
+    // Captured every 20th 50 Hz tick = 400 ms = 2.5 Hz, matching sigs[SIG_RR].rate above.
+    if (sample_idx % 20 == 19 && rr_idx < SAMPLES_RR_HZ)
         rr_buf[rr_idx++] = (int)rr_ms;
 
     sample_idx++;

@@ -95,10 +95,16 @@ static void parse_hr_notify(struct os_mbuf *om)
     }
     if (flags & 0x08) offset += 2;  // skip energy expended field
 
-    // RR intervals (1/1024 s units)
-    if ((flags & 0x10) && offset + 1 < len) {
-        uint16_t raw = (uint16_t)buf[offset] | ((uint16_t)buf[offset + 1] << 8);
-        s_rr_ms = (uint16_t)((uint32_t)raw * 1000U / 1024U);
+    // RR intervals (1/1024 s units). The characteristic can carry more than one
+    // RR value per notification (oldest first) when the heart rate exceeds the
+    // BLE notify rate — walk all of them and keep the last (most recent) one,
+    // rather than the first, so s_rr_ms never lags behind the latest beat.
+    if (flags & 0x10) {
+        while (offset + 1 < len) {
+            uint16_t raw = (uint16_t)buf[offset] | ((uint16_t)buf[offset + 1] << 8);
+            s_rr_ms = (uint16_t)((uint32_t)raw * 1000U / 1024U);
+            offset += 2;
+        }
     }
 }
 
