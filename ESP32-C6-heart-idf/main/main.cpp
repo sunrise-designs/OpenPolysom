@@ -63,6 +63,9 @@ static void enter_deep_sleep(void)
 // be pulled off without opening the case.
 #define DOWNLOAD_BTN_PIN GPIO_NUM_20
 
+// Recording duration after which the display is shut down (§ wake button below).
+#define DISPLAY_SLEEP_AFTER_S (20 * 60)
+
 static QueueHandle_t s_download_evt_queue = NULL;
 
 static void IRAM_ATTR download_btn_isr(void *arg)
@@ -106,6 +109,52 @@ static void download_button_init(void)
     xTaskCreate(download_mode_task, "dl_mode", 4096, NULL, 5, NULL);
 }
 
+// ── Display wake button (GPIO13, falling edge) ───────────────────────────────
+// Wired to a momentary button to GND (internal pull-up enabled), same wiring
+// as DOWNLOAD_BTN_PIN. Re-enables the display after display_sleep() has shut
+// it down 20 minutes into a recording (see DISPLAY_SLEEP_AFTER_S below).
+#define WAKE_BTN_PIN GPIO_NUM_13
+
+static QueueHandle_t s_wake_evt_queue = NULL;
+
+static void IRAM_ATTR wake_btn_isr(void *arg)
+{
+    (void)arg;
+    BaseType_t hpw = pdFALSE;
+    uint32_t dummy = 0;
+    xQueueSendFromISR(s_wake_evt_queue, &dummy, &hpw);
+    if (hpw) portYIELD_FROM_ISR();
+}
+
+static void wake_button_task(void *arg)
+{
+    (void)arg;
+    uint32_t dummy;
+    for (;;) {
+        if (xQueueReceive(s_wake_evt_queue, &dummy, portMAX_DELAY) == pdTRUE) {
+            ESP_LOGI(TAG, "Wake button pressed: re-enabling display");
+            display_wake();
+        }
+    }
+}
+
+static void wake_button_init(void)
+{
+    s_wake_evt_queue = xQueueCreate(4, sizeof(uint32_t));
+
+    gpio_config_t io_conf = {};
+    io_conf.pin_bit_mask = 1ULL << WAKE_BTN_PIN;
+    io_conf.mode         = GPIO_MODE_INPUT;
+    io_conf.pull_up_en   = GPIO_PULLUP_ENABLE;
+    io_conf.intr_type    = GPIO_INTR_NEGEDGE;
+    gpio_config(&io_conf);
+
+    // gpio_install_isr_service() is already called once in download_button_init().
+    gpio_isr_handler_add(WAKE_BTN_PIN, wake_btn_isr, NULL);
+
+    xTaskCreate(wake_button_task, "wake_btn", 4096, NULL, 5, NULL);
+}
+
 // ── Sensor / logger / display task (runs at 100 Hz) ──────────────────────────
 static void sensor_task(void *arg)
 {
@@ -142,27 +191,40 @@ static void sensor_task(void *arg)
             // 5 Hz: display
             if (++tick_disp >= 10) {
                 tick_disp = 0;
-                display_data_t dd = {};
-                dd.ble_connected   = ble_is_connected();
-                dd.ble_device_name = ble_get_device_name();
-                dd.bpm             = ble_get_bpm();
-                dd.rr_ms           = ble_get_rr_ms();
-                dd.accel0[0]       = g_accel0_x;
-                dd.accel0[1]       = g_accel0_y;
-                dd.accel0[2]       = g_accel0_z;
-                dd.accel1[0]       = g_accel1_x;
-                dd.accel1[1]       = g_accel1_y;
-                dd.accel1[2]       = g_accel1_z;
-                dd.ldc0            = g_ldc0;
-                dd.ldc1            = g_ldc1;
-                dd.ldc0_baseline   = logger_get_ldc0_baseline();
-                dd.ldc1_baseline   = logger_get_ldc1_baseline();
-                dd.baseline_ok     = logger_get_baseline_ok();
-                dd.recording       = logger_is_active();
-                dd.recording_seconds = logger_get_elapsed_seconds();
-                dd.wifi_ssid       = wifi_ntp_get_ssid();
-                dd.ap_active       = file_server_is_active();
-                display_update(&dd);
+
+                // 20 minutes into a recording, shut the display down
+                // completely (backlight off, panel asleep, no more draws)
+                // until the GPIO13 wake button is pressed. display_sleep()
+                // is idempotent, so this just no-ops on every tick after
+                // the first.
+                if (logger_is_active() &&
+                    logger_get_elapsed_seconds() >= DISPLAY_SLEEP_AFTER_S) {
+                    display_sleep();
+                }
+
+                if (!display_is_sleeping()) {
+                    display_data_t dd = {};
+                    dd.ble_connected   = ble_is_connected();
+                    dd.ble_device_name = ble_get_device_name();
+                    dd.bpm             = ble_get_bpm();
+                    dd.rr_ms           = ble_get_rr_ms();
+                    dd.accel0[0]       = g_accel0_x;
+                    dd.accel0[1]       = g_accel0_y;
+                    dd.accel0[2]       = g_accel0_z;
+                    dd.accel1[0]       = g_accel1_x;
+                    dd.accel1[1]       = g_accel1_y;
+                    dd.accel1[2]       = g_accel1_z;
+                    dd.ldc0            = g_ldc0;
+                    dd.ldc1            = g_ldc1;
+                    dd.ldc0_baseline   = logger_get_ldc0_baseline();
+                    dd.ldc1_baseline   = logger_get_ldc1_baseline();
+                    dd.baseline_ok     = logger_get_baseline_ok();
+                    dd.recording       = logger_is_active();
+                    dd.recording_seconds = logger_get_elapsed_seconds();
+                    dd.wifi_ssid       = wifi_ntp_get_ssid();
+                    dd.ap_active       = file_server_is_active();
+                    display_update(&dd);
+                }
             }
 
             // Periodic RTC drift correction (no-op if no RTC was detected)
@@ -236,6 +298,9 @@ extern "C" void app_main(void)
 
     // Download-mode button: stop recording / BLE, start Wi-Fi file server
     download_button_init();
+
+    // Display wake button: re-enable the screen after display_sleep()
+    wake_button_init();
 
     // Sensor loop
     xTaskCreate(sensor_task, "sensor", 8192, NULL, 5, NULL);

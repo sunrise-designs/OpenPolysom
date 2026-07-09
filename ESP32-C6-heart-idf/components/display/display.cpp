@@ -6,6 +6,8 @@
 #include "driver/spi_master.h"
 #include "driver/ledc.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -51,6 +53,16 @@ static const char *TAG = "display";
 #define BL_LEDC_FREQ_HZ  5000
 #define BL_BRIGHTNESS_PCT 5
 
+// Duty 0 = backlight off; BL_BRIGHTNESS_PCT = normal operating brightness.
+// Shared by init and display_sleep()/display_wake().
+static void backlight_set(bool on)
+{
+    uint32_t max_duty = (1u << BL_LEDC_DUTY_RES) - 1;
+    uint32_t duty = on ? (max_duty * BL_BRIGHTNESS_PCT / 100) : 0;
+    ESP_ERROR_CHECK(ledc_set_duty(BL_LEDC_MODE, BL_LEDC_CHANNEL, duty));
+    ESP_ERROR_CHECK(ledc_update_duty(BL_LEDC_MODE, BL_LEDC_CHANNEL));
+}
+
 static void backlight_init(void)
 {
     ledc_timer_config_t timer_cfg = {};
@@ -69,13 +81,15 @@ static void backlight_init(void)
     ch_cfg.duty       = 0;
     ESP_ERROR_CHECK(ledc_channel_config(&ch_cfg));
 
-    uint32_t max_duty = (1u << BL_LEDC_DUTY_RES) - 1;
-    ESP_ERROR_CHECK(ledc_set_duty(BL_LEDC_MODE, BL_LEDC_CHANNEL, max_duty * BL_BRIGHTNESS_PCT / 100));
-    ESP_ERROR_CHECK(ledc_update_duty(BL_LEDC_MODE, BL_LEDC_CHANNEL));
+    backlight_set(true);
 }
 
 // ── Panel handle ──────────────────────────────────────────────────────────────
 static esp_lcd_panel_handle_t s_panel = NULL;
+// Panel IO handle, kept for display_sleep()/display_wake() to send raw ST7789
+// commands (SLPIN/SLPOUT) after init.
+static esp_lcd_panel_io_handle_t s_io = NULL;
+static bool s_sleeping = false;
 
 // ── Adafruit 5×7 font — printable ASCII 0x20–0x7E ────────────────────────────
 // Source: glcdfont.c (Adafruit GFX library)
@@ -250,8 +264,41 @@ static void draw_labels(void)
 
 void display_boot_msg(const char *msg)
 {
+    if (s_sleeping) return;
     fill_rect(X_OFFSET, Y_BOOT, LCD_W, 10, COL_BG);
     draw_string(X_OFFSET, Y_BOOT, msg, COL_WARN, COL_BG);
+}
+
+// ST7789 command bytes (no parameters).
+#define ST7789_CMD_SLPIN  0x10  // sleep in
+#define ST7789_CMD_SLPOUT 0x11  // sleep out
+
+void display_sleep(void)
+{
+    if (s_sleeping) return;
+    backlight_set(false);
+    esp_lcd_panel_disp_on_off(s_panel, false);
+    esp_lcd_panel_io_tx_param(s_io, ST7789_CMD_SLPIN, NULL, 0);
+    s_sleeping = true;
+    ESP_LOGI(TAG, "Display asleep");
+}
+
+void display_wake(void)
+{
+    if (!s_sleeping) return;
+    esp_lcd_panel_io_tx_param(s_io, ST7789_CMD_SLPOUT, NULL, 0);
+    // ST7789 datasheet: allow >=120 ms after SLPOUT before further commands.
+    vTaskDelay(pdMS_TO_TICKS(120));
+    esp_lcd_panel_disp_on_off(s_panel, true);
+    backlight_set(true);
+    s_sleeping = false;
+    draw_labels();
+    ESP_LOGI(TAG, "Display awake");
+}
+
+bool display_is_sleeping(void)
+{
+    return s_sleeping;
 }
 
 // ── Physics helpers ───────────────────────────────────────────────────────────
@@ -288,6 +335,7 @@ void display_init(void)
     io_cfg.trans_queue_depth = 10;
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(
         (esp_lcd_spi_bus_handle_t)SPI_HOST_ID, &io_cfg, &io));
+    s_io = io;
 
     // ST7789 panel
     esp_lcd_panel_dev_config_t panel_cfg = {};
@@ -330,6 +378,8 @@ void display_init(void)
 
 void display_update(const display_data_t *data)
 {
+    if (s_sleeping) return;
+
     char buf[48];  // wide enough for "WiFi: " + a 32-char SSID
 
     // ── Device / connection status ────────────────────────────────────────────

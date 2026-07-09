@@ -37,6 +37,18 @@ void display_update(const display_data_t *data);
 // attached.
 void display_boot_msg(const char *msg);
 
+// Full display shutdown: backlight off, panel put into ST7789 sleep mode
+// (SLPIN). display_update()/display_boot_msg() become no-ops until
+// display_wake() is called. Idempotent.
+void display_sleep(void);
+
+// Reverse of display_sleep(): panel SLPOUT + display on + backlight restored,
+// static labels redrawn. Idempotent.
+void display_wake(void);
+
+// True after display_sleep(), false initially and after display_wake().
+bool display_is_sleeping(void);
+
 #ifdef __cplusplus
 }
 #endif
