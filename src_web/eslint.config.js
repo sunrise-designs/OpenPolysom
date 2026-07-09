@@ -34,7 +34,7 @@ export default tseslint.config(
     // relaxed on the DOM/ECharts/Zarr I/O edge and tests, where typed-array, DOM and
     // ECharts-option parameters (and a little local mutation in the chart lifecycle)
     // are unavoidable.
-    files: ['src/main.ts', 'src/chart.ts', 'src/shell.ts', 'src/zarr_loader.ts', 'test/**/*.ts'],
+    files: ['src/main.ts', 'src/chart.ts', 'src/shell.ts', 'src/landing.ts', 'src/zarr_loader.ts', 'test/**/*.ts'],
     rules: {
       '@typescript-eslint/prefer-readonly-parameter-types': 'off',
       'functional/prefer-readonly-type': 'off',

@@ -1,25 +1,19 @@
 import type { Meta, ZarrData } from './types';
 import type { Narrative } from './narrative';
-import { formatDuration, formatRecordedAt, shortSha } from './format';
+import { formatDuration, formatRecordedAt, shortSha, escHtml as esc } from './format';
 import { PLMI_ABNORMAL_THRESHOLD } from './narrative';
 import { channelMeta } from './chart';
 
 /** Shown in the toolbar's range readout before any drag-selection is made. */
 export const NO_RANGE_TEXT = 'Drag on a chart to select a range';
 
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
-  );
-}
-
 function clockUTC(ms: number): string {
   const d = new Date(ms);
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
-/** Logo mark (moon + wave), static. */
-const LOGO = `
+/** Logo mark (moon + wave), static. Shared with the landing page (see landing.ts). */
+export const LOGO = `
   <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
     <defs><linearGradient id="logoG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8ea2ff"/><stop offset="1" stop-color="#6ad6c6"/></linearGradient></defs>
     <rect x="1" y="1" width="38" height="38" rx="11" fill="#131c30" stroke="#2e3c59"/>

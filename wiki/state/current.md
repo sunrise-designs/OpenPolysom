@@ -3,7 +3,7 @@ title: Current State
 domain: state
 status: living
 updated: 2026-07-09
-summary: What exists in the repo today (C++ EDF+ writers, Python DSP reading EDF+ directly via edfio, a prototype ECharts/Zarr TS viewer that now carries both accelerometers plus a combined bilateral score) versus the planned three-layer pipeline — and where the gaps are.
+summary: What exists in the repo today (C++ EDF+ writers, Python DSP reading EDF+ directly via edfio, a prototype ECharts/Zarr TS viewer that now carries both accelerometers plus a combined bilateral score, and a multi-study Netlify landing page) versus the planned three-layer pipeline — and where the gaps are.
 ---
 
 # Current State
@@ -99,6 +99,17 @@ but the scaffolding is PoC-thin:
   package.json/tsconfig" is generous — they are simply **absent**.)
 - A **prebuilt bundle is committed**: `src_web/dist/chart.js`. The viewer is **browser-direct**
   at PoC scale — it loads the whole (tiny) recording.
+
+### Hosting — a multi-study Netlify site, incrementally deployed
+`src_python/deploy.py` deploys to a shared Netlify site rather than one recording per
+site: each run adds the study under `studies/<recording_id>/` alongside whatever was
+deployed before, updates a site-root `studies.json` manifest, and re-deploys. The site
+root is now a **landing page** (`src_web/src/landing.ts`) listing every deployed study
+and linking to `index.html?meta=studies/<recording_id>/meta.json`. Deploys use
+Netlify's SHA1-digest manifest API (folding in the previous deploy's file list) so
+only new/changed bytes are actually uploaded — the shared viewer shell and any
+already-deployed study's data are not re-shipped on every deploy. See
+[viewer § multi-study hosting](../knowledge/viewer.md) for the mechanics.
 
 ### Serving — a Python dev server, not a TS slicing server
 There is **no TS slicing server**. `export_zarr.py:serve_and_open` spins up a

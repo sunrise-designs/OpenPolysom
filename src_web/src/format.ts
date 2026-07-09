@@ -45,3 +45,10 @@ export function shortSha(sha: string, dirty: boolean): string {
   const short = sha.length > 7 ? sha.substring(0, 7) : sha;
   return dirty ? `${short}-dirty` : short;
 }
+
+/** Escape a string for safe interpolation into an HTML template literal. */
+export function escHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
+  );
+}

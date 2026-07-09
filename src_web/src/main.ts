@@ -1,13 +1,13 @@
 import * as echarts from 'echarts';
-import { loadMeta, loadEvents, loadZarr, httpStore } from './zarr_loader';
+import { loadMeta, loadEvents, loadZarr, loadStudies, httpStore } from './zarr_loader';
 import { buildBubbleOption, buildSingleChannelOption, channelCount, brushRangeFromEvent } from './chart';
 import type { BrushRange } from './chart';
 import { renderShell, NO_RANGE_TEXT } from './shell';
+import { renderLanding } from './landing';
 import { buildNarrative } from './narrative';
 import { formatElapsed } from './format';
 import type { Meta, EventsDoc, ZarrData } from './types';
 
-const DEFAULT_META = 'public/sample/meta.json';
 const CONNECT_GROUP = 'protosom-signals';
 
 function baseDirOf(url: string): string {
@@ -218,15 +218,28 @@ async function run(app: HTMLElement, metaUrl: string): Promise<void> {
   window.addEventListener('resize', () => { charts.forEach((c) => { c.resize(); }); });
 }
 
+/** No `?meta=` param: show the landing page listing every study `deploy.py` has published. */
+async function runLanding(app: HTMLElement): Promise<void> {
+  const studies = await loadStudies(new URL('studies.json', window.location.href).href);
+  app.innerHTML = renderLanding(studies);
+}
+
 function main(): void {
   const app = document.getElementById('app');
   if (app === null) return;
   const param = new URLSearchParams(window.location.search).get('meta');
-  const metaUrl = new URL(param ?? DEFAULT_META, window.location.href).href;
-  run(app, metaUrl).catch((err: unknown) => {
-    app.innerHTML = `<pre class="fatal">Error loading recording:\n${String(err)}</pre>`;
-    console.error(err);
-  });
+
+  if (param === null) {
+    runLanding(app).catch((err: unknown) => {
+      app.innerHTML = `<pre class="fatal">Error loading studies:\n${String(err)}</pre>`;
+      console.error(err);
+    });
+  } else {
+    run(app, new URL(param, window.location.href).href).catch((err: unknown) => {
+      app.innerHTML = `<pre class="fatal">Error loading recording:\n${String(err)}</pre>`;
+      console.error(err);
+    });
+  }
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => { void navigator.serviceWorker.register('sw.js'); });

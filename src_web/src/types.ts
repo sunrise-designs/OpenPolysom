@@ -114,6 +114,23 @@ export interface EventsDoc {
   readonly scorings: readonly Scoring[];
 }
 
+// ── studies.json (landing page) ──────────────────────────────────────────────
+
+/** One entry in the site-wide `studies.json` manifest — enough to list and link a study without fetching its full `meta.json`. */
+export interface StudySummary {
+  readonly recording_id: string;
+  /** Path to this study's `meta.json`, relative to the site root — pass as `?meta=` to open it. */
+  readonly meta_path: string;
+  readonly subject_id: string;
+  readonly start_iso: string;
+  readonly duration_s: number;
+  readonly plmi: number;
+  readonly total_lms: number;
+  readonly hrv_rmssd_overall: number | null;
+  /** When this study was deployed (ISO), not when it was recorded. */
+  readonly deployed_at: string;
+}
+
 // ── Zarr working store (decoded) ─────────────────────────────────────────────
 
 /** Decoded dense signals from the working store. */

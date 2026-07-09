@@ -24,3 +24,9 @@ For that to work, make sure you have a correct `netlify.json` in the scr_python 
   "token": "xxx_t1gKKx3RjxxxxxxxxxxxxxUGsYPL7xxxxx"
 }
 ```
+
+Each deploy **adds** the study to the site rather than replacing it — the site's
+root page lists every study that has been deployed so far, linking to each
+one. The viewer (`index.html`) and chart bundle are shared across all studies
+and only re-uploaded when their bytes actually change, so deploying a new
+study is cheap regardless of how many studies are already live.

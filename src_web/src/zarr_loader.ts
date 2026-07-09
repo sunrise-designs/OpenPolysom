@@ -1,5 +1,5 @@
 import * as zarr from 'zarrita';
-import type { Meta, EventsDoc, ZarrData } from './types';
+import type { Meta, EventsDoc, StudySummary, ZarrData } from './types';
 
 /** Fetch + parse a JSON sidecar. */
 async function loadJson<T>(url: string): Promise<T> {
@@ -10,6 +10,17 @@ async function loadJson<T>(url: string): Promise<T> {
 
 export const loadMeta = (url: string): Promise<Meta> => loadJson<Meta>(url);
 export const loadEvents = (url: string): Promise<EventsDoc> => loadJson<EventsDoc>(url);
+
+/**
+ * Fetch the site-wide studies manifest for the landing page. Absence (a fresh
+ * site with nothing deployed yet, or a local `index.html` opened with no
+ * `studies.json` beside it) degrades to an empty list rather than an error.
+ */
+export async function loadStudies(url: string): Promise<readonly StudySummary[]> {
+  const resp = await fetch(url);
+  if (!resp.ok) return [];
+  return (await resp.json()) as readonly StudySummary[];
+}
 
 /** Browser store: read the Zarr boundary directly over HTTP. */
 export const httpStore = (baseUrl: string): zarr.FetchStore => new zarr.FetchStore(baseUrl);

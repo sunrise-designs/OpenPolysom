@@ -3,7 +3,7 @@ title: The TS Web App (Viewer)
 domain: knowledge
 status: living
 updated: 2026-07-09
-summary: The TS web app reads the Zarr boundary plus metadata and displays it — synced multi-pane charts (both accelerometers plus the combined bilateral score), channel-filtered event markArea overlays, and an audio spectrogram — never writing Zarr.
+summary: The TS web app reads the Zarr boundary plus metadata and displays it — synced multi-pane charts (both accelerometers plus the combined bilateral score), channel-filtered event markArea overlays, an audio spectrogram, and a landing page listing every deployed study — never writing Zarr.
 ---
 
 # The TS Web App (Viewer)
@@ -120,6 +120,37 @@ features) and stores the spectrogram in the derived Zarr; the viewer reads that 
 with **wavesurfer.js** in its own pane, time-aligned to the biosignal panes' shared x-axis and the same
 `dataZoom`. Keeping the FFT on the Python side keeps the viewer a pure display layer and keeps the
 spectrogram reproducible/auditable.
+
+## Multi-study hosting: the landing page and `deploy.py`
+
+The site ([`src_python/deploy.py`](../../src_python/deploy.py), Netlify) hosts **many
+studies at once**, not one recording per site. The site root (`index.html` with no
+`?meta=` param) is a **landing page** — `src_web/src/landing.ts`'s `renderLanding`
+lists every deployed study as a card (subject, PLMI, limb moves, HRV, recorded date),
+each linking to `index.html?meta=studies/<recording_id>/meta.json` — the same viewer
+entry point as before, just pointed at a per-study path instead of the site root.
+
+- **Layout.** The shared viewer shell (`index.html`, `dist/chart.js`, `styles.css`,
+  `sw.js`, `manifest.webmanifest`, icons) lives at the site root, common to every
+  study. Each study's `meta.json` / `events.json` / Zarr store live under
+  `studies/<recording_id>/`. `main.ts` resolves `events.json` and the Zarr path
+  relative to whichever `meta.json` was loaded, so this nesting needed **no viewer
+  changes** beyond adding the landing branch itself.
+- **`studies.json`** — a site-root manifest (`StudySummary[]` in `types.ts`) the
+  landing page fetches to build its list. `deploy.py` maintains it: it reads the
+  *live* site's current `studies.json` (not local state), replaces any existing entry
+  for the recording being deployed, appends/updates the new one, and re-uploads it.
+- **Incremental deploys (why re-deploying is cheap).** Netlify's deploy API accepts a
+  manifest of `{path: sha1}` and returns only the digests it doesn't already have —
+  everything else is assumed unchanged and is **not re-uploaded**. `deploy.py` fetches
+  the site's previously-published file list (`GET /deploys/{id}/files`) and folds it
+  into the new manifest unmodified, then adds only the shared assets (recomputed
+  fresh, in case the chart bundle changed) and the one study actually being deployed.
+  So deploying study N+1 uploads roughly "the shared assets if they changed" +
+  "study N+1's own files" — **not** every prior study's data — which is the literal
+  saving referenced by "save hosting tokens" (fewer bytes shipped, fewer upload
+  calls). See [decisions](../state/decisions.md) if this pattern needs to generalise
+  (e.g. a slicing server fronting many studies) rather than stay a `deploy.py` detail.
 
 ## Load-all-now / window-later
 
