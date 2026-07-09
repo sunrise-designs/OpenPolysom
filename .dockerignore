@@ -6,3 +6,4 @@ __pycache__/
 .venv*/
 venv/
 src_web/dist/
+src_rust/polysom_rtdi/target/
