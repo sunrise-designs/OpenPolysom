@@ -337,8 +337,10 @@ static int on_gap_event(struct ble_gap_event *event, void *arg)
         break;
 
     case BLE_GAP_EVENT_NOTIFY_RX:
-        if (event->notify_rx.attr_handle == s_chr_val_handle)
+        if (event->notify_rx.attr_handle == s_chr_val_handle) {
             parse_hr_notify(event->notify_rx.om);
+        }
+        os_mbuf_free_chain(event->notify_rx.om);
         break;
 
     default:
