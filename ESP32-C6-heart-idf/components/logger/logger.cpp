@@ -203,10 +203,12 @@ static bool sd_mount(void)
 }
 
 // ── JSON sidecar ─────────────────────────────────────────────────────────────
-// Written once at recording start, alongside the EDF file (same base name,
-// .json extension). recording_end_time is left null; nothing currently fills
-// it in on logger_close().
-static void write_json_sidecar(const struct tm *t)
+// Written at recording start (end_t == NULL: recording_end_time is null, no
+// heap log yet) and rewritten in full at logger_close() (end_t != NULL:
+// fills in recording_end_time and appends the BLE connect/disconnect
+// free-heap log — see ble_client.h — for tracking down a suspected BLE-stack
+// memory leak across repeated reconnects).
+static void write_json_sidecar(const struct tm *start_t, const struct tm *end_t)
 {
     FILE *f = fopen(json_file_path, "w");
     if (!f) {
@@ -221,7 +223,7 @@ static void write_json_sidecar(const struct tm *t)
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     char start_time[32];
-    strftime(start_time, sizeof(start_time), "%Y-%m-%dT%H:%M:%S", t);
+    strftime(start_time, sizeof(start_time), "%Y-%m-%dT%H:%M:%S", start_t);
 
     typedef struct { const char *name; bool present; double sample_rate_hz; } SensorInfo;
     const SensorInfo sensors[] = {
@@ -239,7 +241,13 @@ static void write_json_sidecar(const struct tm *t)
     fprintf(f, "  \"device_uid\": \"%s\",\n", device_uid);
     fprintf(f, "  \"recording_start_time\": \"%s\",\n", start_time);
     fprintf(f, "  \"timezone\": \"%s\",\n", LOCAL_TZ);
-    fprintf(f, "  \"recording_end_time\": null,\n");
+    if (end_t) {
+        char end_time[32];
+        strftime(end_time, sizeof(end_time), "%Y-%m-%dT%H:%M:%S", end_t);
+        fprintf(f, "  \"recording_end_time\": \"%s\",\n", end_time);
+    } else {
+        fprintf(f, "  \"recording_end_time\": null,\n");
+    }
     fprintf(f, "  \"sensors\": [\n");
     for (int i = 0; i < num_sensors; i++) {
         fprintf(f, "    {\"name\": \"%s\", \"present\": %s, \"sample_rate_hz\": ",
@@ -251,7 +259,26 @@ static void write_json_sidecar(const struct tm *t)
         }
         fprintf(f, "%s\n", (i == num_sensors - 1) ? "" : ",");
     }
-    fprintf(f, "  ]\n");
+    fprintf(f, "  ]");
+
+    if (end_t) {
+        ble_heap_event_t events[BLE_HEAP_LOG_MAX];
+        size_t n = ble_get_heap_log(events, BLE_HEAP_LOG_MAX);
+        fprintf(f, ",\n  \"ble_heap_log\": [\n");
+        for (size_t i = 0; i < n; i++) {
+            struct tm et;
+            localtime_r(&events[i].timestamp, &et);
+            char ets[32];
+            strftime(ets, sizeof(ets), "%Y-%m-%dT%H:%M:%S", &et);
+            fprintf(f, "    {\"time\": \"%s\", \"event\": \"%s\", \"free_heap\": %lu, \"min_free_heap\": %lu}%s\n",
+                    ets, events[i].connected ? "connect" : "disconnect",
+                    (unsigned long)events[i].free_heap, (unsigned long)events[i].min_free_heap,
+                    (i == n - 1) ? "" : ",");
+        }
+        fprintf(f, "  ]\n");
+    } else {
+        fprintf(f, "\n");
+    }
     fprintf(f, "}\n");
     fclose(f);
     ESP_LOGI(TAG, "Sidecar written: %s", json_file_path);
@@ -320,7 +347,7 @@ static bool open_edf(void)
                           t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
                           t.tm_hour, t.tm_min, t.tm_sec);
 
-    write_json_sidecar(&t);
+    write_json_sidecar(&t, NULL);
 
     sample_idx    = 0;
     rr_idx        = 0;
@@ -408,6 +435,12 @@ void logger_close(void)
         edfclose_file(edf_handle);
         edf_handle     = -1;
         logging_active = false;
+
+        struct tm start_t, end_t;
+        time_t end_now = time(NULL);
+        localtime_r(&recording_start_time, &start_t);
+        localtime_r(&end_now, &end_t);
+        write_json_sidecar(&start_t, &end_t);
     }
     log_close_file();
 }

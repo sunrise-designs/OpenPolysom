@@ -1,5 +1,6 @@
 #include "ble_client.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
@@ -12,6 +13,29 @@
 #include <stdio.h>
 
 static const char *TAG = "ble";
+
+// ── Heap-event log (connect/disconnect free-heap samples) ───────────────────
+// Diagnostic aid for a suspected BLE-stack memory leak across repeated
+// reconnects — see ble_get_heap_log() in the header.
+static ble_heap_event_t s_heap_log[BLE_HEAP_LOG_MAX];
+static size_t           s_heap_log_count = 0;
+
+static void log_heap_event(bool connected)
+{
+    if (s_heap_log_count >= BLE_HEAP_LOG_MAX) return;
+    ble_heap_event_t *e = &s_heap_log[s_heap_log_count++];
+    e->timestamp     = time(NULL);
+    e->connected     = connected;
+    e->free_heap     = esp_get_free_heap_size();
+    e->min_free_heap = esp_get_minimum_free_heap_size();
+}
+
+size_t ble_get_heap_log(ble_heap_event_t *out, size_t max_out)
+{
+    size_t n = s_heap_log_count < max_out ? s_heap_log_count : max_out;
+    memcpy(out, s_heap_log, n * sizeof(ble_heap_event_t));
+    return n;
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 static volatile uint16_t s_bpm      = 0;
@@ -284,6 +308,7 @@ static int on_gap_event(struct ble_gap_event *event, void *arg)
         }
         s_conn_handle = event->connect.conn_handle;
         s_connected   = true;
+        log_heap_event(true);
         ESP_LOGI(TAG, "Connected: %s", s_dev_name);
         int rc = ble_gattc_disc_svc_by_uuid(s_conn_handle,
                                              (const ble_uuid_t *)&s_hr_svc_uuid,
@@ -299,6 +324,7 @@ static int on_gap_event(struct ble_gap_event *event, void *arg)
         s_rr_ms          = 0;
         s_conn_handle    = BLE_HS_CONN_HANDLE_NONE;
         s_chr_val_handle = 0;
+        log_heap_event(false);
         ESP_LOGI(TAG, "Disconnected (reason %d), restarting scan",
                  event->disconnect.reason);
         start_scan();
