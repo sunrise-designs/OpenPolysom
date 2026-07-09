@@ -140,6 +140,15 @@ static void log_close_file(void)
 #define SIG_RR      10
 #define NUM_SIGNALS 11
 
+// Raw-LDC1612-count-to-digital-sample divisors for the Thoracic/Abdomen RIP
+// belts, chosen per-channel so each channel's breathing swing uses more of
+// the 16-bit digital range (EDF physical range stays ±1,000,000 nH — see
+// wiki open fork O3 "RIP physical-range fix"). Values are derived from one
+// night's peak non-clipped swing with ~2x headroom; deeper breathing on a
+// different patient/night could still saturate and needs re-tuning.
+#define THORACIC_DIVISOR 15
+#define ABDOMEN_DIVISOR  11
+
 static int edf_handle = -1;
 static bool logging_active = false;
 static uint32_t record_count = 0;
@@ -160,9 +169,21 @@ static int sample_idx = 0;
 static int rr_idx     = 0;
 
 // ── LDC baseline ──────────────────────────────────────────────────────────────
+// Baseline is captured 20 minutes into the recording (BASELINE_DELAY_S), once
+// belt-donning/posture-finding "gross inductance change" has settled, then
+// averaged over 1 s (BASELINE_AVG_SAMPLES) to smooth sensor noise — mirroring
+// the RPi5 main.cpp pattern (10-minute mark, 1 s average). Until then,
+// thoracic/abdomen samples are written against a zero baseline (raw counts,
+// effectively clipped/uncalibrated) — accepted drift-over-no-data tradeoff,
+// same as main.cpp.
+#define BASELINE_DELAY_S     1200
+#define BASELINE_AVG_SAMPLES 50
 static uint32_t ldc0_baseline   = 0;
 static uint32_t ldc1_baseline   = 0;
 static bool     baseline_ok     = false;
+static uint64_t baseline_sum0   = 0;
+static uint64_t baseline_sum1   = 0;
+static int      baseline_avg_n  = 0;
 
 uint32_t logger_get_ldc0_baseline(void) { return ldc0_baseline; }
 uint32_t logger_get_ldc1_baseline(void) { return ldc1_baseline; }
@@ -375,18 +396,24 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
 {
     if (!logging_active || edf_handle < 0) return;
 
-    if (!baseline_ok && ldc0 != 0) {
-        ldc0_baseline = ldc0;
-        ldc1_baseline = ldc1;
-        baseline_ok   = true;
+    if (!baseline_ok && ldc0 != 0 &&
+        difftime(time(NULL), recording_start_time) >= BASELINE_DELAY_S) {
+        baseline_sum0 += ldc0;
+        baseline_sum1 += ldc1;
+        baseline_avg_n++;
+        if (baseline_avg_n >= BASELINE_AVG_SAMPLES) {
+            ldc0_baseline = (uint32_t)(baseline_sum0 / baseline_avg_n);
+            ldc1_baseline = (uint32_t)(baseline_sum1 / baseline_avg_n);
+            baseline_ok   = true;
+        }
     }
 
     int32_t d0 = (int32_t)(ldc0 - ldc0_baseline);
     int32_t d1 = (int32_t)(ldc1 - ldc1_baseline);
 
-    int clamp = (d0 / 30 < -32767) ? -32767 : (d0 / 30 > 32767) ? 32767 : (int)(d0 / 30);
+    int clamp = (d0 / THORACIC_DIVISOR < -32767) ? -32767 : (d0 / THORACIC_DIVISOR > 32767) ? 32767 : (int)(d0 / THORACIC_DIVISOR);
     thoracic_buf[sample_idx] = clamp;
-    clamp = (d1 / 30 < -32767) ? -32767 : (d1 / 30 > 32767) ? 32767 : (int)(d1 / 30);
+    clamp = (d1 / ABDOMEN_DIVISOR < -32767) ? -32767 : (d1 / ABDOMEN_DIVISOR > 32767) ? 32767 : (int)(d1 / ABDOMEN_DIVISOR);
     abdomen_buf[sample_idx]  = clamp;
 
     int fv = (int)(pressure_mbar * 32767.0f / 2.0f);

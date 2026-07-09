@@ -100,7 +100,10 @@ void sensors_read(void)
     mma8451_read(s_mma1, &g_accel1_x, &g_accel1_y, &g_accel1_z);
     g_ldc0          = ldc1612_read_channel(s_ldc, 0);
     g_ldc1          = ldc1612_read_channel(s_ldc, 1);
-    g_pressure_mbar = sdp800_read(s_sdp);
+    // sdp800_read() returns Pascals (raw / on-chip scale factor, §6.5 of the
+    // SDP810-125Pa datasheet); convert to mbar (1 mbar = 100 Pa) to match the
+    // EDF+ Flow channel's declared physical dimension.
+    g_pressure_mbar = sdp800_read(s_sdp) / 100.0f;
 }
 
 void sensors_read_ecg(void)
