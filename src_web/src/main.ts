@@ -190,7 +190,7 @@ async function run(app: HTMLElement, metaUrl: string): Promise<void> {
     loadZarr(httpStore(new URL(meta.layers.working.path, base).href)),
   ]);
 
-  app.innerHTML = renderShell(meta, buildNarrative(meta.stats));
+  app.innerHTML = renderShell(meta, buildNarrative(meta.stats), zarrData);
 
   // On touch: drop tooltip + inside-zoom (so swipes scroll) and enable tap-to-fullscreen.
   const touch = window.matchMedia('(pointer: coarse), (max-width: 760px)').matches;

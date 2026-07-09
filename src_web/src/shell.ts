@@ -1,8 +1,8 @@
-import type { Meta } from './types';
+import type { Meta, ZarrData } from './types';
 import type { Narrative } from './narrative';
 import { formatDuration, formatRecordedAt, shortSha } from './format';
 import { PLMI_ABNORMAL_THRESHOLD } from './narrative';
-import { CHANNEL_META } from './chart';
+import { channelMeta } from './chart';
 
 /** Shown in the toolbar's range readout before any drag-selection is made. */
 export const NO_RANGE_TEXT = 'Drag on a chart to select a range';
@@ -163,7 +163,29 @@ function kpiCards(meta: Meta, narrative: Narrative): string {
     </div>`;
 }
 
-const MONTAGE = `
+/**
+ * Leg 2 (Accel1) + Combined bilateral rows — only present when `channels()` in
+ * chart.ts kept those two panes (i.e. a second accelerometer was scored). They
+ * are always the last two channel indices when present, mirroring their fixed,
+ * trailing position in chart.ts's `CHANNELS` array.
+ */
+function movementDetailRows(zarr: ZarrData, lastIdx: number): string {
+  if (zarr.accel1_mag.length === 0) return '';
+  return `
+    <div class="mont" data-idx="${String(lastIdx - 1)}">
+      <div class="m-ico" style="background:rgba(154,240,230,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 12c2 0 2-5 4-5s2 10 4 10 2-10 4-10 2 5 4 5" stroke="var(--movement-2)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div><div class="m-name">Leg 2 (Accel1)</div><div class="m-sub">Accel1 mag · live</div></div>
+      <div class="m-right"><div class="toggle on"></div></div>
+    </div>
+    <div class="mont" data-idx="${String(lastIdx)}">
+      <div class="m-ico" style="background:rgba(95,208,196,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12h3l2-5 3 10 2-7 2 4h4" stroke="var(--movement)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div><div class="m-name">Combined LM (bilateral)</div><div class="m-sub">Either-leg envelope · live</div></div>
+      <div class="m-right"><div class="toggle on"></div></div>
+    </div>`;
+}
+
+function montage(zarr: ZarrData, count: number): string {
+  return `
   <div class="section-title">Montage <span class="st-line"></span></div>
   <div class="mont-list">
     <div class="mont" data-idx="0">
@@ -181,6 +203,7 @@ const MONTAGE = `
       <div><div class="m-name">HRV trend</div><div class="m-sub">RMSSD · live</div></div>
       <div class="m-right"><div class="toggle on"></div></div>
     </div>
+    ${movementDetailRows(zarr, count - 1)}
     <div class="mont dev">
       <div class="m-ico" style="background:rgba(247,178,103,.10)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 4v7m0 0c0 4-3 5-4 5s-3-1-3-5V9m7 2c0 4 3 5 4 5s3-1 3-5V9" stroke="var(--respir)" stroke-width="1.6" stroke-linecap="round"/></svg></div>
       <div><div class="m-name">Respiratory</div><div class="m-sub">Thoracic · Abdomen · Flow — awaiting device</div></div>
@@ -197,6 +220,7 @@ const MONTAGE = `
       <div class="m-right"><div class="toggle off"></div></div>
     </div>
   </div>`;
+}
 
 const SPECTRO = `
   <div class="section-title">Snore spectrogram <span class="st-line"></span></div>
@@ -214,13 +238,14 @@ const SPECTRO = `
   </div>`;
 
 /** Build the full Tremor-Illustrated viewer shell. `#chart` is left for ECharts. */
-export function renderShell(meta: Meta, narrative: Narrative): string {
+export function renderShell(meta: Meta, narrative: Narrative, zarr: ZarrData): string {
   const s = meta.stats;
   const git = meta.provenance.pipeline.git;
   const anchor = meta.layers.raw.biosignals[0]?.hash;
   const anchorStr = anchor === undefined ? 'n/a' : `${anchor.algorithm} ${anchor.value.substring(0, 8)}…`;
   const hrv = s.hrv_rmssd_overall;
   const periodic = s.total_plms > 0 ? `${esc(String(s.total_plms))} periodic` : 'none periodic';
+  const chMeta = channelMeta(zarr);
 
   return `
   <div class="wrap">
@@ -274,7 +299,7 @@ export function renderShell(meta: Meta, narrative: Narrative): string {
             <div class="sig-range" id="sig-range">${esc(NO_RANGE_TEXT)}</div>
           </div>
           <div class="sig-grid">
-            ${CHANNEL_META.map((m, i) => `<div class="card sig-card"><div class="sig-head"><span class="gdot" style="background:${m.color}"></span>${esc(m.name)}</div><div class="sig-plot" id="sig-${String(i)}"></div></div>`).join('')}
+            ${chMeta.map((m, i) => `<div class="card sig-card"><div class="sig-head"><span class="gdot" style="background:${m.color}"></span>${esc(m.name)}</div><div class="sig-plot" id="sig-${String(i)}"></div></div>`).join('')}
           </div>
           <div class="viewer-note">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="var(--text-dim)" stroke-width="1.6"/><path d="M12 8h.01M11 12h1v4h1" stroke="var(--text-dim)" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -284,7 +309,7 @@ export function renderShell(meta: Meta, narrative: Narrative): string {
       </div>
 
       <aside class="right-rail">
-        <div class="card card-pad">${MONTAGE}</div>
+        <div class="card card-pad">${montage(zarr, chMeta.length)}</div>
         <div class="card card-pad">${SPECTRO}</div>
       </aside>
     </div>

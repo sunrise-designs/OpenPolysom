@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from edf_reader import load_edf
-from signal_processing import count_plm, compute_hrv, accel_magnitude
+from signal_processing import count_plm, compute_hrv, accel_magnitude, combine_bilateral_vm
 from plotting import save_plotly_html, plot
 from export_zarr import save_zarr_json
 
@@ -74,10 +74,17 @@ def main():
         print("--- Accel1 ---")
         result1 = count_plm(a1x, a1y, a1z, threshold=args.threshold, fs=fs_accel)
 
-        # The chart/Zarr export schema currently carries one accelerometer's
-        # results; Accel0 is treated as primary. Accel1's scoring is computed
-        # and printed above but not yet plotted/exported.
-        result = result0
+        print("--- Combined (bilateral) ---")
+        combined = combine_bilateral_vm(result0['vm'], result1['vm'], threshold=args.threshold, fs=fs_accel)
+        print(f"Recording duration : {combined['total_hours']:.2f} hours")
+        print(f"LMs detected       : {combined['total_lms']}")
+        print(f"PLMs (series ≥4, 5–90 s apart): {combined['total_plms']}")
+        print(f"PLMI               : {combined['plmi']:.1f} /hour  [AASM threshold ≥15/hour for adults]")
+
+        # The combined bilateral score (either leg moved) is the clinical
+        # headline number; per-accelerometer results are carried alongside it
+        # for the leg-independent chart panes and events.
+        result = combined
         result.update({'threshold': args.threshold, 'window_sec': args.window, 'fs': fs_accel})
 
         hrv_overall, hrv_t, hrv_rmssd = compute_hrv(rr, fs=fs_rr)
@@ -94,6 +101,8 @@ def main():
                 source_path=src_path,
                 skip_s=args.skip,
                 rr_t=t_rr,
+                accel1_mag=result1['vm'],
+                leg_stats={'accel0': result0, 'accel1': result1},
             )
             print(f"To view: python src_python/serve.py --meta {meta_path}")
         else:

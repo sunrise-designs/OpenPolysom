@@ -2,8 +2,8 @@
 title: Current State
 domain: state
 status: living
-updated: 2026-07-08
-summary: What exists in the repo today (C++ EDF+ writers, Python DSP reading EDF+ directly via edfio, a prototype ECharts/Zarr TS viewer) versus the planned three-layer pipeline — and where the gaps are.
+updated: 2026-07-09
+summary: What exists in the repo today (C++ EDF+ writers, Python DSP reading EDF+ directly via edfio, a prototype ECharts/Zarr TS viewer that now carries both accelerometers plus a combined bilateral score) versus the planned three-layer pipeline — and where the gaps are.
 ---
 
 # Current State
@@ -51,11 +51,14 @@ point `read_log.py`:
   (Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z, Accel1X/Y/Z, RR), returning
   physical-unit arrays + each signal's native sample rate.
 - `signal_processing.py`: `remove_baseline` (median-window), `count_plm` (AASM PLM/LM
-  scoring), `compute_hrv` (RMSSD), `accel_magnitude`. These take plain
-  physical-unit arrays + `fs` directly. `count_plm`/`accel_magnitude` run once
-  per accelerometer (Accel0, Accel1), reported separately; `compute_hrv` runs
-  against the native 1 Hz RR channel. RIP baseline (airPLS/QDC), airflow, and
-  snore work still don't exist.
+  scoring), `compute_hrv` (RMSSD), `accel_magnitude`, `combine_bilateral_vm`. These
+  take plain physical-unit arrays + `fs` directly. `count_plm`/`accel_magnitude` run
+  once per accelerometer (Accel0, Accel1); `combine_bilateral_vm` then re-scores the
+  elementwise-max envelope of both legs' vector magnitudes as the headline bilateral
+  score — all three (Accel0, Accel1, combined) are now exported and plotted, not just
+  computed and printed (see [signal processing](../knowledge/signal-processing.md) §3
+  and [viewer](../knowledge/viewer.md)). `compute_hrv` runs against the native 1 Hz RR
+  channel. RIP baseline (airPLS/QDC), airflow, and snore work still don't exist.
 - Typical invocation ("how to use.md"):
   `python read_log.py -f "biometric_2026-07-08_01-57-52.edf" -c --threshold 3 --skip 150 --ignore_last 250`.
 
@@ -63,17 +66,26 @@ point `read_log.py`:
 `export_zarr.py:save_zarr_json` is the **only Zarr writer in the repo**, and it writes the
 **derived layer only** (no raw layer feeds it):
 - Zarr **v2** group, one array per series: `t`, `rr`, `accel_x/y/z` (float32,
-  physical mg — Accel0 only, since the schema carries one accelerometer),
-  `accel_mag`, `hrv_t`, `hrv_rmssd` (`export_zarr.py:58-67`).
+  physical mg — Accel0's raw axes only; Accel1's raw axes are still not carried
+  through, only its scored vector magnitude — see [viewer](../knowledge/viewer.md)),
+  `accel_mag` (Accel0's vector magnitude), `hrv_t`, `hrv_rmssd`
+  (`export_zarr.py:58-67`), plus `accel1_mag` and `accel_combined_mag` (Accel1's own
+  and the bilateral-combined vector magnitude) whenever `read_log.py` scored a second
+  accelerometer.
 - **Single chunk per array** and the **default codec** — i.e. **no Blosc(zstd, shuffle)
   yet**, no time-chunking, no `storage=physical|digital` attrs. The v2 choice is correct
   per [decisions](decisions.md); the codec + chunking are **not yet** to the
   [data-formats](../knowledge/data-formats.md) spec.
 - `meta.json` and `events.json` follow the canonical nested schema — `schema_versions`,
   `subject` (de-identified `subject_id` + a separable `pii` block), `recording`, `stats`
-  (incl. `hrv_rmssd_overall`), `layers.raw`/`layers.working`, and `provenance` (full git
-  SHA + dirty flag + branch, raw-anchor content hash, input trim). `events.json` is a
-  real sidecar carrying the scored `limb_movement` events and `plm_series` groups.
+  (incl. `hrv_rmssd_overall`, and — when two accelerometers were scored — a
+  `stats.legs.accel0`/`.accel1` per-leg breakdown alongside the combined headline
+  numbers), `layers.raw`/`layers.working`, and `provenance` (full git SHA + dirty flag +
+  branch, raw-anchor content hash, input trim). `events.json` is a real sidecar carrying
+  the scored `limb_movement` events and `plm_series` groups — one `scorings[]` entry per
+  channel (combined, Accel0, Accel1) when both accelerometers were scored, each
+  event/group tagged `channels: [<zarr array name>]` so the viewer can tell which pane a
+  span belongs to.
 
 ### TS web app — prototype viewer on the unmaintained zarr.js
 `src_web/` reads the Zarr + sidecar and draws charts — the presentation role is real,
@@ -111,7 +123,7 @@ running system.
 | **TS reader** | zarr.js (unmaintained), no manifest | zarrita.js, proper TS project |
 | **Serving** | Python `ThreadingHTTPServer` (dev-only) | Browser-direct now; thin **TS slicing server** as data grows |
 | **Clinical export (Zarr→EDF+/BDF+)** | **Does not exist** | Regenerated on demand (likely C++) |
-| **Signals processed** | Accel + RR only (PLM, HRV) | + RIP baseline (QDC+airPLS), airflow, apnea/hypopnea, snore VOTE/MFCC |
+| **Signals processed** | Accel (both accelerometers, PLM/LM + bilateral combined score) + RR (HRV) | + RIP baseline (QDC+airPLS), airflow, apnea/hypopnea, snore VOTE/MFCC |
 
 ---
 

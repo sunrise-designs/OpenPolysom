@@ -46,20 +46,23 @@ def _load_patient():
     return None
 
 
-def _build_events(recording_id, t0_iso, stats):
-    """Shape lm_events/plm_groups (second-tuples) into the events.json schema."""
+def _build_scoring(scoring_id, channel, stats):
+    """Shape one accelerometer/combined scoring's lm_events/plm_groups
+    (second-tuples) into one `scorings[]` entry, tagged with its source
+    `channel` (the canonical Zarr array name) so a consumer can tell which
+    chart pane a given event/group belongs to."""
     lm_events = stats.get('lm_events') or []
     plm_groups = stats.get('plm_groups') or []
 
     events = []
     id_of = {}
     for i, (on, off) in enumerate(lm_events, start=1):
-        ev_id = f'ev_{i:04d}'
+        ev_id = f'{scoring_id}_ev_{i:04d}'
         id_of[(round(float(on), 4), round(float(off), 4))] = ev_id
         events.append({
             'id': ev_id, 'type': 'limb_movement',
             'onset_s': float(on), 'duration_s': float(off) - float(on),
-            'channels': ['accel_mag'],
+            'channels': [channel],
         })
 
     groups = []
@@ -68,10 +71,33 @@ def _build_events(recording_id, t0_iso, stats):
         on0 = float(grp[0][0])
         off_last = float(grp[-1][1])
         groups.append({
-            'id': f'grp_plm_{gi:03d}', 'type': 'plm_series',
+            'id': f'{scoring_id}_grp_plm_{gi:03d}', 'type': 'plm_series',
             'member_ids': members, 'onset_s': on0, 'duration_s': off_last - on0,
+            'channels': [channel],
             'params': {'n_movements': len(members)},
         })
+
+    return {'scoring_id': scoring_id, 'events': events, 'groups': groups}
+
+
+def _build_events(recording_id, t0_iso, stats, leg_stats=None):
+    """Combine the bilateral (combined) scoring plus, when available, each
+    accelerometer's own scoring into the events.json schema — one
+    `scorings[]` entry per channel, each event/group tagged with its
+    `channels` so the viewer can filter which pane a span belongs to.
+
+    With no `leg_stats` (single-accelerometer callers), `stats` itself is the
+    only accelerometer scored — tag it `accel_mag` (the sole array written),
+    not `accel_combined_mag`, since nothing was actually combined.
+    """
+    if leg_stats is None:
+        scorings = [_build_scoring('plm-auto-v0', 'accel_mag', stats)]
+    else:
+        scorings = [_build_scoring('plm-auto-v0-combined', 'accel_combined_mag', stats)]
+        if leg_stats.get('accel0') is not None:
+            scorings.append(_build_scoring('plm-auto-v0-accel0', 'accel_mag', leg_stats['accel0']))
+        if leg_stats.get('accel1') is not None:
+            scorings.append(_build_scoring('plm-auto-v0-accel1', 'accel1_mag', leg_stats['accel1']))
 
     return {
         'schema': 'protosom.events',
@@ -79,12 +105,13 @@ def _build_events(recording_id, t0_iso, stats):
         'recording_id': recording_id,
         'time_base': {'reference': 'recording_start', 'start_iso': t0_iso, 'unit': 's'},
         'channels_ref': 'working.zarr',
-        'scorings': [{'scoring_id': 'plm-auto-v0', 'events': events, 'groups': groups}],
+        'scorings': scorings,
     }
 
 
 def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
-                   stats, recording_meta, source_path=None, skip_s=0.0, rr_t=None):
+                   stats, recording_meta, source_path=None, skip_s=0.0, rr_t=None,
+                   accel1_mag=None, leg_stats=None):
     """Write time series to a Zarr v2 store and metadata + events to JSON sidecars.
 
     Parameters
@@ -96,13 +123,21 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
                   its own native rate, distinct from the accelerometer's; falls back to
                   `t` if omitted, which is only correct when the rates already match)
     accel_raw   : tuple(list, list, list) — raw X, Y, Z channels (physical units, e.g. mg)
-    accel_mag   : list[float]  — baseline-removed vector magnitude
+    accel_mag   : list[float]  — Accel0's baseline-removed vector magnitude (or, when
+                  `leg_stats` is given, the combined bilateral envelope — see `stats`)
     hrv_t       : array-like   — HRV window time axis in seconds (may be empty)
     hrv_rmssd   : array-like   — HRV RMSSD per window in ms (may be empty)
-    stats       : dict          — output of count_plm() plus threshold/window_sec/fs
+    stats       : dict          — output of count_plm()/combine_bilateral_vm() plus
+                  threshold/window_sec/fs — the headline (combined, when two
+                  accelerometers are scored) result
     recording_meta : dict | None — sidecar JSON from load_recording_meta()
     source_path : Path | str | None — the EDF+ raw anchor this recording was read from
     skip_s      : float         — seconds trimmed from the start before DSP (provenance)
+    accel1_mag  : list[float] | None — Accel1's baseline-removed vector magnitude, when
+                  a second (wrist/ankle) accelerometer was scored
+    leg_stats   : dict | None   — {'accel0': count_plm() result, 'accel1': count_plm()
+                  result} — the per-leg breakdown backing `meta.json`'s `stats.legs` and
+                  each leg's own `events.json` scoring
     """
     stem = Path(stem)
     zarr_path = stem.with_suffix('.zarr')
@@ -122,10 +157,17 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
         'accel_x':   np.asarray(accel_raw[0], dtype=np.float32),
         'accel_y':   np.asarray(accel_raw[1], dtype=np.float32),
         'accel_z':   np.asarray(accel_raw[2], dtype=np.float32),
-        'accel_mag': np.asarray(accel_mag,    dtype=np.float32),
+        'accel_mag': np.asarray(leg_stats['accel0']['vm'] if leg_stats is not None else accel_mag, dtype=np.float32),
         'hrv_t':     np.asarray(hrv_t,     dtype=np.float32) if hrv_t is not None and len(hrv_t) > 0     else np.array([], dtype=np.float32),
         'hrv_rmssd': np.asarray(hrv_rmssd, dtype=np.float32) if hrv_rmssd is not None and len(hrv_rmssd) > 0 else np.array([], dtype=np.float32),
     }
+    if accel1_mag is not None:
+        arrays['accel1_mag'] = np.asarray(accel1_mag, dtype=np.float32)
+    if leg_stats is not None:
+        # `accel_mag` above stays Accel0's own trace; the combined bilateral
+        # envelope (what `stats`/`accel_mag` used to mean before both legs
+        # were scored) gets its own array so neither leg's trace is lost.
+        arrays['accel_combined_mag'] = np.asarray(accel_mag, dtype=np.float32)
     for name, data in arrays.items():
         # Single chunk per array: zarr 3.x has async overhead per chunk, so
         # writing the whole array as one chunk keeps write time O(1) in calls.
@@ -180,6 +222,14 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
             'threshold':          stats.get('threshold'),
             'window_sec':         stats.get('window_sec'),
             'fs':                 fs,
+            **({'legs': {
+                leg: {
+                    'plmi':        leg_stats[leg].get('plmi', 0.0),
+                    'total_lms':   leg_stats[leg].get('total_lms', 0),
+                    'total_plms':  leg_stats[leg].get('total_plms', 0),
+                    'total_hours': leg_stats[leg].get('total_hours', 0.0),
+                } for leg in ('accel0', 'accel1') if leg_stats.get(leg) is not None
+            }} if leg_stats is not None else {}),
         },
         'layers': {
             'raw':     {'biosignals': raw_biosignals},
@@ -197,7 +247,7 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
     meta_path.write_text(json.dumps(meta, indent=2), encoding='utf-8')
     print(f"Saved metadata to {meta_path}")
 
-    events_doc = _build_events(recording_id, start_iso, stats)
+    events_doc = _build_events(recording_id, start_iso, stats, leg_stats=leg_stats)
     events_path.write_text(json.dumps(events_doc, indent=2), encoding='utf-8')
     print(f"Saved events to {events_path}")
 

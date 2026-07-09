@@ -2,8 +2,8 @@
 title: The TS Web App (Viewer)
 domain: knowledge
 status: living
-updated: 2026-06-19
-summary: The TS web app reads the Zarr boundary plus metadata and displays it — synced multi-pane charts, event markArea overlays, and an audio spectrogram — never writing Zarr.
+updated: 2026-07-09
+summary: The TS web app reads the Zarr boundary plus metadata and displays it — synced multi-pane charts (both accelerometers plus the combined bilateral score), channel-filtered event markArea overlays, and an audio spectrogram — never writing Zarr.
 ---
 
 # The TS Web App (Viewer)
@@ -42,7 +42,7 @@ The pieces:
 | File | Role |
 | --- | --- |
 | `src_web/src/main.ts` | Entry. Reads `?meta=`, loads `meta.json` + Zarr, inits one ECharts canvas instance, wires window resize. |
-| `src_web/src/zarr_loader.ts` | Fetches `meta.json` and opens each named Zarr array (`t`, `rr`, `accel_x/y/z`, `accel_mag`, `hrv_t`, `hrv_rmssd`). |
+| `src_web/src/zarr_loader.ts` | Fetches `meta.json` and opens each named Zarr array (`t`, `rr`, `accel_x/y/z`, `accel_mag`, `hrv_t`, `hrv_rmssd`), plus `accel1_mag`/`accel_combined_mag` when present — read via `readOptionalArray`, which degrades to an empty array rather than failing the load when a store has only one accelerometer. |
 | `src_web/src/chart.ts` | Builds the ECharts option: synced multi-pane grid, LM/PLM `markArea` overlays, dataZoom, crosshair tooltip, title strip. |
 | `src_web/src/types.ts` | `SidecarMeta` (patient / recording / stats / `lm_events` / `plm_groups` / `git_hash` / `zarr_path`) and `ZarrData`. |
 
@@ -57,10 +57,22 @@ Concrete behaviours worth noting (PoC realities, not the target spec):
   (overview bar) — spans **all** x-axes via `zIdxs` (`chart.ts:167`, `181-184`), so panning/zooming one pane
   moves them all in lockstep. `filterMode: 'none'` keeps the full series in memory and just rescales the
   view.
-- **Event markArea overlays.** LM events and PLM groups from `meta.lm_events` / `meta.plm_groups` render as
-  ECharts `markArea` bands on the accel pane (`chart.ts:109-121`, `139`) — translucent green for LMs,
-  red-bordered for PLM groups. As `events.json` grows (apnea/hypopnea, snore VOTE), the same `markArea`
-  mechanism extends to more bands on the relevant panes.
+- **Event markArea overlays, filtered per channel.** `events.json` carries one `scorings[]` entry per
+  scored channel — Accel0's own LM/PLM series, Accel1's own, and the combined bilateral series (see
+  [signal processing](signal-processing.md) §3) — with every event/group tagged `channels: [<zarr array
+  name>]`. `chart.ts`'s `overlayMarkArea`/`collectSpans` filter on that tag, so the Accel0 mag pane only
+  shows Accel0's own spans, the Accel1 mag pane only Accel1's, and the combined pane only the combined
+  series' — never all three at once. Translucent green for LMs, red/teal-bordered dashed for PLM series.
+  An event/group with no `channels` tag (older single-accelerometer stores, e.g.
+  `tools/make_fixture.py`'s sample) is treated as belonging to `accel_mag` — the one channel that has
+  always implicitly meant "the" accelerometer — so legacy fixtures keep working unchanged.
+- **Accel1 + combined bilateral panes, optional.** `chart.ts`'s `CHANNELS` list has two trailing entries —
+  `Accel1 mag (leg 2)` (`accel1_mag`) and `Combined LM (bilateral)` (`accel_combined_mag`) — marked
+  `optional: true`: `channels()` drops them from the rendered set (and from the Montage rail) whenever
+  their backing Zarr array is empty, i.e. whenever only one accelerometer was scored. `channelMeta(zarr)`
+  (data-aware, replacing a static list) drives both the `sig-grid` card count and the Montage rail row
+  count in `shell.ts`'s `renderShell`, so the two representations never disagree about how many panes
+  exist for a given recording.
 - **Large-line path.** Each series sets `large: true`, `largeThreshold`, and `sampling: 'lttb'` — the
   documented ECharts way to draw long lines on canvas without choking (`chart.ts:123-165`).
 - **Title strip** (`chart.ts:22-40`, `buildTitle`) renders patient / recording / stats and the `git_hash`

@@ -7,6 +7,10 @@ import { formatElapsed } from './format';
 interface ChannelDef {
   readonly name: string;
   readonly color: string;
+  /** events.json `channels` tag this pane's markArea filters to (overlay channels only). */
+  readonly channelKey?: string;
+  /** Hidden entirely when its backing Zarr array is empty (e.g. Accel1/Combined when only one accelerometer was scored). */
+  readonly optional?: boolean;
   readonly x: Float64Array;
   readonly y: ArrayLike<number>;
   readonly overlay: boolean;
@@ -15,6 +19,8 @@ interface ChannelDef {
 interface ChannelSrc {
   readonly name: string;
   readonly color: string;
+  readonly channelKey?: string;
+  readonly optional?: boolean;
   readonly pick: (z: ZarrData) => { readonly x: Float64Array; readonly y: ArrayLike<number>; readonly overlay: boolean };
 }
 
@@ -29,21 +35,28 @@ const BOTTOM_PCT = 8.5;
 const GAP_PCT = 1.0;
 
 // Single source of truth for the channel order, labels, colours, and data binding.
+// Accel1 mag / Combined LM are `optional`: only scored (and only rendered) when a
+// second accelerometer was carried through the pipeline alongside Accel0 — see
+// wiki/knowledge/signal-processing.md (bilateral PLM scoring).
 const CHANNELS: readonly ChannelSrc[] = [
   { name: 'RR · ms', color: COLORS.cardiac, pick: (z) => ({ x: z.rr_t, y: z.rr, overlay: false }) },
-  { name: 'Accel mag', color: COLORS.movement, pick: (z) => ({ x: z.t, y: z.accel_mag, overlay: true }) },
+  { name: 'Accel mag', color: COLORS.movement, channelKey: 'accel_mag', pick: (z) => ({ x: z.t, y: z.accel_mag, overlay: true }) },
   { name: 'HRV · ms', color: COLORS.hrv, pick: (z) => ({ x: z.hrv_t, y: z.hrv_rmssd, overlay: false }) },
   { name: 'Accel X', color: COLORS.movement, pick: (z) => ({ x: z.t, y: z.accel_x, overlay: false }) },
   { name: 'Accel Y', color: COLORS.movement2, pick: (z) => ({ x: z.t, y: z.accel_y, overlay: false }) },
   { name: 'Accel Z', color: COLORS.movement3, pick: (z) => ({ x: z.t, y: z.accel_z, overlay: false }) },
+  { name: 'Accel1 mag (leg 2)', color: COLORS.movement2, channelKey: 'accel1_mag', optional: true, pick: (z) => ({ x: z.t, y: z.accel1_mag, overlay: true }) },
+  { name: 'Combined LM (bilateral)', color: COLORS.evtPlm, channelKey: 'accel_combined_mag', optional: true, pick: (z) => ({ x: z.t, y: z.accel_combined_mag, overlay: true }) },
 ];
 
-/** Static descriptor (name + colour) for rendering bubble headers without data. */
-export const CHANNEL_META: readonly { readonly name: string; readonly color: string }[] =
-  CHANNELS.map((c) => ({ name: c.name, color: c.color }));
-
 const channels = (zarr: ZarrData): readonly ChannelDef[] =>
-  CHANNELS.map((c) => ({ name: c.name, color: c.color, ...c.pick(zarr) }));
+  CHANNELS
+    .map((c) => ({ name: c.name, color: c.color, channelKey: c.channelKey, optional: c.optional, ...c.pick(zarr) }))
+    .filter((c) => c.optional !== true || c.y.length > 0);
+
+/** Per-recording descriptor (name + colour) for rendering bubble headers — filtered to channels the store actually has data for. */
+export const channelMeta = (zarr: ZarrData): readonly { readonly name: string; readonly color: string }[] =>
+  channels(zarr).map((c) => ({ name: c.name, color: c.color }));
 
 const zipStrided = (x: Float64Array, y: ArrayLike<number>, stride: number): readonly (readonly [number, number])[] => {
   const n = Math.min(x.length, y.length);
@@ -51,23 +64,34 @@ const zipStrided = (x: Float64Array, y: ArrayLike<number>, stride: number): read
   return Array.from({ length: count }, (_, i): readonly [number, number] => [x[i * stride] ?? 0, y[i * stride] ?? 0]);
 };
 
-const collectSpans = (events: EventsDoc, type: 'limb_movement' | 'plm_series'): readonly Span[] => {
+// An event/group with no `channels` tag predates the multi-accelerometer schema
+// (e.g. tools/make_fixture.py's legacy single-accelerometer sample) — treat it as
+// belonging to the one channel that has always implicitly meant "the" accelerometer.
+const matchesChannel = (eventChannels: readonly string[] | undefined, channelKey: string): boolean =>
+  eventChannels === undefined ? channelKey === 'accel_mag' : eventChannels.includes(channelKey);
+
+const collectSpans = (events: EventsDoc, type: 'limb_movement' | 'plm_series', channelKey: string): readonly Span[] => {
   if (type === 'limb_movement') {
     return events.scorings.flatMap((s) =>
-      s.events.filter((e) => e.type === 'limb_movement').map((e): Span => ({ start: e.onset_s, end: e.onset_s + e.duration_s })),
+      s.events
+        .filter((e) => e.type === 'limb_movement' && matchesChannel(e.channels, channelKey))
+        .map((e): Span => ({ start: e.onset_s, end: e.onset_s + e.duration_s })),
     );
   }
   return events.scorings.flatMap((s) =>
-    s.groups.filter((g) => g.type === 'plm_series').map((g): Span => ({ start: g.onset_s, end: g.onset_s + g.duration_s })),
+    s.groups
+      .filter((g) => g.type === 'plm_series' && matchesChannel(g.channels, channelKey))
+      .map((g): Span => ({ start: g.onset_s, end: g.onset_s + g.duration_s })),
   );
 };
 
-const overlayMarkArea = (events: EventsDoc): unknown[] => {
-  const lm = collectSpans(events, 'limb_movement').map((s) => [
+/** LM/PLM markArea spans for one pane, filtered to the events/groups tagged with `channelKey` — so Accel0, Accel1, and the combined pane each only show their own scoring. */
+const overlayMarkArea = (events: EventsDoc, channelKey: string): unknown[] => {
+  const lm = collectSpans(events, 'limb_movement', channelKey).map((s) => [
     { xAxis: s.start, itemStyle: { color: 'rgba(79,214,163,0.16)', borderColor: COLORS.evtLm, borderWidth: 1, opacity: 0.5 } },
     { xAxis: s.end },
   ]);
-  const plm = collectSpans(events, 'plm_series').map((s) => [
+  const plm = collectSpans(events, 'plm_series', channelKey).map((s) => [
     {
       xAxis: s.start,
       itemStyle: { color: 'rgba(95,208,196,0.10)', borderColor: COLORS.evtPlm, borderWidth: 1.3, borderType: 'dashed' as const },
@@ -156,7 +180,7 @@ export function buildBubbleOption(zarr: ZarrData, events: EventsDoc, index: numb
     largeThreshold: 2000,
     sampling: 'lttb' as const,
     ...(ch.overlay
-      ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events) as unknown as never } }
+      ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events, ch.channelKey ?? 'accel_mag') as unknown as never } }
       : {}),
   };
 
@@ -227,7 +251,7 @@ export function buildSingleChannelOption(zarr: ZarrData, events: EventsDoc, inde
     largeThreshold: 2000,
     sampling: 'lttb' as const,
     ...(ch.overlay
-      ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events) as unknown as never } }
+      ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events, ch.channelKey ?? 'accel_mag') as unknown as never } }
       : {}),
   };
 
@@ -296,13 +320,12 @@ export function buildChartOption(zarr: ZarrData, events: EventsDoc, touch = fals
     axisLabel: { show: true, fontSize: 9, color: COLORS.textDim, hideOverlap: true, showMaxLabel: false },
     axisLine: { show: false }, axisTick: { show: false }, splitLine: { lineStyle: { color: COLORS.grid, opacity: 0.6 } },
   }));
-  const mark = overlayMarkArea(events);
   const series = rows.map((ch, r) => ({
     name: ch.name, type: 'line' as const, xAxisIndex: r, yAxisIndex: r,
     data: zipStrided(ch.x, ch.y, strideFor(ch.name)) as unknown as number[][],
     showSymbol: false, animation: false, lineStyle: { color: ch.color, width: 1.1 },
     large: true, largeThreshold: 2000, sampling: 'lttb' as const,
-    ...(ch.overlay ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: mark as unknown as never } } : {}),
+    ...(ch.overlay ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events, ch.channelKey ?? 'accel_mag') as unknown as never } } : {}),
   }));
   const allGridIdx = rows.map((_, i) => i);
 

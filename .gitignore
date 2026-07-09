@@ -38,3 +38,4 @@ src_rust/polysom_rtdi/target
 ESP32-C6-heart-idf/sdkconfig
 ESP32-C6-heart-idf/sdkconfig.local
 
+node_modules/.vite/

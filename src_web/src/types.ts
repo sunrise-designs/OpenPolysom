@@ -22,7 +22,15 @@ export interface Recording {
   readonly source: string;
 }
 
+export interface LegStats {
+  readonly plmi: number;
+  readonly total_lms: number;
+  readonly total_plms: number;
+  readonly total_hours: number;
+}
+
 export interface Stats {
+  /** Combined bilateral score (either leg) when two accelerometers were scored, else the single accelerometer's own score — see `legs` for the per-leg breakdown. */
   readonly plmi: number;
   readonly total_lms: number;
   readonly total_plms: number;
@@ -31,6 +39,8 @@ export interface Stats {
   readonly threshold: number;
   readonly window_sec: number;
   readonly fs: number;
+  /** Present only when a second (Accel1) accelerometer was scored alongside Accel0. */
+  readonly legs?: { readonly accel0: LegStats; readonly accel1: LegStats };
 }
 
 export interface GitProvenance {
@@ -87,6 +97,7 @@ export interface EventGroup {
   readonly member_ids: readonly string[];
   readonly onset_s: number;
   readonly duration_s: number;
+  readonly channels?: readonly string[];
   readonly params?: Readonly<Record<string, unknown>>;
 }
 
@@ -108,10 +119,14 @@ export interface EventsDoc {
 /** Decoded dense signals from the working store. */
 export interface ZarrData {
   readonly t: Float64Array;
-  readonly accel_x: Uint8Array;
-  readonly accel_y: Uint8Array;
-  readonly accel_z: Uint8Array;
+  readonly accel_x: Float32Array;
+  readonly accel_y: Float32Array;
+  readonly accel_z: Float32Array;
   readonly accel_mag: Float32Array;
+  /** Accel1 (second/leg-2 accelerometer) vector magnitude. Empty when only one accelerometer was scored. */
+  readonly accel1_mag: Float32Array;
+  /** Bilateral combined (either-leg envelope) vector magnitude. Empty when only one accelerometer was scored. */
+  readonly accel_combined_mag: Float32Array;
   readonly rr: Float32Array;
   readonly rr_t: Float64Array;
   readonly hrv_t: Float64Array;

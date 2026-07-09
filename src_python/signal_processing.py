@@ -14,10 +14,13 @@ def remove_baseline(channels, window_sec=30, fs=50):
             for ch in channels]
 
 
-def count_plm(ax, ay, az, threshold=8, fs=50):
-    # Apply baseline removal internally so raw or pre-filtered data both work
-    fax, fay, faz = remove_baseline([ax, ay, az], fs=fs)
-    vm = np.sqrt(fax**2 + fay**2 + faz**2)
+def _score_vm(vm, threshold=8, fs=50):
+    """Detect LMs in a vector-magnitude trace and group them into PLM series
+    per AASM rules. Factored out of `count_plm` so `combine_bilateral_vm` can
+    apply the identical grouping logic to a combined two-leg trace — the AASM
+    invariants (duration/gap/series-length) then live in exactly one place.
+    """
+    vm = np.asarray(vm, dtype=float)
 
     # Find contiguous runs above threshold (AASM: 0.5–10 s duration)
     above = (vm >= threshold).astype(int)
@@ -57,15 +60,40 @@ def count_plm(ax, ay, az, threshold=8, fs=50):
     total_hours = len(vm) / fs / 3600
     plmi        = total_plms / total_hours if total_hours > 0 else 0.0
 
-    print(f"Recording duration : {total_hours:.2f} hours")
-    print(f"LMs detected       : {total_lms}")
-    print(f"PLMs (series ≥4, 5–90 s apart): {total_plms}")
-    print(f"PLMI               : {plmi:.1f} /hour  [AASM threshold ≥15/hour for adults]")
-
     return {'lm_events': lm_events, 'plm_groups': plm_groups,
             'total_lms': total_lms, 'total_plms': total_plms,
             'plmi': plmi, 'total_hours': total_hours,
             'vm': list(vm)}
+
+
+def count_plm(ax, ay, az, threshold=8, fs=50):
+    # Apply baseline removal internally so raw or pre-filtered data both work
+    fax, fay, faz = remove_baseline([ax, ay, az], fs=fs)
+    vm = np.sqrt(fax**2 + fay**2 + faz**2)
+    result = _score_vm(vm, threshold=threshold, fs=fs)
+
+    print(f"Recording duration : {result['total_hours']:.2f} hours")
+    print(f"LMs detected       : {result['total_lms']}")
+    print(f"PLMs (series ≥4, 5–90 s apart): {result['total_plms']}")
+    print(f"PLMI               : {result['plmi']:.1f} /hour  [AASM threshold ≥15/hour for adults]")
+
+    return result
+
+
+def combine_bilateral_vm(vm0, vm1, threshold=8, fs=50):
+    """Combine two legs' vector-magnitude traces into one bilateral LM/PLM score.
+
+    Per common bilateral PLM scoring practice (combining left/right leg EMG
+    into a single channel before scoring), take the envelope — elementwise
+    max — of both legs' vm traces, then re-run the same AASM LM/PLM detection
+    over that combined trace. A movement on *either* leg counts once, and
+    overlapping bilateral movements are not double-counted.
+    """
+    vm0 = np.asarray(vm0, dtype=float)
+    vm1 = np.asarray(vm1, dtype=float)
+    n = min(len(vm0), len(vm1))
+    combined_vm = np.maximum(vm0[:n], vm1[:n])
+    return _score_vm(combined_vm, threshold=threshold, fs=fs)
 
 
 def accel_magnitude(ax, ay, az, window_sec=30, fs=50):

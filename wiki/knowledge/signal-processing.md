@@ -2,8 +2,8 @@
 title: Signal Processing (Python)
 domain: knowledge
 status: living
-updated: 2026-07-08
-summary: The Python processing stage — baseline removal, AASM PLM/LM, HRV/RMSSD — documented as the executable spec, with the future apnea / EEG / snore roadmap and the Python-vs-C++ watch-item.
+updated: 2026-07-09
+summary: The Python processing stage — baseline removal, AASM PLM/LM, bilateral-combined PLM, HRV/RMSSD — documented as the executable spec, with the future apnea / EEG / snore roadmap and the Python-vs-C++ watch-item.
 ---
 
 # Signal Processing (Python)
@@ -66,7 +66,16 @@ All three live in [`src_python/signal_processing.py`](../../src_python/signal_pr
 
 ### 2. AASM PLM / LM detection
 
-`count_plm(ax, ay, az, threshold=8, fs=50)` (`:17`). Periodic Limb Movement scoring per the **AASM Scoring Manual v2.6** (rules transcribed in [`plans/removing accel baseline.md`](../../plans/removing%20accel%20baseline.md)). Runs once per accelerometer — the ESP32-C6 logger has two (Accel0, Accel1) — scored and reported separately; see [current state](../state/current.md).
+`count_plm(ax, ay, az, threshold=8, fs=50)` (`:17`). Periodic Limb Movement scoring per the **AASM Scoring Manual v2.6** (rules transcribed in [`plans/removing accel baseline.md`](../../plans/removing%20accel%20baseline.md)). Runs once per accelerometer — the ESP32-C6 logger has two (Accel0, Accel1) — scored independently, **and** combined into one bilateral score (below); all three are exported and plotted, see [current state](../state/current.md) and [viewer](viewer.md).
+
+The threshold/duration/gap/grouping logic (`:23-58` of the pre-refactor code) is
+factored into a shared `_score_vm(vm, threshold, fs)` helper that takes an
+already-computed vector-magnitude trace and returns the same `lm_events` /
+`plm_groups` / `plmi` shape. `count_plm` computes `vm` from one accelerometer's
+three axes and calls it; `combine_bilateral_vm` (below) computes a *combined*
+`vm` from both accelerometers and calls the identical helper — so the AASM
+invariants (duration/gap/series-length) are defined in exactly one place
+regardless of which vm trace is being scored.
 
 **AASM rules implemented (the spec — never silently change these):**
 
@@ -97,7 +106,39 @@ All three live in [`src_python/signal_processing.py`](../../src_python/signal_pr
 
 `accel_magnitude(ax, ay, az, window_sec=30, fs=50)` (`:71`) is the same `vm` computation exposed standalone (no thresholding) — feeds the [viewer](viewer.md) as a derived activity trace.
 
-### 3. HRV — RMSSD
+### 3. Bilateral combined PLM score
+
+`combine_bilateral_vm(vm0, vm1, threshold=8, fs=50)`. Standard PSG practice
+scores leg movements per-leg **and** on one combined bilateral channel; a
+movement on *either* leg counts once toward the combined index, without
+double-counting movements both legs make together. This is the headline
+number the [viewer](viewer.md) surfaces (its charts show all three: Accel0
+alone, Accel1 alone, and the combined trace).
+
+**Algorithm.** Takes each leg's already-computed `vm` trace (`count_plm`'s
+`vm` output — the baseline-removed, per-leg vector magnitude, *not* raw
+axes), truncates both to the shorter length (the two legs' trimmed sample
+counts should already match since `read_log.py` trims both accelerometers
+identically, but a length mismatch would otherwise silently misalign), then
+takes the **elementwise max** — the envelope of whichever leg is more active
+at each instant — and runs the identical AASM `_score_vm` grouping (§2) over
+that combined trace.
+
+**Spec invariants:**
+- `combined_vm[i] = max(vm0[i], vm1[i])` — no leg's movement is diluted by
+  averaging with a quiescent other leg.
+- The combined trace is re-scored from scratch with the same
+  duration/gap/series-length rules as a single leg — it is **not** a union or
+  merge of the two legs' already-detected LM event lists (a merge would skip
+  re-applying the onset-to-onset gap rule to the merged series and under-count
+  bilateral PLM series).
+- `read_log.py` treats the combined result as `stats`/the headline score
+  (`meta.json`'s top-level `stats.plmi`/`total_lms`/`total_plms`); each leg's
+  own `count_plm()` result is carried alongside as `stats.legs.accel0` /
+  `.accel1` (per-leg PLMI breakdown, no vm trace) — see
+  [data formats](data-formats.md) and [viewer](viewer.md).
+
+### 4. HRV — RMSSD
 
 `compute_hrv(rr_series, fs=1, window_sec=300)` (`:80`), with helper `_rmssd(arr) = sqrt(mean(diff(arr)²))` (`:76`).
 
@@ -132,6 +173,11 @@ Per [coding standards](../standards/coding.md), the spec is pinned by **property
 - *Reference:* hand-built fixtures with a **known** LM/PLM count — e.g. exactly 4 jerks 10 s apart → 1 series, 4 PLMs; 3 jerks → 0 PLMs (below the ≥4 gate); jerks 100 s apart → LMs but 0 PLMs (gap > 90 s); a 0.3 s blip → 0 LMs (< MIN_DUR); a 12 s plateau → 0 LMs (> MAX_DUR).
 - *Property:* `total_plms ≤ total_lms` always; `plmi == total_plms / total_hours`.
 - *Reference:* a committed example EDF+ recording (e.g. under `examples/`) → recorded golden `(total_lms, total_plms, plmi)` per accelerometer (regression lock).
+
+**`combine_bilateral_vm`**
+- *Property:* `combined_vm == elementwise max(vm0, vm1)`, so a movement scored on one leg alone still shows up in the combined trace at full amplitude.
+- *Reference:* leg 0 has a qualifying jerk where leg 1 is flat (and vice versa) → the combined score's `total_lms` counts both; two legs jerking at the exact same instant → the combined score counts it **once**, not twice.
+- *Property:* `combined.total_plms ≥ max(accel0.total_plms, accel1.total_plms)` — combining can only reveal a bilateral series that neither leg alone met the ≥4-count gate for, never hide one.
 
 **`compute_hrv`**
 - *Reference:* a synthetic RR series with a known RMSSD → exact match; all-equal RR → RMSSD 0.
