@@ -37,15 +37,6 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # Logging
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
-# Console: primary channel is the native USB-Serial/JTAG port. This board's
-# only physical connector is USB-C, wired to the chip's native USB peripheral
-# (GPIO12/13) — UART0 TX/RX (GPIO16/17) are broken out to a separate,
-# unconnected header pin. The panic handler's register/backtrace dump (and
-# heap-corruption diagnostics) bypass secondary-console mirroring and only
-# write to the primary channel, so with UART0 as primary they were being
-# written to a pin nobody can see.
-CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
-
 # Serial console / monitor baud rate
 CONFIG_ESP_CONSOLE_UART_BAUDRATE=921600
 CONFIG_ESPTOOLPY_MONITOR_BAUD=921600
