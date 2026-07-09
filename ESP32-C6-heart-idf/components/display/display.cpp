@@ -39,10 +39,12 @@ static const char *TAG = "display";
 #define Y_LDC_LBL   115 + Y_OFFSET
 #define Y_CH0       126 + Y_OFFSET
 #define Y_CH1       146 + Y_OFFSET
-#define Y_WIFI_ST   168 + Y_OFFSET
-#define Y_BOOT      190 + Y_OFFSET  // boot info line — display_update() never draws here
-#define Y_TIME      212 + Y_OFFSET
-#define Y_WIFI_SSID 224 + Y_OFFSET
+#define Y_FLOW      168 + Y_OFFSET
+#define Y_BATT      178 + Y_OFFSET
+#define Y_WIFI_ST   188 + Y_OFFSET
+#define Y_BOOT      200 + Y_OFFSET  // boot info line — display_update() never draws here
+#define Y_TIME      222 + Y_OFFSET
+#define Y_WIFI_SSID 234 + Y_OFFSET
 
 
 // ── Backlight (PWM via LEDC) ──────────────────────────────────────────────────
@@ -367,7 +369,7 @@ void display_init(void)
     esp_lcd_panel_invert_color(s_panel, true);
 
     esp_lcd_panel_set_gap(s_panel, 34, 0);  // GRAM X offset — 172px active area starts at col 34
-    esp_lcd_panel_mirror(s_panel, true, true);  // mirror X — matches reference board
+    esp_lcd_panel_mirror(s_panel, true, false);  // mirror X — matches reference board
     esp_lcd_panel_disp_on_off(s_panel, true);
 
     backlight_init();
@@ -430,6 +432,16 @@ void display_update(const display_data_t *data)
     else
         snprintf(buf, sizeof(buf), "  d1: (no base)");
     draw_string(X_OFFSET, Y_CH1 + 10, buf, COL_VALUE, COL_BG);
+
+    // ── Air Flow ──────────────────────────────────────────────────────────────
+    fill_rect(X_OFFSET, Y_FLOW, LCD_W, 10, COL_BG);
+    snprintf(buf, sizeof(buf), "  Flow:%8.1f mbar", data->pressure_mbar);
+    draw_string(X_OFFSET, Y_FLOW, buf, COL_VALUE, COL_BG);
+
+    // ── Battery Gauge ─────────────────────────────────────────────────────────
+    fill_rect(X_OFFSET, Y_BATT, LCD_W, 10, COL_BG);
+    snprintf(buf, sizeof(buf), "  Batt: %u%%", data->batt_percent);
+    draw_string(X_OFFSET, Y_BATT, buf, COL_VALUE, COL_BG);
 
     // ── Recording status ──────────────────────────────────────────────────────
     fill_rect(X_OFFSET, Y_WIFI_ST, LCD_W, 10, COL_BG);

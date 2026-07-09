@@ -18,10 +18,12 @@ typedef struct {
     uint32_t    ldc0_baseline;
     uint32_t    ldc1_baseline;
     bool        baseline_ok;
+    float       pressure_mbar;
     bool        recording;
     uint32_t    recording_seconds;
     const char *wifi_ssid;  // "" if Wi-Fi wasn't used/connected at boot (e.g. RTC sync)
     bool        ap_active;  // true once the download-button file-server AP is up
+    uint8_t     batt_percent;
 } display_data_t;
 
 // Initialise the SPI bus, ST7789 panel, and draw static labels.

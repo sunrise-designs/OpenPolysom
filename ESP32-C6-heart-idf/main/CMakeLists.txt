@@ -9,6 +9,7 @@ idf_component_register(
         sensors
         logger
         display
+        battery_gauge
         file_server
         nvs_flash
         freertos

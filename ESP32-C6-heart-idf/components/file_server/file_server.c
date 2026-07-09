@@ -44,7 +44,7 @@ static esp_err_t root_get_handler(httpd_req_t *req)
     }
 
     httpd_resp_sendstr_chunk(req, "</ul></body></html>");
-    httpd_resp_sendstr_chunk(req, NULL); // end of chunked response
+    httpd_resp_send_chunk(req, NULL, 0); // end of chunked response
     return ESP_OK;
 }
 
@@ -80,7 +80,7 @@ static esp_err_t file_get_handler(httpd_req_t *req)
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
         if (httpd_resp_send_chunk(req, buf, n) != ESP_OK) {
             fclose(f);
-            httpd_resp_sendstr_chunk(req, NULL);
+            httpd_resp_send_chunk(req, NULL, 0);
             return ESP_FAIL;
         }
     }

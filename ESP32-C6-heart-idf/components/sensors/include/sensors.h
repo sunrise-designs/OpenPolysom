@@ -46,6 +46,10 @@ void sensors_rtc_write_from_system(void);
 // correct drift in the ESP32's internal oscillator. Call periodically.
 void sensors_rtc_periodic_sync(void);
 
+#include "esp_adc/adc_oneshot.h"
+// Get the shared ADC unit handle for other components (like battery_gauge)
+adc_oneshot_unit_handle_t sensors_get_adc_unit(void);
+
 #ifdef __cplusplus
 }
 #endif

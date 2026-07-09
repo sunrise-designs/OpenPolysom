@@ -32,6 +32,11 @@ static i2c_master_bus_handle_t   s_i2c_bus;
 static i2c_master_dev_handle_t   s_mma0, s_mma1, s_ldc, s_sdp, s_ds1307;
 static adc_oneshot_unit_handle_t s_adc;
 
+adc_oneshot_unit_handle_t sensors_get_adc_unit(void)
+{
+    return s_adc;
+}
+
 static esp_err_t add_dev(uint8_t addr, i2c_master_dev_handle_t *out)
 {
     i2c_device_config_t cfg = {};

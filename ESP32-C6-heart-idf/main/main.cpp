@@ -1,5 +1,6 @@
 #include "config.h"
 #include "sensors.h"
+#include "battery_gauge.h"
 #include "logger.h"
 #include "display.h"
 #include "wifi_ntp.h"
@@ -61,7 +62,7 @@ static void enter_deep_sleep(void)
 // stop recording and flush the EDF/log files, tear down BLE to free its heap,
 // then bring up the Wi-Fi AP + HTTP file server so the SD card contents can
 // be pulled off without opening the case.
-#define DOWNLOAD_BTN_PIN GPIO_NUM_20
+#define DOWNLOAD_BTN_PIN GPIO_NUM_19
 
 // Recording duration after which the display is shut down (§ wake button below).
 #define DISPLAY_SLEEP_AFTER_S (20 * 60)
@@ -132,8 +133,9 @@ static void wake_button_task(void *arg)
     uint32_t dummy;
     for (;;) {
         if (xQueueReceive(s_wake_evt_queue, &dummy, portMAX_DELAY) == pdTRUE) {
-            ESP_LOGI(TAG, "Wake button pressed: re-enabling display");
+            ESP_LOGI(TAG, "Wake button pressed: re-enabling display and starting file server");
             display_wake();
+            file_server_start();
         }
     }
 }
@@ -168,6 +170,7 @@ static void sensor_task(void *arg)
     int tick_scan = 0; // BLE rescan watchdog (in 50 Hz ticks)
     int tick_rtc  = 0; // RTC drift-correction watchdog (in 50 Hz ticks)
     int scan_attempts = 0;
+    bool auto_sleep_triggered = false;
 
     while (1) {
         vTaskDelayUntil(&wake, period_ms);
@@ -194,12 +197,11 @@ static void sensor_task(void *arg)
 
                 // 20 minutes into a recording, shut the display down
                 // completely (backlight off, panel asleep, no more draws)
-                // until the GPIO13 wake button is pressed. display_sleep()
-                // is idempotent, so this just no-ops on every tick after
-                // the first.
                 if (logger_is_active() &&
-                    logger_get_elapsed_seconds() >= DISPLAY_SLEEP_AFTER_S) {
+                    logger_get_elapsed_seconds() >= DISPLAY_SLEEP_AFTER_S &&
+                    !auto_sleep_triggered) {
                     display_sleep();
+                    auto_sleep_triggered = true;
                 }
 
                 if (!display_is_sleeping()) {
@@ -219,10 +221,12 @@ static void sensor_task(void *arg)
                     dd.ldc0_baseline   = logger_get_ldc0_baseline();
                     dd.ldc1_baseline   = logger_get_ldc1_baseline();
                     dd.baseline_ok     = logger_get_baseline_ok();
+                    dd.pressure_mbar   = g_pressure_mbar;
                     dd.recording       = logger_is_active();
                     dd.recording_seconds = logger_get_elapsed_seconds();
                     dd.wifi_ssid       = wifi_ntp_get_ssid();
                     dd.ap_active       = file_server_is_active();
+                    dd.batt_percent    = battery_gauge_get_percentage();
                     display_update(&dd);
                 }
             }
@@ -278,6 +282,7 @@ extern "C" void app_main(void)
 
     // Sensors (I2C bus + ADC)
     sensors_init();
+    battery_gauge_init(sensors_get_adc_unit());
 
     // If a DS1307 RTC is fitted and already holds a plausible time (i.e. it
     // has been set on a previous boot), use it and skip Wi-Fi entirely.
