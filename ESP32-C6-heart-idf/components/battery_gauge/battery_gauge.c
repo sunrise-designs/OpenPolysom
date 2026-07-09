@@ -4,8 +4,8 @@
 #include "esp_log.h"
 #include "hal/adc_types.h"
 
-// GPIO4 is ADC1_CHANNEL_4 on ESP32-C6
-#define BATT_ADC_CHANNEL ADC_CHANNEL_4
+// GPIO3 is ADC1_CHANNEL_3 on ESP32-C6.
+#define BATT_ADC_CHANNEL ADC_CHANNEL_3
 
 static const char *TAG = "battery_gauge";
 static adc_oneshot_unit_handle_t s_adc_unit;
