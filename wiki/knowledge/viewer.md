@@ -131,11 +131,15 @@ each linking to `index.html?meta=studies/<recording_id>/meta.json` — the same 
 entry point as before, just pointed at a per-study path instead of the site root.
 
 - **Layout.** The shared viewer shell (`index.html`, `dist/chart.js`, `styles.css`,
-  `sw.js`, `manifest.webmanifest`, icons) lives at the site root, common to every
-  study. Each study's `meta.json` / `events.json` / Zarr store live under
-  `studies/<recording_id>/`. `main.ts` resolves `events.json` and the Zarr path
-  relative to whichever `meta.json` was loaded, so this nesting needed **no viewer
-  changes** beyond adding the landing branch itself.
+  `sw.js`, `manifest.webmanifest`, `metrics-config.js`, icons) lives at the site
+  root, common to every study. Each study's `meta.json` / `events.json` / Zarr
+  store live under `studies/<recording_id>/`. `main.ts` resolves `events.json` and
+  the Zarr path relative to whichever `meta.json` was loaded, so this nesting
+  needed **no viewer changes** beyond adding the landing branch itself.
+  `deploy.py`'s `_STATIC_ASSETS` list is the single place these shared files are
+  enumerated — it has no way to discover a new un-bundled static asset on its
+  own, so a `<script src=...>`/`<link href=...>` added to `index.html` (like
+  `metrics-config.js` was) must be added there too, or it silently 404s live.
 - **`studies.json`** — a site-root manifest (`StudySummary[]` in `types.ts`) the
   landing page fetches to build its list. `deploy.py` maintains it: it reads the
   *live* site's current `studies.json` (not local state), replaces any existing entry

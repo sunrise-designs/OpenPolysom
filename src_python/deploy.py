@@ -16,7 +16,14 @@ _API            = 'https://api.netlify.com/api/v1'
 # shared across every study. Their bytes rarely change, so Netlify's digest
 # dedup (see deploy_to_netlify) means they're uploaded once and then reused by
 # every later deploy, however many studies get added.
-_STATIC_ASSETS = ('styles.css', 'sw.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png')
+#
+# IMPORTANT: any new un-bundled static file src_web/index.html references
+# (a <script src=...>/<link href=...> pointing outside dist/chart.js) must be
+# added here too, or it silently 404s live — deploy.py has no way to discover
+# it automatically. metrics-config.js was missed this way when it was added;
+# don't repeat that.
+_STATIC_ASSETS = ('styles.css', 'sw.js', 'manifest.webmanifest', 'metrics-config.js',
+                   'icon.svg', 'icon-192.png', 'icon-512.png')
 
 _HEADERS_FILE = (
     '/index.html\n  Content-Type: text/html; charset=utf-8\n'
@@ -24,6 +31,7 @@ _HEADERS_FILE = (
     '/sw.js\n  Content-Type: application/javascript\n'
     '/styles.css\n  Content-Type: text/css\n'
     '/manifest.webmanifest\n  Content-Type: application/manifest+json\n'
+    '/metrics-config.js\n  Content-Type: application/javascript\n'
     '/studies.json\n  Content-Type: application/json\n'
     '/studies/*/meta.json\n  Content-Type: application/json\n'
     '/studies/*/events.json\n  Content-Type: application/json\n'
