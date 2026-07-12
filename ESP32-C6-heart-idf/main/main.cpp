@@ -3,7 +3,7 @@
 #include "battery_gauge.h"
 #include "logger.h"
 #include "display.h"
-#include "wifi_ntp.h"
+#include "time_sync.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -11,7 +11,6 @@
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "esp_system.h"
-#include "nvs_flash.h"
 #include <stdio.h>
 
 static const char *TAG = "main";
@@ -19,6 +18,10 @@ static const char *TAG = "main";
 // ── Boot diagnostics ──────────────────────────────────────────────────────────
 // Survives every reset except power loss, so it counts unattended reboots.
 static RTC_DATA_ATTR uint32_t s_boot_count = 0;
+
+// Which source set the system clock at boot ("RTC", "Serial", or "none") —
+// shown on the display; see the RTC/time_sync block in app_main().
+static const char *s_time_sync_source = "none";
 
 // Shown on the LCD because the resets under investigation only happen when no
 // serial monitor is attached.
@@ -197,7 +200,7 @@ static void sensor_task(void *arg)
                     dd.pressure_mbar   = g_pressure_mbar;
                     dd.recording       = logger_is_active();
                     dd.recording_seconds = logger_get_elapsed_seconds();
-                    dd.wifi_ssid       = wifi_ntp_get_ssid();
+                    dd.time_sync_source = s_time_sync_source;
                     dd.batt_percent    = battery_gauge_get_percentage();
                     display_update(&dd);
                 }
@@ -223,14 +226,6 @@ extern "C" void app_main(void)
     // innocent.
     // logger_log_init();
 
-    // NVS required by Wi-Fi
-    esp_err_t nvs_ret = nvs_flash_init();
-    if (nvs_ret == ESP_ERR_NVS_NO_FREE_PAGES ||
-        nvs_ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        nvs_flash_erase();
-        nvs_flash_init();
-    }
-
     ESP_LOGI(TAG, "Polysom ESP-IDF starting");
 
     // Display first (also initialises the shared I2C bus)
@@ -242,12 +237,15 @@ extern "C" void app_main(void)
     battery_gauge_init(sensors_get_adc_unit());
 
     // If a DS1307 RTC is fitted and already holds a plausible time (i.e. it
-    // has been set on a previous boot), use it and skip Wi-Fi entirely.
-    // Otherwise fall back to Wi-Fi/NTP and, if an RTC is fitted, seed it so
-    // future boots don't need Wi-Fi at all.
-    if (!sensors_rtc_startup_sync()) {
-        wifi_ntp_sync();
+    // has been set on a previous boot), use it and skip the serial time-sync
+    // prompt entirely. Otherwise wait for a host to send a time-sync command
+    // over the console UART (see components/time_sync, tools/set_time.py)
+    // and, if an RTC is fitted, seed it so future boots don't need the host.
+    if (sensors_rtc_startup_sync()) {
+        s_time_sync_source = "RTC";
+    } else if (time_sync_wait_for_command(TIME_SYNC_TIMEOUT_MS)) {
         sensors_rtc_write_from_system();
+        s_time_sync_source = "Serial";
     }
 
     // SD card + EDF file (logger owns the SD's SPI bus; display is I2C now)

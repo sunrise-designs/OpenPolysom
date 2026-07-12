@@ -361,8 +361,9 @@ void display_update(const display_data_t *data)
 
     // ── Current time ──────────────────────────────────────────────────────────
     // Reflects whichever source set the system clock at boot (DS1307 RTC or
-    // NTP — see main.cpp/sensors.cpp); a year sanity check catches the case
-    // where neither sync succeeded and the clock is still at its epoch default.
+    // a serial time-sync command — see main.cpp/sensors.cpp/time_sync.c); a
+    // year sanity check catches the case where neither sync succeeded and the
+    // clock is still at its epoch default.
     time_t now = time(NULL);
     struct tm t;
     localtime_r(&now, &t);
@@ -381,14 +382,15 @@ void display_update(const display_data_t *data)
         draw_string(X_OFFSET, Y_TIME, "No time sync");
     }
 
-    // ── Row 7: boot message (sticky) if set, else Wi-Fi network ───────────────
+    // ── Row 7: boot message (sticky) if set, else time-sync source ───────────
     if (s_boot_msg[0] != '\0') {
         draw_string(X_OFFSET, Y_ROW7, s_boot_msg);
-    } else if (data->wifi_ssid && data->wifi_ssid[0] != '\0') {
-        snprintf(buf, sizeof(buf), "WiFi: %s", data->wifi_ssid);
-        draw_string(X_OFFSET, Y_ROW7, buf);
     } else {
-        draw_string(X_OFFSET, Y_ROW7, "WiFi: (not used)");
+        const char *src = (data->time_sync_source && data->time_sync_source[0])
+                              ? data->time_sync_source
+                              : "none";
+        snprintf(buf, sizeof(buf), "Time sync: %s", src);
+        draw_string(X_OFFSET, Y_ROW7, buf);
     }
 
     oled_flush();

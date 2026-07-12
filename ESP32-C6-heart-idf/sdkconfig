@@ -1,6 +1,6 @@
 #
 # Automatically generated file. DO NOT EDIT.
-# Espressif IoT Development Framework (ESP-IDF) 6.0.2 Project Configuration
+# Espressif IoT Development Framework (ESP-IDF) 6.0.1 Project Configuration
 #
 # default:
 CONFIG_SOC_ADC_SUPPORTED=y
@@ -1057,18 +1057,7 @@ CONFIG_PARTITION_TABLE_MD5=y
 # Polysom Application
 #
 # default:
-CONFIG_POLYSOM_WIFI_SSID="TNCAP26203D"
-# default:
-CONFIG_POLYSOM_WIFI_PASSWORD="pFynYNnaMNk9syGR"
-# default:
-CONFIG_POLYSOM_WIFI_SSID_2=""
-# default:
-CONFIG_POLYSOM_WIFI_PASSWORD_2=""
-# default:
-CONFIG_POLYSOM_WIFI_SSID_3=""
-# default:
-CONFIG_POLYSOM_WIFI_PASSWORD_3=""
-CONFIG_POLYSOM_NTP_SERVER="pool.ntp.org"
+CONFIG_POLYSOM_TIME_SYNC_TIMEOUT_MS=30000
 # end of Polysom Application
 
 #
@@ -1094,8 +1083,6 @@ CONFIG_POLYSOM_DS1307_ADDR=0x68
 CONFIG_POLYSOM_RTC_SYNC_INTERVAL_MS=600000
 # default:
 CONFIG_POLYSOM_ECG_ADC_CHANNEL=1
-# default:
-CONFIG_POLYSOM_CARDIO_ADC_CHANNEL=0
 # default:
 CONFIG_POLYSOM_SPI_MOSI_PIN=6
 # default:
@@ -1220,44 +1207,6 @@ CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_CONTROLLER_ENABLED=y
 # default:
 # CONFIG_BT_CONTROLLER_DISABLED is not set
-
-#
-# Common Options
-#
-# default:
-CONFIG_BT_ALARM_MAX_NUM=50
-# default:
-CONFIG_BT_SMP_CRYPTO_STACK_TINYCRYPT=y
-# default:
-# CONFIG_BT_SMP_CRYPTO_STACK_MBEDTLS is not set
-
-#
-# BT Logs
-#
-
-#
-# Log Sources
-#
-# default:
-# CONFIG_BT_LE_CONTROLLER_LOG_ENABLED is not set
-# end of Log Sources
-
-# default:
-# CONFIG_BT_LOG_CRITICAL_ONLY is not set
-# default:
-# CONFIG_BLE_LOG_ENABLED is not set
-
-#
-# Legacy SPI Log Output (Deprecated - use BT Log Async Output instead)
-#
-# default:
-# CONFIG_BT_BLE_LOG_SPI_OUT_ENABLED is not set
-# end of Legacy SPI Log Output (Deprecated - use BT Log Async Output instead)
-# end of BT Logs
-
-# default:
-# CONFIG_BT_LE_USED_MEM_STATISTICS_ENABLED is not set
-# end of Common Options
 
 #
 # NimBLE Options
@@ -1542,6 +1491,8 @@ CONFIG_BT_LE_CONTROLLER_TASK_STACK_SIZE=4096
 # Controller debug features
 #
 # default:
+# CONFIG_BT_LE_CONTROLLER_LOG_ENABLED is not set
+# default:
 # CONFIG_BT_LE_ERROR_SIM_ENABLED is not set
 # default:
 # CONFIG_BT_LE_ASSERT_WHEN_ABNORMAL_DISCONN_ENABLED is not set
@@ -1697,22 +1648,32 @@ CONFIG_BT_LE_DFT_SYNC_SCHED_PRIO_LEVEL=1
 # CONFIG_BT_LE_CTRL_DL_ITVL_PHY_SYNC_EN is not set
 # default:
 # CONFIG_BT_LE_CTRL_ADV_FAST_TX_EN is not set
+# end of Controller Options
 
 #
-# Adv Tx Options
+# Common Options
 #
 # default:
-# CONFIG_BT_LE_CTRL_ADV_EVENT_INC_ON_FULL_TX_EN is not set
+CONFIG_BT_ALARM_MAX_NUM=50
 # default:
-# CONFIG_BT_LE_CTRL_ADV_CH38_39_TX_AVOID_CONFLICT_EN is not set
+CONFIG_BT_SMP_CRYPTO_STACK_TINYCRYPT=y
 # default:
-# CONFIG_BT_LE_ADV_CH39_TXPWR_CONFIG_SEPARATELY_EN is not set
+# CONFIG_BT_SMP_CRYPTO_STACK_MBEDTLS is not set
+
+#
+# BLE Log
+#
 # default:
-# CONFIG_BT_LE_CTRL_ADV_TX_CONTINUE_WHEN_EXCEED_ITVL_EN is not set
+# CONFIG_BLE_LOG_ENABLED is not set
+# end of BLE Log
+
 # default:
-# CONFIG_BT_LE_CTRL_ADV_RAND_CH_IDX_EN is not set
-# end of Adv Tx Options
-# end of Controller Options
+# CONFIG_BT_BLE_LOG_SPI_OUT_ENABLED is not set
+# default:
+# CONFIG_BT_BLE_LOG_UHCI_OUT_ENABLED is not set
+# default:
+# CONFIG_BT_LE_USED_MEM_STATISTICS_ENABLED is not set
+# end of Common Options
 
 # default:
 # CONFIG_BT_HCI_LOG_DEBUG_EN is not set
@@ -1809,8 +1770,6 @@ CONFIG_ESP_TLS_DYN_BUF_STRATEGY_SUPPORTED=y
 CONFIG_ESP_COEX_ENABLED=y
 # default:
 CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y
-# default:
-# CONFIG_ESP_COEX_EXTERNAL_COEXIST_ENABLE is not set
 # default:
 # CONFIG_ESP_COEX_POWER_MANAGEMENT is not set
 # default:
@@ -2427,8 +2386,6 @@ CONFIG_ESP_PHY_PLL_TRACK_PERIOD_MS=1000
 CONFIG_ESP_PHY_IRAM_OPT=y
 # default:
 # CONFIG_ESP_PHY_DEBUG is not set
-# default:
-CONFIG_ESP_PHY_ENABLE_VERSION_PRINT=y
 # end of PHY
 
 #
@@ -3633,6 +3590,8 @@ CONFIG_MBEDTLS_TLS_SERVER_AND_CLIENT=y
 # default:
 # CONFIG_MBEDTLS_TLS_CLIENT_ONLY is not set
 # default:
+# CONFIG_MBEDTLS_TLS_DISABLED is not set
+# default:
 # CONFIG_MBEDTLS_SSL_KEEP_PEER_CERTIFICATE is not set
 # default:
 # CONFIG_MBEDTLS_SSL_CONTEXT_SERIALIZATION is not set
@@ -3717,6 +3676,8 @@ CONFIG_MBEDTLS_CMAC_C=y
 #
 # Asymmetric Ciphers
 #
+# default:
+CONFIG_MBEDTLS_BIGNUM_C=y
 # default:
 CONFIG_MBEDTLS_RSA_C=y
 # default:
@@ -4250,8 +4211,6 @@ CONFIG_BT_NIMBLE_COEX_PHY_CODED_TX_RX_TLIM_DIS=y
 CONFIG_SW_COEXIST_ENABLE=y
 CONFIG_ESP32_WIFI_SW_COEXIST_ENABLE=y
 CONFIG_ESP_WIFI_SW_COEXIST_ENABLE=y
-# CONFIG_EXTERNAL_COEX_ENABLE is not set
-# CONFIG_ESP_WIFI_EXTERNAL_COEXIST_ENABLE is not set
 # CONFIG_GPTIMER_ISR_IRAM_SAFE is not set
 # CONFIG_MCPWM_ISR_IRAM_SAFE is not set
 # CONFIG_EVENT_LOOP_PROFILING is not set

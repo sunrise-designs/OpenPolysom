@@ -76,7 +76,7 @@ static int log_capture_vprintf(const char *fmt, va_list args)
     return console_n;
 }
 
-// Call once, first thing in app_main, so boot-time logs (Wi-Fi/NTP, etc.) are
+// Call once, first thing in app_main, so boot-time logs (time sync, etc.) are
 // buffered even before the SD card is mounted.
 void logger_log_init(void)
 {

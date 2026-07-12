@@ -30,11 +30,9 @@ biometric_meta.json
 ESP32-C6-heart-idf/reference/ESP32-C6-LCD-1.47-Test/
 src_rust/polysom_rtdi/target
 
-# Real Wi-Fi credentials for the ESP32 firmware — never committed.
-# sdkconfig is a generated file that ends up containing merged secrets
-# once sdkconfig.local is applied, so it's untracked too.
+# sdkconfig is a generated file (from sdkconfig.defaults + Kconfig via
+# menuconfig) — sdkconfig.defaults is the source of truth, so this is untracked.
 ESP32-C6-heart-idf/sdkconfig
-ESP32-C6-heart-idf/sdkconfig.local
 
 node_modules/.vite/
 src_web/dist/chart.js

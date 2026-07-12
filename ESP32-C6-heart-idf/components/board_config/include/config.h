@@ -23,6 +23,9 @@
 #define DS1307_ADDR           CONFIG_POLYSOM_DS1307_ADDR
 #define RTC_SYNC_INTERVAL_MS  CONFIG_POLYSOM_RTC_SYNC_INTERVAL_MS
 
+// ── Serial time sync (used when no RTC is fitted / holds no valid time) ─────
+#define TIME_SYNC_TIMEOUT_MS  CONFIG_POLYSOM_TIME_SYNC_TIMEOUT_MS
+
 // ── ADC — ECG signal (AD8232, raw, logged for later analysis) ────────────────
 // ECG_ADC_UNIT stays as the enum constant; ECG_ADC_CHANNEL is the raw integer
 // from Kconfig — callers must cast to adc_channel_t at the call site.

@@ -15,7 +15,7 @@ typedef struct {
     float       pressure_mbar;
     bool        recording;
     uint32_t    recording_seconds;
-    const char *wifi_ssid;  // "" if Wi-Fi wasn't used/connected at boot (e.g. RTC sync)
+    const char *time_sync_source;  // "RTC", "Serial", or "none" — see main.cpp
     uint8_t     batt_percent;
 } display_data_t;
 

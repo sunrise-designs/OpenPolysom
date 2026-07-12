@@ -40,11 +40,11 @@ void sensors_read_ecg(void);
 // If the DS1307 RTC is present and holds a plausible time (year >= 2026,
 // i.e. it has already been set), applies it to the system clock (as UTC,
 // then sets the local TZ) and returns true. Meant to be called once at
-// startup in place of wifi_ntp_sync().
+// startup in place of time_sync_wait_for_command().
 bool sensors_rtc_startup_sync(void);
 
 // Writes the current system time (UTC) to the RTC, if present. Call once
-// after a successful Wi-Fi/NTP sync so future boots can use the RTC instead.
+// after a successful serial time-sync so future boots can use the RTC instead.
 void sensors_rtc_write_from_system(void);
 
 // Re-reads the RTC, if present, and re-applies it to the system clock to

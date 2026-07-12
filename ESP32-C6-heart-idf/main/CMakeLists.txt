@@ -4,12 +4,11 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES
         board_config
-        wifi_ntp
+        time_sync
         sensors
         logger
         display
         battery_gauge
-        nvs_flash
         freertos
         esp_driver_gpio
         log

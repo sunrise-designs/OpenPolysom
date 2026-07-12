@@ -12,9 +12,6 @@ CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
-# Wi-Fi
-CONFIG_ESP_WIFI_ENABLED=y
-
 # FATFS / SD
 CONFIG_FATFS_LFN_HEAP=y
 CONFIG_FATFS_MAX_LFN=255
@@ -25,11 +22,7 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # Logging
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
-# Serial console / monitor baud rate
-CONFIG_ESP_CONSOLE_UART_BAUDRATE=921600
-CONFIG_ESPTOOLPY_MONITOR_BAUD=921600
-
-# Polysom application
-# Wi-Fi SSID/password are intentionally left unset here — put real
-# credentials in sdkconfig.local (gitignored, see sdkconfig.local.example).
-CONFIG_POLYSOM_NTP_SERVER="pool.ntp.org"
+# Serial console / monitor baud rate — also the rate tools/set_time.py uses
+# to send the binary time-sync command (see components/time_sync).
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
+CONFIG_ESPTOOLPY_MONITOR_BAUD=115200
