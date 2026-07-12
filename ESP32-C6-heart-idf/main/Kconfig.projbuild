@@ -44,22 +44,6 @@ menu "Polysom Application"
         help
             Hostname of the NTP server used for real-time clock sync.
 
-    config POLYSOM_FILESERVER_AP_SSID
-        string "File-server Wi-Fi AP SSID"
-        default "PolySom-Files"
-        help
-            SSID of the access point started when the download button
-            (GPIO20) is pressed, so recorded files can be pulled off over
-            Wi-Fi. The device is the AP; connect a laptop/phone to it
-            directly, no existing network required.
-
-    config POLYSOM_FILESERVER_AP_PASSWORD
-        string "File-server Wi-Fi AP password"
-        default "polysom123"
-        help
-            Password for the file-server access point. Must be empty (open
-            network) or at least 8 characters (WPA2 minimum).
-
 endmenu
 
 menu "Board Configuration"
@@ -114,9 +98,11 @@ menu "Board Configuration"
 
     config POLYSOM_ECG_ADC_CHANNEL
         int "ECG ADC channel number"
-        default 1
+        default 0
         help
-            ADC1 channel for the ECG signal. GPIO1 = channel 1 on ESP32-C6.
+            ADC1 channel for the ECG (AD8232) analog signal, sampled at
+            100 Hz and logged raw for later analysis. GPIO0 = channel 0 on
+            ESP32-C6.
 
     config POLYSOM_SPI_MOSI_PIN
         int "SPI MOSI pin"
@@ -133,33 +119,22 @@ menu "Board Configuration"
         int "SPI CLK pin"
         default 7
 
-    config POLYSOM_LCD_CS_PIN
-        int "LCD CS pin"
-        default 14
+    config POLYSOM_OLED_ADDR
+        hex "SH1106 OLED I2C address"
+        default 0x3C
+        help
+            7-bit I2C address of the SH1106 OLED. Shares the sensor I2C bus
+            (SDA/SCL above) — no dedicated pins needed. 0x3C is the common
+            default for 4-pin SH1106 breakout modules; some are strapped to
+            0x3D instead.
 
-    config POLYSOM_LCD_DC_PIN
-        int "LCD DC pin"
-        default 15
+    config POLYSOM_OLED_W
+        int "OLED width (pixels)"
+        default 128
 
-    config POLYSOM_LCD_RST_PIN
-        int "LCD RST pin"
-        default 21
-
-    config POLYSOM_LCD_BL_PIN
-        int "LCD backlight pin"
-        default 22
-
-    config POLYSOM_LCD_W
-        int "LCD width (pixels)"
-        default 172
-
-    config POLYSOM_LCD_H
-        int "LCD height (pixels)"
-        default 320
-
-    config POLYSOM_LCD_SPI_FREQ_HZ
-        int "LCD SPI frequency (Hz)"
-        default 12000000
+    config POLYSOM_OLED_H
+        int "OLED height (pixels)"
+        default 64
 
     config POLYSOM_SD_CS_PIN
         int "SD card CS pin"
@@ -188,14 +163,6 @@ menu "Board Configuration"
     config POLYSOM_DISPLAY_RATE_MS
         int "Display refresh period (ms)"
         default 200
-
-    config POLYSOM_BLE_RESCAN_MS
-        int "BLE rescan interval (ms)"
-        default 10000
-
-    config POLYSOM_MAX_SCAN_RETRIES
-        int "Maximum BLE scan retries before deep sleep"
-        default 10
 
     config POLYSOM_SLEEP_DURATION_MINS
         int "Deep sleep duration (minutes)"

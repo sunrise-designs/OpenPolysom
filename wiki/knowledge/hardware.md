@@ -2,7 +2,7 @@
 title: Hardware & C++ Ingest
 domain: knowledge
 status: living
-updated: 2026-07-08
+updated: 2026-07-12
 summary: The acquisition devices (RPi5 + ESP32-S3 wrist unit), their sensors, exact EDF+ channel layouts, and the I2C/BLE data paths that feed the C++ ingest side.
 ---
 
@@ -156,9 +156,11 @@ physical/digital scaling correctly. From there Python reads raw Zarr → writes 
 
 - **OpenPolysom** is the project name already stamped into the EDF+ equipment field
   (`src/main.cpp:34`); the RPi5 unit is its first reference build.
-- **ESP32-C6** is the watch-item successor to the S3 wrist unit (lower power, native 802.15.4 /
-  improved BLE + Wi-Fi 6) — a candidate for a smaller, longer-running wearable. Treat as an
-  [open fork](../state/decisions.md), not a committed change.
+- **ESP32-C6** is the successor to the S3 wrist unit (lower power, native 802.15.4 / Wi-Fi 6) —
+  a smaller, longer-running wearable. Unlike the S3 unit, the C6 firmware
+  ([`ESP32-C6-heart-idf`](../../ESP32-C6-heart-idf/)) does **not** use BLE: HR/RR have no live
+  source on this device for now (logged as zero), and the `ECG` channel is a direct analog AD8232
+  read off ADC channel 0, genuinely sampled at 100 Hz, rather than a BLE link to a chest strap.
 - **24-bit EEG** would move biosignals to **BDF+** (the raw anchor format already anticipated for
   this — see [data formats](../knowledge/data-formats.md)).
 - A wired-ECG path (AD8232 with full RA/LA/RL leads) remains an option Dmitry has explicitly noted

@@ -23,26 +23,22 @@
 #define DS1307_ADDR           CONFIG_POLYSOM_DS1307_ADDR
 #define RTC_SYNC_INTERVAL_MS  CONFIG_POLYSOM_RTC_SYNC_INTERVAL_MS
 
-// ── ADC — ECG signal ──────────────────────────────────────────────────────────
+// ── ADC — ECG signal (AD8232, raw, logged for later analysis) ────────────────
 // ECG_ADC_UNIT stays as the enum constant; ECG_ADC_CHANNEL is the raw integer
 // from Kconfig — callers must cast to adc_channel_t at the call site.
 #define ECG_ADC_UNIT    ADC_UNIT_1
 #define ECG_ADC_CHANNEL CONFIG_POLYSOM_ECG_ADC_CHANNEL
 
-// ── Shared SPI bus (LCD + SD card) ───────────────────────────────────────────
+// ── SH1106 OLED (128×64, I2C — shares the sensor I2C bus above) ──────────────
+#define OLED_ADDR     CONFIG_POLYSOM_OLED_ADDR
+#define OLED_W        CONFIG_POLYSOM_OLED_W
+#define OLED_H        CONFIG_POLYSOM_OLED_H
+
+// ── SPI bus (SD card only — the LCD used to share this bus, now I2C above) ──
 #define SPI_HOST_ID   SPI2_HOST
 #define SPI_MOSI_PIN  ((gpio_num_t)CONFIG_POLYSOM_SPI_MOSI_PIN)
 #define SPI_MISO_PIN  ((gpio_num_t)CONFIG_POLYSOM_SPI_MISO_PIN)
 #define SPI_CLK_PIN   ((gpio_num_t)CONFIG_POLYSOM_SPI_CLK_PIN)
-
-// ── ST7789 LCD (172×320) ──────────────────────────────────────────────────────
-#define LCD_CS_PIN    ((gpio_num_t)CONFIG_POLYSOM_LCD_CS_PIN)
-#define LCD_DC_PIN    ((gpio_num_t)CONFIG_POLYSOM_LCD_DC_PIN)
-#define LCD_RST_PIN   ((gpio_num_t)CONFIG_POLYSOM_LCD_RST_PIN)
-#define LCD_BL_PIN    ((gpio_num_t)CONFIG_POLYSOM_LCD_BL_PIN)
-#define LCD_W         CONFIG_POLYSOM_LCD_W
-#define LCD_H         CONFIG_POLYSOM_LCD_H
-#define LCD_SPI_FREQ  CONFIG_POLYSOM_LCD_SPI_FREQ_HZ
 
 // ── SD card ───────────────────────────────────────────────────────────────────
 #define SD_CS_PIN     ((gpio_num_t)CONFIG_POLYSOM_SD_CS_PIN)
@@ -54,8 +50,6 @@
 #define DISPLAY_RATE_HZ    CONFIG_POLYSOM_DISPLAY_RATE_HZ
 #define LOG_RATE_MS        CONFIG_POLYSOM_LOG_RATE_MS
 #define DISPLAY_RATE_MS    CONFIG_POLYSOM_DISPLAY_RATE_MS
-#define BLE_RESCAN_MS      CONFIG_POLYSOM_BLE_RESCAN_MS
-#define MAX_SCAN_RETRIES   CONFIG_POLYSOM_MAX_SCAN_RETRIES
 #define SLEEP_DURATION_US  ((uint64_t)CONFIG_POLYSOM_SLEEP_DURATION_MINS * 60ULL * 1000000ULL)
 
 // ── EDF file ──────────────────────────────────────────────────────────────────

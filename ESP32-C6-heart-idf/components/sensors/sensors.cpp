@@ -46,16 +46,9 @@ static esp_err_t add_dev(uint8_t addr, i2c_master_dev_handle_t *out)
     return i2c_master_bus_add_device(s_i2c_bus, &cfg, out);
 }
 
-bool sensors_init(void)
+bool sensors_init(i2c_master_bus_handle_t bus)
 {
-    i2c_master_bus_config_t bus_cfg = {};
-    bus_cfg.i2c_port          = I2C_PORT;
-    bus_cfg.sda_io_num        = I2C_SDA_PIN;
-    bus_cfg.scl_io_num        = I2C_SCL_PIN;
-    bus_cfg.clk_source        = I2C_CLK_SRC_DEFAULT;
-    bus_cfg.glitch_ignore_cnt = 7;
-    bus_cfg.flags.enable_internal_pullup = true;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &s_i2c_bus));
+    s_i2c_bus = bus;
 
     bool ok = true;
 

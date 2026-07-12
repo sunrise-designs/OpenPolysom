@@ -149,8 +149,8 @@ void wifi_ntp_sync(void)
 
     // Wi-Fi is only needed for this one-shot clock sync. esp_wifi_stop() alone
     // leaves the driver's TX/RX buffer pools resident on the heap for the rest
-    // of the run, competing with BLE's heap-backed mbuf pool (no PSRAM on this
-    // board — ~300KB internal RAM total) — fully deinit so that heap is back.
+    // of the run (no PSRAM on this board — ~300KB internal RAM total) — fully
+    // deinit so that heap is back.
     esp_wifi_stop();
     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, h_any);
     esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, h_ip);

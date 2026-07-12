@@ -5,12 +5,10 @@ idf_component_register(
     REQUIRES
         board_config
         wifi_ntp
-        ble_client
         sensors
         logger
         display
         battery_gauge
-        file_server
         nvs_flash
         freertos
         esp_driver_gpio

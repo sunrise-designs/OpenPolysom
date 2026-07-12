@@ -13,5 +13,5 @@
   "idf.port": "/dev/ttyACM0",
   "idf.monitorBaudRate": "921600",
   "idf.portWin": "COM5",
-  "idf.monitorPort": "COM5"
+  "idf.monitorPort": "COM7"
 }

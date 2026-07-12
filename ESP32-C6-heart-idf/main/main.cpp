@@ -4,7 +4,6 @@
 #include "logger.h"
 #include "display.h"
 #include "wifi_ntp.h"
-#include "file_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -14,10 +13,6 @@
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include <stdio.h>
-
-extern "C" {
-#include "ble_client.h"
-}
 
 static const char *TAG = "main";
 
@@ -48,20 +43,9 @@ static void show_reset_reason(void)
     ESP_LOGI(TAG, "Reset reason: %s, boot count %lu", rr, (unsigned long)s_boot_count);
 }
 
-// ── Deep-sleep entry ──────────────────────────────────────────────────────────
-static void enter_deep_sleep(void)
-{
-    ESP_LOGI(TAG, "Entering deep sleep for 10 minutes");
-    logger_close();
-    esp_sleep_enable_timer_wakeup(SLEEP_DURATION_US);
-    esp_deep_sleep_start();
-}
-
 // ── Download-mode button (GPIO20, falling edge) ──────────────────────────────
 // Wired to a momentary button to GND (internal pull-up enabled). On press:
-// stop recording and flush the EDF/log files, tear down BLE to free its heap,
-// then bring up the Wi-Fi AP + HTTP file server so the SD card contents can
-// be pulled off without opening the case.
+// stop recording and flush the EDF/log files.
 #define DOWNLOAD_BTN_PIN GPIO_NUM_19
 
 // Recording duration after which the display is shut down (§ wake button below).
@@ -84,11 +68,8 @@ static void download_mode_task(void *arg)
     uint32_t dummy;
     for (;;) {
         if (xQueueReceive(s_download_evt_queue, &dummy, portMAX_DELAY) == pdTRUE) {
-            ESP_LOGI(TAG, "Download button pressed: stopping recording, "
-                          "tearing down BLE, starting file server");
+            ESP_LOGI(TAG, "Download button pressed: stopping recording");
             logger_close();
-            ble_client_deinit();
-            file_server_start();
         }
     }
 }
@@ -133,9 +114,8 @@ static void wake_button_task(void *arg)
     uint32_t dummy;
     for (;;) {
         if (xQueueReceive(s_wake_evt_queue, &dummy, portMAX_DELAY) == pdTRUE) {
-            ESP_LOGI(TAG, "Wake button pressed: re-enabling display and starting file server");
+            ESP_LOGI(TAG, "Wake button pressed: re-enabling display");
             display_wake();
-            file_server_start();
         }
     }
 }
@@ -167,16 +147,15 @@ static void sensor_task(void *arg)
 
     int tick50   = 0;  // divides to 50 Hz
     int tick_disp = 0; // divides to 5 Hz
-    int tick_scan = 0; // BLE rescan watchdog (in 50 Hz ticks)
     int tick_rtc  = 0; // RTC drift-correction watchdog (in 50 Hz ticks)
-    int scan_attempts = 0;
     bool auto_sleep_triggered = false;
 
     while (1) {
         vTaskDelayUntil(&wake, period_ms);
 
-        // 100 Hz: ECG ADC
+        // 100 Hz: ECG ADC (AD8232, ADC channel 0)
         sensors_read_ecg();
+        logger_record_ecg(g_ecg_raw);
 
         // 50 Hz: all other sensors + logging + display
         if (++tick50 >= 2) {
@@ -184,12 +163,13 @@ static void sensor_task(void *arg)
 
             sensors_read();
 
+            // BLE removed: HR/RR have no live source, logged as zero for now.
             logger_record(
                 g_accel0_x, g_accel0_y, g_accel0_z,
                 g_accel1_x, g_accel1_y, g_accel1_z,
                 g_ldc0, g_ldc1,
-                g_ecg_raw, g_pressure_mbar,
-                ble_get_rr_ms());
+                g_pressure_mbar,
+                0);
 
             // 5 Hz: display
             if (++tick_disp >= 10) {
@@ -206,10 +186,6 @@ static void sensor_task(void *arg)
 
                 if (!display_is_sleeping()) {
                     display_data_t dd = {};
-                    dd.ble_connected   = ble_is_connected();
-                    dd.ble_device_name = ble_get_device_name();
-                    dd.bpm             = ble_get_bpm();
-                    dd.rr_ms           = ble_get_rr_ms();
                     dd.accel0[0]       = g_accel0_x;
                     dd.accel0[1]       = g_accel0_y;
                     dd.accel0[2]       = g_accel0_z;
@@ -218,14 +194,10 @@ static void sensor_task(void *arg)
                     dd.accel1[2]       = g_accel1_z;
                     dd.ldc0            = g_ldc0;
                     dd.ldc1            = g_ldc1;
-                    dd.ldc0_baseline   = logger_get_ldc0_baseline();
-                    dd.ldc1_baseline   = logger_get_ldc1_baseline();
-                    dd.baseline_ok     = logger_get_baseline_ok();
                     dd.pressure_mbar   = g_pressure_mbar;
                     dd.recording       = logger_is_active();
                     dd.recording_seconds = logger_get_elapsed_seconds();
                     dd.wifi_ssid       = wifi_ntp_get_ssid();
-                    dd.ap_active       = file_server_is_active();
                     dd.batt_percent    = battery_gauge_get_percentage();
                     display_update(&dd);
                 }
@@ -236,21 +208,6 @@ static void sensor_task(void *arg)
                 tick_rtc = 0;
                 sensors_rtc_periodic_sync();
             }
-
-            // BLE rescan watchdog: restart scan every BLE_RESCAN_MS if not connected
-            tick_scan++;
-            if (!ble_is_connected() &&
-                tick_scan >= (int)(BLE_RESCAN_MS / 20)) {
-                tick_scan = 0;
-                scan_attempts++;
-                ESP_LOGI(TAG, "BLE rescan attempt %d", scan_attempts);
-                if (scan_attempts >= MAX_SCAN_RETRIES) {
-                    enter_deep_sleep();
-                }
-            } else if (ble_is_connected()) {
-                scan_attempts = 0;
-                tick_scan     = 0;
-            }
         }
     }
 }
@@ -259,14 +216,14 @@ static void sensor_task(void *arg)
 extern "C" void app_main(void)
 {
     // Capture ESP_LOG output to SD as early as possible, before anything else logs.
-    // Temporarily disabled while tracking down the intermittent BLE heap panic —
+    // Temporarily disabled while tracking down an intermittent heap panic —
     // logger_log_init() installs the vprintf hook; leaving it uncalled means
     // log_mutex stays NULL, so every other logger_* call becomes a no-op
     // (they all guard on `if (!log_mutex) return;`). Re-enable once confirmed
     // innocent.
     // logger_log_init();
 
-    // NVS required by Wi-Fi and NimBLE
+    // NVS required by Wi-Fi
     esp_err_t nvs_ret = nvs_flash_init();
     if (nvs_ret == ESP_ERR_NVS_NO_FREE_PAGES ||
         nvs_ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -276,12 +233,12 @@ extern "C" void app_main(void)
 
     ESP_LOGI(TAG, "Polysom ESP-IDF starting");
 
-    // Display first (also initialises the shared SPI bus)
+    // Display first (also initialises the shared I2C bus)
     display_init();
     show_reset_reason();
 
-    // Sensors (I2C bus + ADC)
-    sensors_init();
+    // Sensors (register devices on the I2C bus display_init() created + ADC)
+    sensors_init(display_get_i2c_bus());
     battery_gauge_init(sensors_get_adc_unit());
 
     // If a DS1307 RTC is fitted and already holds a plausible time (i.e. it
@@ -293,15 +250,12 @@ extern "C" void app_main(void)
         sensors_rtc_write_from_system();
     }
 
-    // SD card + EDF file (adds SD to the SPI bus display_init already created)
+    // SD card + EDF file (logger owns the SD's SPI bus; display is I2C now)
     if (!logger_init()) {
         ESP_LOGE(TAG, "Logger init failed (no SD card?) - continuing without recording");
     }
 
-    // BLE client (NimBLE, runs its own FreeRTOS task internally)
-    ble_client_init();
-
-    // Download-mode button: stop recording / BLE, start Wi-Fi file server
+    // Download-mode button: stop recording
     download_button_init();
 
     // Display wake button: re-enable the screen after display_sleep()
