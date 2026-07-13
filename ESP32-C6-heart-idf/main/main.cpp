@@ -219,12 +219,9 @@ static void sensor_task(void *arg)
 extern "C" void app_main(void)
 {
     // Capture ESP_LOG output to SD as early as possible, before anything else logs.
-    // Temporarily disabled while tracking down an intermittent heap panic —
-    // logger_log_init() installs the vprintf hook; leaving it uncalled means
-    // log_mutex stays NULL, so every other logger_* call becomes a no-op
-    // (they all guard on `if (!log_mutex) return;`). Re-enable once confirmed
-    // innocent.
-    // logger_log_init();
+    // The previous intermittent heap panic was caused by an EDF write race condition,
+    // which has now been fixed with `edf_mutex`. Re-enabling boot log capture.
+    logger_log_init();
 
     ESP_LOGI(TAG, "Polysom ESP-IDF starting");
 

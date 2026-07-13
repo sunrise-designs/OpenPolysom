@@ -130,10 +130,21 @@ static bool read_valid_rtc_time(struct tm *out)
 static void apply_utc_tm_to_system_clock(const struct tm *t)
 {
     struct tm tmp = *t;
+    const char *current_tz = getenv("TZ");
+    char saved_tz[64] = {0};
+    if (current_tz) {
+        strncpy(saved_tz, current_tz, sizeof(saved_tz) - 1);
+    }
+
     setenv("TZ", "UTC0", 1);
     tzset();
     time_t utc = mktime(&tmp);
-    setenv("TZ", LOCAL_TZ, 1);
+
+    if (current_tz && saved_tz[0] != '\0') {
+        setenv("TZ", saved_tz, 1);
+    } else {
+        setenv("TZ", LOCAL_TZ, 1);
+    }
     tzset();
 
     struct timeval tv = { .tv_sec = utc, .tv_usec = 0 };

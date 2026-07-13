@@ -16,6 +16,7 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include <math.h>
+#include <stdlib.h>
 
 static const char *TAG = "logger";
 
@@ -150,6 +151,7 @@ static void log_close_file(void)
 
 static int edf_handle = -1;
 static bool logging_active = false;
+static SemaphoreHandle_t edf_mutex = NULL;
 static uint32_t record_count = 0;
 static char edf_file_path[64];
 static char json_file_path[64];
@@ -271,10 +273,11 @@ static void write_json_sidecar(const struct tm *start_t, const struct tm *end_t)
     };
     const int num_sensors = sizeof(sensors) / sizeof(sensors[0]);
 
+    const char *current_tz = getenv("TZ");
     fprintf(f, "{\n");
     fprintf(f, "  \"device_uid\": \"%s\",\n", device_uid);
     fprintf(f, "  \"recording_start_time\": \"%s\",\n", start_time);
-    fprintf(f, "  \"timezone\": \"%s\",\n", LOCAL_TZ);
+    fprintf(f, "  \"timezone\": \"%s\",\n", current_tz ? current_tz : LOCAL_TZ);
     if (end_t) {
         char end_time[32];
         strftime(end_time, sizeof(end_time), "%Y-%m-%dT%H:%M:%S", end_t);
@@ -378,6 +381,9 @@ static bool open_edf(void)
 
 bool logger_init(void)
 {
+    if (edf_mutex == NULL) {
+        edf_mutex = xSemaphoreCreateMutex();
+    }
     if (!sd_mount()) return false;
     return open_edf();
 }
@@ -388,7 +394,11 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
                    float    pressure_mbar,
                    uint16_t rr_ms)
 {
-    if (!logging_active || edf_handle < 0) return;
+    if (edf_mutex) xSemaphoreTake(edf_mutex, portMAX_DELAY);
+    if (!logging_active || edf_handle < 0) {
+        if (edf_mutex) xSemaphoreGive(edf_mutex);
+        return;
+    }
 
     if (!baseline_ok && ldc0 != 0 &&
         difftime(time(NULL), recording_start_time) >= BASELINE_DELAY_S) {
@@ -452,17 +462,24 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
             log_flush(); // piggyback on the EDF flush cadence to limit SD wear
         }
     }
+    if (edf_mutex) xSemaphoreGive(edf_mutex);
 }
 
 void logger_record_ecg(uint16_t ecg_raw)
 {
-    if (!logging_active || edf_handle < 0) return;
+    if (edf_mutex) xSemaphoreTake(edf_mutex, portMAX_DELAY);
+    if (!logging_active || edf_handle < 0) {
+        if (edf_mutex) xSemaphoreGive(edf_mutex);
+        return;
+    }
     if (ecg_idx < SAMPLES_100HZ)
         ecg_buf[ecg_idx++] = (int)ecg_raw;
+    if (edf_mutex) xSemaphoreGive(edf_mutex);
 }
 
 void logger_close(void)
 {
+    if (edf_mutex) xSemaphoreTake(edf_mutex, portMAX_DELAY);
     if (edf_handle >= 0) {
         edfclose_file(edf_handle);
         edf_handle     = -1;
@@ -475,6 +492,7 @@ void logger_close(void)
         write_json_sidecar(&start_t, &end_t);
     }
     log_close_file();
+    if (edf_mutex) xSemaphoreGive(edf_mutex);
 }
 
 bool logger_format_sd(void)
