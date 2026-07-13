@@ -39,7 +39,7 @@ const GAP_PCT = 1.0;
 // present (and only rendered) when the recording device captured them — Accel1 when
 // a second accelerometer was scored (see wiki/knowledge/signal-processing.md,
 // bilateral PLM scoring), Thoracic/Abdomen/Flow on the RPi5 6-channel and ESP32-C6
-// 11-channel devices but not the wrist-only ESP32-S3 log (see wiki/knowledge/hardware.md).
+// 11-channel devices but not the wrist-only logs (see wiki/knowledge/hardware.md).
 const CHANNELS: readonly ChannelSrc[] = [
   { name: 'RR · ms', color: COLORS.cardiac, pick: (z) => ({ x: z.rr_t, y: z.rr, overlay: false }) },
   { name: 'Accel mag', color: COLORS.movement, channelKey: 'accel_mag', pick: (z) => ({ x: z.t, y: z.accel_mag, overlay: true }) },

@@ -32,9 +32,9 @@ See also: [data formats](../knowledge/data-formats.md) ·
   via edflib — Thoracic + Abdomen (LDC1612 RIP belts, nH, 50 Hz), HR (BPM, 1 Hz),
   RR (ms, 5 Hz), Flow (SDP800, 50 Hz), HR_Raw (AD8232 ECG, 100 Hz). Physical samples
   (`edfwrite_physical_samples`).
-- **ESP32-S3 wrist device** (`ESP32-S3-heart/BLE_HR_plus_accel_ADC/logger.cpp`): 4-channel
-  EDF+ — AccelX/Y/Z (12-bit @10 Hz) + RR (@1 Hz). Digital samples
-  (`edfwrite_digital_samples`).
+- **ESP32-C6 wrist device** (`ESP32-C6-heart-idf/components/logger/logger.cpp`): 11-channel
+  EDF+ — Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z, Accel1X/Y/Z, RR. Runs offline (no Wi-Fi/BLE),
+  features an SH1106 I2C display and serial time sync.
 - Build: `CMakeLists.txt` at repo root; `./setup_env.sh` + `./run_protosom.sh` on the Pi
   (README "How to build / How to run").
 

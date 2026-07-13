@@ -1,10 +1,13 @@
 # ProtoSom Agent Rules
 
+## Ignore this code
+Ignore anything in Deprecated/ folder.
+
 ## Read the Wiki Before Making Code Changes
 Before making any code changes, proposing designs, or executing tasks in this repository, you **MUST** read the ProtoSom Wiki/Knowledgebase.
 
 ## Hardware Specs
-Short info about hardware is in [hardware.md](../ESP32-C6-heart-idf/.claude/CLAUDE.md).
+Short info about hardware is in [.claude/CLAUDE.md](../ESP32-C6-heart-idf/.claude/CLAUDE.md).
 
 1. **Start with the Index**: Read the [Wiki Index](../wiki/INDEX.md) to understand the map of documentation.
 2. **Review Crucial Context**:

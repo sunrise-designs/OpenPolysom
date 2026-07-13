@@ -40,7 +40,7 @@ choice and the Python→C++ long-term watch-item are recorded in
 ## C++ — the C++ ingest (Dmitry)
 
 The acquisition side already exists: [`src/main.cpp`](../../src/main.cpp) (RPi5, 6-channel)
-and `ESP32-S3-heart/.../logger.cpp` (wrist, 4-channel) write EDF+ via **edflib**. C++ also
+and `ESP32-C6-heart-idf/components/logger/logger.cpp` (wrist, 11-channel) write EDF+ via **edflib**. C++ also
 converts that raw device data into the **raw anchor** Zarr and may own the EDF/BDF
 **clinical export**. C++ is chosen for performance and medical-compliance friendliness.
 

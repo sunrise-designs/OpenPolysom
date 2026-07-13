@@ -67,8 +67,8 @@ a single language-neutral contract between the two sides:
 
 - **C++ ingest** (Dmitry) — device acquisition (already exists:
   [`src/main.cpp`](../../src/main.cpp) on the RPi5,
-  [`logger.cpp`](../../ESP32-S3-heart/BLE_HR_plus_accel_ADC/logger.cpp) on the
-  ESP32-S3, both writing EDF+ via edflib) + converting raw EDF+/FLAC into the
+  [`logger.cpp`](../../ESP32-C6-heart-idf/components/logger/logger.cpp) on the
+  ESP32-C6, both writing EDF+ via edflib) + converting raw EDF+/FLAC into the
   **raw** Zarr layer + header-metadata extraction. Writes Zarr via a C++ Zarr
   lib (TensorStore / z5 / xtensor-zarr); may own the EDF/BDF clinical export.
 - **Python processing** (Dmitry) — the copious signal processing + ML

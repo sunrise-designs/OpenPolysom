@@ -207,11 +207,11 @@ export interface ZarrData {
   readonly accel1_mag: Float32Array;
   /** Bilateral combined (either-leg envelope) vector magnitude. Empty when only one accelerometer was scored. */
   readonly accel_combined_mag: Float32Array;
-  /** Thoracic RIP belt (nH). Empty on wrist-only (ESP32-S3) recordings with no respiratory device. */
+  /** Thoracic RIP belt (nH). Empty on wrist-only recordings with no respiratory device. */
   readonly thoracic: Float32Array;
-  /** Abdomen RIP belt (nH). Empty on wrist-only (ESP32-S3) recordings with no respiratory device. */
+  /** Abdomen RIP belt (nH). Empty on wrist-only recordings with no respiratory device. */
   readonly abdomen: Float32Array;
-  /** Nasal airflow (mbar). Empty on wrist-only (ESP32-S3) recordings with no respiratory device. */
+  /** Nasal airflow (mbar). Empty on wrist-only recordings with no respiratory device. */
   readonly flow: Float32Array;
   readonly rr: Float32Array;
   readonly rr_t: Float64Array;

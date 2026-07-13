@@ -20,9 +20,7 @@ This page is **living** — re-order and tick items as the build moves.
 ## Where we are today (current state)
 
 - **C++ ingest** writes EDF+ at the device only:
-  [`src/main.cpp`](../../src/main.cpp) (RPi5, 6-channel physical samples),
-  [`logger.cpp`](../../ESP32-S3-heart/BLE_HR_plus_accel_ADC/logger.cpp)
-  (ESP32-S3, 4-channel digital samples), and the newer
+  [`src/main.cpp`](../../src/main.cpp) (RPi5, 6-channel physical samples), and
   [`logger.cpp`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)
   (ESP32-C6, 11-channel digital samples), all via edflib. There is **no
   EDF+ → raw-Zarr** ingest step yet — Zarr is currently produced by Python.
@@ -103,7 +101,7 @@ chunked along time, plus extracted EDF+ header metadata into `meta.json`.
   **digital** (`edfwrite_digital_samples`); see [data formats](../knowledge/data-formats.md).
 - Write Zarr v2 with the chosen C++ lib (stage 0), Blosc(zstd, shuffle), one
   array per channel (Thoracic, Abdomen, HR, RR, Flow, HR_Raw from the RPi5;
-  AccelX/Y/Z, RR from the ESP32-S3; Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z,
+  Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z,
   Accel1X/Y/Z, RR from the ESP32-C6), each chunked along time — **not** the
   single-chunk shortcut [`export_zarr.py`](../../src_python/export_zarr.py) uses.
 - **Round-trip tests** (this is the IEC-62304 entry point): EDF+ → raw Zarr →

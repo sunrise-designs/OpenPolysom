@@ -41,7 +41,7 @@ Add `-c` / `--count` flag and `--threshold` option to `main()`:
 Can be combined with `-f` to specify an input file (use pre-filtered `.bin` for best results).
 
 ## Files to Modify
-**`ESP32-S3-heart/read_log.py`** — add `count_plm()` function and two CLI args (`-c`/`--count`, `--threshold`).
+**`src_python/read_log.py`** — add `count_plm()` function and two CLI args (`-c`/`--count`, `--threshold`).
 
 No new imports needed (numpy already imported).
 
