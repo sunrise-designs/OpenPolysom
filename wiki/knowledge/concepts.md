@@ -95,7 +95,7 @@ surface from the captured signals. Plain-language sketches per `README.md:51-60`
   (`README.md:92`).
 - **RR interval** — the time (ms) between successive R-peaks of consecutive
   heartbeats; the beat-to-beat timing series (a 5 Hz channel on the RPi5 device;
-  1 Hz on the ESP32-S3 wrist device). Note: *RR interval* (cardiac) is distinct
+  1 Hz on the ESP32-C6 wrist device). Note: *RR interval* (cardiac) is distinct
   from *RR = respiratory rate* in other PSG literature — in ProtoSom "RR" means
   the cardiac interval.
 - **HRV (Heart Rate Variability)** — variability of the RR-interval series; a
@@ -111,7 +111,7 @@ surface from the captured signals. Plain-language sketches per `README.md:51-60`
 
 ### Movement
 
-- **Accelerometry** — 3-axis acceleration (AccelX/Y/Z) from the ESP32-S3 wrist
+- **Accelerometry** — 3-axis acceleration (Accel0X/Y/Z, Accel1X/Y/Z) from the ESP32-C6 wrist
   device (12-bit @ 10 Hz). Used to detect limb movement for PLMD. The legacy
   binary log packs accel + RR at 10 Hz; baseline drift (posture changes) is
   stripped by rolling-median subtraction before PLM detection

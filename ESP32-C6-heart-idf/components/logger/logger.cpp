@@ -10,13 +10,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "sensors.h"
-#include "ble_client.h"
 #include <time.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
 #include <unistd.h>
 #include <math.h>
+#include <stdlib.h>
 
 static const char *TAG = "logger";
 
@@ -77,7 +77,7 @@ static int log_capture_vprintf(const char *fmt, va_list args)
     return console_n;
 }
 
-// Call once, first thing in app_main, so boot-time logs (Wi-Fi/NTP, etc.) are
+// Call once, first thing in app_main, so boot-time logs (time sync, etc.) are
 // buffered even before the SD card is mounted.
 void logger_log_init(void)
 {
@@ -151,6 +151,7 @@ static void log_close_file(void)
 
 static int edf_handle = -1;
 static bool logging_active = false;
+static SemaphoreHandle_t edf_mutex = NULL;
 static uint32_t record_count = 0;
 static char edf_file_path[64];
 static char json_file_path[64];
@@ -160,13 +161,14 @@ static time_t recording_start_time = 0;
 static int thoracic_buf[SAMPLES_50HZ];
 static int abdomen_buf[SAMPLES_50HZ];
 static int flow_buf[SAMPLES_50HZ];
-static int ecg_buf[SAMPLES_50HZ];
+static int ecg_buf[SAMPLES_100HZ];
 static int a0x_buf[SAMPLES_50HZ], a0y_buf[SAMPLES_50HZ], a0z_buf[SAMPLES_50HZ];
 static int a1x_buf[SAMPLES_50HZ], a1y_buf[SAMPLES_50HZ], a1z_buf[SAMPLES_50HZ];
 static int rr_buf[SAMPLES_RR_HZ];
 
 static int sample_idx = 0;
 static int rr_idx     = 0;
+static int ecg_idx    = 0;
 
 // ── LDC baseline ──────────────────────────────────────────────────────────────
 // Baseline is captured 20 minutes into the recording (BASELINE_DELAY_S), once
@@ -197,9 +199,24 @@ uint32_t logger_get_elapsed_seconds(void)
 // ── SD card ───────────────────────────────────────────────────────────────────
 static sdmmc_card_t *s_card = NULL;
 
+// SD card is now the sole user of this SPI bus — the LCD used to also share
+// it, but the display moved to I2C (SH1106 OLED), so logger owns the bus.
+static bool s_spi_bus_ready = false;
+
 static bool sd_mount(void)
 {
-    // SPI bus must already be initialised by display_init().
+    if (!s_spi_bus_ready) {
+        spi_bus_config_t bus_cfg = {};
+        bus_cfg.mosi_io_num     = SPI_MOSI_PIN;
+        bus_cfg.miso_io_num     = SPI_MISO_PIN;
+        bus_cfg.sclk_io_num     = SPI_CLK_PIN;
+        bus_cfg.quadwp_io_num   = -1;
+        bus_cfg.quadhd_io_num   = -1;
+        bus_cfg.max_transfer_sz = 4000;
+        ESP_ERROR_CHECK(spi_bus_initialize(SPI_HOST_ID, &bus_cfg, SPI_DMA_CH_AUTO));
+        s_spi_bus_ready = true;
+    }
+
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
     host.slot = SPI_HOST_ID;
     host.max_freq_khz = SD_SPI_FREQ / 1000;
@@ -225,11 +242,9 @@ static bool sd_mount(void)
 }
 
 // ── JSON sidecar ─────────────────────────────────────────────────────────────
-// Written at recording start (end_t == NULL: recording_end_time is null, no
-// heap log yet) and rewritten in full at logger_close() (end_t != NULL:
-// fills in recording_end_time and appends the BLE connect/disconnect
-// free-heap log — see ble_client.h — for tracking down a suspected BLE-stack
-// memory leak across repeated reconnects).
+// Written at recording start (end_t == NULL: recording_end_time is null) and
+// rewritten in full at logger_close() (end_t != NULL: fills in
+// recording_end_time).
 static void write_json_sidecar(const struct tm *start_t, const struct tm *end_t)
 {
     FILE *f = fopen(json_file_path, "w");
@@ -253,16 +268,16 @@ static void write_json_sidecar(const struct tm *start_t, const struct tm *end_t)
         {"MMA8451 accel1",             g_mma1_present,      50.0},
         {"LDC1612 (thoracic/abdomen)", g_ldc_present,       50.0},
         {"SDP800 flow",                g_sdp_present,       50.0},
-        {"AD8232 ECG",                 true,                50.0},
+        {"AD8232 ECG",                 true,               100.0},
         {"DS1307 RTC",                 g_rtc_present,        0.0},
-        {"Polar H9 (BLE HR/RR)",       ble_is_connected(),   1.0},
     };
     const int num_sensors = sizeof(sensors) / sizeof(sensors[0]);
 
+    const char *current_tz = getenv("TZ");
     fprintf(f, "{\n");
     fprintf(f, "  \"device_uid\": \"%s\",\n", device_uid);
     fprintf(f, "  \"recording_start_time\": \"%s\",\n", start_time);
-    fprintf(f, "  \"timezone\": \"%s\",\n", LOCAL_TZ);
+    fprintf(f, "  \"timezone\": \"%s\",\n", current_tz ? current_tz : LOCAL_TZ);
     if (end_t) {
         char end_time[32];
         strftime(end_time, sizeof(end_time), "%Y-%m-%dT%H:%M:%S", end_t);
@@ -281,26 +296,7 @@ static void write_json_sidecar(const struct tm *start_t, const struct tm *end_t)
         }
         fprintf(f, "%s\n", (i == num_sensors - 1) ? "" : ",");
     }
-    fprintf(f, "  ]");
-
-    if (end_t) {
-        ble_heap_event_t events[BLE_HEAP_LOG_MAX];
-        size_t n = ble_get_heap_log(events, BLE_HEAP_LOG_MAX);
-        fprintf(f, ",\n  \"ble_heap_log\": [\n");
-        for (size_t i = 0; i < n; i++) {
-            struct tm et;
-            localtime_r(&events[i].timestamp, &et);
-            char ets[32];
-            strftime(ets, sizeof(ets), "%Y-%m-%dT%H:%M:%S", &et);
-            fprintf(f, "    {\"time\": \"%s\", \"event\": \"%s\", \"free_heap\": %lu, \"min_free_heap\": %lu}%s\n",
-                    ets, events[i].connected ? "connect" : "disconnect",
-                    (unsigned long)events[i].free_heap, (unsigned long)events[i].min_free_heap,
-                    (i == n - 1) ? "" : ",");
-        }
-        fprintf(f, "  ]\n");
-    } else {
-        fprintf(f, "\n");
-    }
+    fprintf(f, "  ]\n");
     fprintf(f, "}\n");
     fclose(f);
     ESP_LOGI(TAG, "Sidecar written: %s", json_file_path);
@@ -342,14 +338,14 @@ static bool open_edf(void)
         {"Thoracic","LDC1612 CH0",  "counts",50, 32767,-32767,  1e6, -1e6},
         {"Abdomen", "LDC1612 CH1",  "counts",50, 32767,-32767,  1e6, -1e6},
         {"Flow",    "SDP800-125Pa", "mbar",  50, 32767,-32767,  2.0, -2.0},
-        {"ECG",     "AD8232 ADC",   "ADC",   50,  4095,     0, 4095.0, 0.0},
+        {"ECG",     "AD8232 ADC0",  "ADC",  100,  4095,     0, 4095.0, 0.0},
         {"Accel0X", "MMA8451 ch0",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
         {"Accel0Y", "MMA8451 ch0",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
         {"Accel0Z", "MMA8451 ch0",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
         {"Accel1X", "MMA8451 ch1",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
         {"Accel1Y", "MMA8451 ch1",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
         {"Accel1Z", "MMA8451 ch1",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
-        {"RR",      "Polar H9 BLE", "ms",   2.5,  2000,     0, 2000.0, 0.0},
+        {"RR",      "N/A",         "ms",   2.5,  2000,     0, 2000.0, 0.0},
     };
 
     for (int i = 0; i < NUM_SIGNALS; i++) {
@@ -375,6 +371,7 @@ static bool open_edf(void)
 
     sample_idx    = 0;
     rr_idx        = 0;
+    ecg_idx       = 0;
     record_count  = 0;
     recording_start_time = now;
     logging_active = true;
@@ -384,6 +381,9 @@ static bool open_edf(void)
 
 bool logger_init(void)
 {
+    if (edf_mutex == NULL) {
+        edf_mutex = xSemaphoreCreateMutex();
+    }
     if (!sd_mount()) return false;
     return open_edf();
 }
@@ -391,10 +391,14 @@ bool logger_init(void)
 void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
                    int16_t  a1x, int16_t  a1y, int16_t  a1z,
                    uint32_t ldc0, uint32_t ldc1,
-                   uint16_t ecg,  float    pressure_mbar,
+                   float    pressure_mbar,
                    uint16_t rr_ms)
 {
-    if (!logging_active || edf_handle < 0) return;
+    if (edf_mutex) xSemaphoreTake(edf_mutex, portMAX_DELAY);
+    if (!logging_active || edf_handle < 0) {
+        if (edf_mutex) xSemaphoreGive(edf_mutex);
+        return;
+    }
 
     if (!baseline_ok && ldc0 != 0 &&
         difftime(time(NULL), recording_start_time) >= BASELINE_DELAY_S) {
@@ -418,7 +422,6 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
 
     int fv = (int)(pressure_mbar * 32767.0f / 2.0f);
     flow_buf[sample_idx] = fv < -32767 ? -32767 : fv > 32767 ? 32767 : fv;
-    ecg_buf[sample_idx]  = (int)ecg;
 
     a0x_buf[sample_idx] = a0x;
     a0y_buf[sample_idx] = a0y;
@@ -448,6 +451,7 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
 
         sample_idx = 0;
         rr_idx     = 0;
+        ecg_idx    = 0;
         record_count++;
 
         if (record_count % 10 == 0) {
@@ -458,10 +462,24 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
             log_flush(); // piggyback on the EDF flush cadence to limit SD wear
         }
     }
+    if (edf_mutex) xSemaphoreGive(edf_mutex);
+}
+
+void logger_record_ecg(uint16_t ecg_raw)
+{
+    if (edf_mutex) xSemaphoreTake(edf_mutex, portMAX_DELAY);
+    if (!logging_active || edf_handle < 0) {
+        if (edf_mutex) xSemaphoreGive(edf_mutex);
+        return;
+    }
+    if (ecg_idx < SAMPLES_100HZ)
+        ecg_buf[ecg_idx++] = (int)ecg_raw;
+    if (edf_mutex) xSemaphoreGive(edf_mutex);
 }
 
 void logger_close(void)
 {
+    if (edf_mutex) xSemaphoreTake(edf_mutex, portMAX_DELAY);
     if (edf_handle >= 0) {
         edfclose_file(edf_handle);
         edf_handle     = -1;
@@ -474,6 +492,7 @@ void logger_close(void)
         write_json_sidecar(&start_t, &end_t);
     }
     log_close_file();
+    if (edf_mutex) xSemaphoreGive(edf_mutex);
 }
 
 bool logger_format_sd(void)

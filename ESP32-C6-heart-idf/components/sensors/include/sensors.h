@@ -1,4 +1,5 @@
 #pragma once
+#include "driver/i2c_master.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -23,23 +24,27 @@ extern volatile bool g_mma1_present;
 extern volatile bool g_ldc_present;
 extern volatile bool g_sdp_present;
 
-// Initialise the I2C bus and all sensors. Returns false if any sensor fails.
-bool sensors_init(void);
+// Register all sensors on the given I2C bus (created by display_init() — see
+// display_get_i2c_bus() — since only one master bus handle can own a port,
+// and the OLED and the sensors share the same physical I2C bus). Returns
+// false if any sensor fails.
+bool sensors_init(i2c_master_bus_handle_t bus);
 
 // Read all sensors (call at 50 Hz from sensor_task).
 void sensors_read(void);
 
-// Read ECG ADC (call at 100 Hz from sensor_task).
+// Read ECG ADC — AD8232 on ADC channel 0, raw counts (call at 100 Hz from
+// sensor_task).
 void sensors_read_ecg(void);
 
 // If the DS1307 RTC is present and holds a plausible time (year >= 2026,
 // i.e. it has already been set), applies it to the system clock (as UTC,
 // then sets the local TZ) and returns true. Meant to be called once at
-// startup in place of wifi_ntp_sync().
+// startup in place of time_sync_wait_for_command().
 bool sensors_rtc_startup_sync(void);
 
 // Writes the current system time (UTC) to the RTC, if present. Call once
-// after a successful Wi-Fi/NTP sync so future boots can use the RTC instead.
+// after a successful serial time-sync so future boots can use the RTC instead.
 void sensors_rtc_write_from_system(void);
 
 // Re-reads the RTC, if present, and re-applies it to the system clock to

@@ -9,7 +9,7 @@ summary: The canonical reference for ProtoSom's data pipeline after data leaves 
 # Component-2 Architecture
 
 ProtoSom has two components. **Component 1** is the hardware data acquisition (a bespoke PCB,
-RPi5 + ESP32-S3, owned by Dmitry). **Component 2** is everything *after* the data leaves the device:
+RPi5 + ESP32-C6, owned by Dmitry). **Component 2** is everything *after* the data leaves the device:
 ingest, signal processing, the viewer, and the report. This page is the spine — the canonical
 reference for how component 2 is structured. Everything else in the wiki hangs off it.
 
@@ -62,7 +62,7 @@ against. It is **never modified** by any stage of component 2.
 The 6-channel EDF+ written by [`src/main.cpp`](../../src/main.cpp) (RPi5 acquisition) is a concrete
 raw anchor — Thoracic + Abdomen (LDC1612 RIP belts, nH, 50 Hz), HR (BPM, 1 Hz), RR (ms, 5 Hz),
 Flow (SDP800, 50 Hz), HR_Raw (AD8232 ECG ADC, 100 Hz); see the `ChannelInfo` table at
-[`src/main.cpp:145`](../../src/main.cpp). The ESP32-S3 wrist device adds a 4-channel EDF+
+[`src/main.cpp:145`](../../src/main.cpp). The ESP32-C6 wrist device adds an 11-channel EDF+
 (AccelX/Y/Z @10 Hz + RR @1 Hz), and the newer ESP32-C6 wrist logger
 ([`logger.cpp`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)) writes an 11-channel
 EDF+ (Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z, Accel1X/Y/Z, RR).
@@ -85,7 +85,7 @@ Two producers write this layer:
 
 Per-array Zarr attribute `storage = physical | digital` records the EDF write path:
 [`src/main.cpp`](../../src/main.cpp) writes physical doubles via `edfwrite_physical_samples` (e.g.
-[`src/main.cpp:286`](../../src/main.cpp)), while the ESP32-S3 `logger.cpp` writes digital via
+[`src/main.cpp:286`](../../src/main.cpp)), while the ESP32-C6 `logger.cpp` writes digital via
 `edfwrite_digital_samples`. The working store is **regenerable from the raw anchor**, so it can be
 deleted and rebuilt at will. It is the only mutable layer and the meeting point of the whole
 architecture. ([Zarr v2 + Blosc/zstd rationale](data-formats.md), [decisions](../state/decisions.md).)

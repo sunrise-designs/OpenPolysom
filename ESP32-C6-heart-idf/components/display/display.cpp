@@ -1,13 +1,7 @@
 #include "display.h"
 #include "config.h"
-#include "esp_lcd_panel_io.h"
-#include "esp_lcd_panel_ops.h"
-#include "esp_lcd_panel_st7789.h"
-#include "driver/spi_master.h"
-#include "driver/ledc.h"
+#include "driver/i2c_master.h"
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,83 +9,25 @@
 
 static const char *TAG = "display";
 
-// ── RGB565 colour palette ─────────────────────────────────────────────────────
-#define COL_BG     0x0000u  // black
-#define COL_HDR    0xFD20u  // orange
-#define COL_LABEL  0x07FFu  // cyan
-#define COL_VALUE  0xFFFFu  // white
-#define COL_DIV    0x39E7u  // dark grey
-#define COL_WARN   0xF800u  // red
+// ── Layout — 128x64, 8 rows of 8px (one SH1106 GDDRAM page each) ─────────────
+#define X_OFFSET 0
+#define Y_TITLE  0
+#define Y_A0     8
+#define Y_A1     16
+#define Y_LDC    24
+#define Y_FLOW   32
+#define Y_REC    40
+#define Y_TIME   48
+#define Y_ROW7   56  // boot message if set, else Wi-Fi SSID
 
-#define Y_OFFSET 18
-#define X_OFFSET 10
-
-// ── Layout Y positions ────────────────────────────────────────────────────────
-#define Y_TITLE     0   + Y_OFFSET
-#define Y_DEV       18  + Y_OFFSET
-#define Y_HR        30  + Y_OFFSET
-#define Y_DIV1      42  + Y_OFFSET
-#define Y_A0_LBL    46  + Y_OFFSET
-#define Y_A0        57  + Y_OFFSET
-#define Y_A1_LBL    79  + Y_OFFSET
-#define Y_A1        89  + Y_OFFSET
-#define Y_DIV2      111 + Y_OFFSET
-#define Y_LDC_LBL   115 + Y_OFFSET
-#define Y_CH0       126 + Y_OFFSET
-#define Y_CH1       146 + Y_OFFSET
-#define Y_FLOW      168 + Y_OFFSET
-#define Y_BATT      178 + Y_OFFSET
-#define Y_WIFI_ST   188 + Y_OFFSET
-#define Y_BOOT      200 + Y_OFFSET  // boot info line — display_update() never draws here
-#define Y_TIME      222 + Y_OFFSET
-#define Y_WIFI_SSID 234 + Y_OFFSET
-
-
-// ── Backlight (PWM via LEDC) ──────────────────────────────────────────────────
-#define BL_LEDC_TIMER    LEDC_TIMER_0
-#define BL_LEDC_MODE     LEDC_LOW_SPEED_MODE
-#define BL_LEDC_CHANNEL  LEDC_CHANNEL_0
-#define BL_LEDC_DUTY_RES LEDC_TIMER_13_BIT
-#define BL_LEDC_FREQ_HZ  5000
-#define BL_BRIGHTNESS_PCT 5
-
-// Duty 0 = backlight off; BL_BRIGHTNESS_PCT = normal operating brightness.
-// Shared by init and display_sleep()/display_wake().
-static void backlight_set(bool on)
-{
-    uint32_t max_duty = (1u << BL_LEDC_DUTY_RES) - 1;
-    uint32_t duty = on ? (max_duty * BL_BRIGHTNESS_PCT / 100) : 0;
-    ESP_ERROR_CHECK(ledc_set_duty(BL_LEDC_MODE, BL_LEDC_CHANNEL, duty));
-    ESP_ERROR_CHECK(ledc_update_duty(BL_LEDC_MODE, BL_LEDC_CHANNEL));
-}
-
-static void backlight_init(void)
-{
-    ledc_timer_config_t timer_cfg = {};
-    timer_cfg.speed_mode      = BL_LEDC_MODE;
-    timer_cfg.timer_num       = BL_LEDC_TIMER;
-    timer_cfg.duty_resolution = BL_LEDC_DUTY_RES;
-    timer_cfg.freq_hz         = BL_LEDC_FREQ_HZ;
-    timer_cfg.clk_cfg         = LEDC_AUTO_CLK;
-    ESP_ERROR_CHECK(ledc_timer_config(&timer_cfg));
-
-    ledc_channel_config_t ch_cfg = {};
-    ch_cfg.gpio_num   = LCD_BL_PIN;
-    ch_cfg.speed_mode = BL_LEDC_MODE;
-    ch_cfg.channel    = BL_LEDC_CHANNEL;
-    ch_cfg.timer_sel  = BL_LEDC_TIMER;
-    ch_cfg.duty       = 0;
-    ESP_ERROR_CHECK(ledc_channel_config(&ch_cfg));
-
-    backlight_set(true);
-}
-
-// ── Panel handle ──────────────────────────────────────────────────────────────
-static esp_lcd_panel_handle_t s_panel = NULL;
-// Panel IO handle, kept for display_sleep()/display_wake() to send raw ST7789
-// commands (SLPIN/SLPOUT) after init.
-static esp_lcd_panel_io_handle_t s_io = NULL;
+// ── I2C handles ───────────────────────────────────────────────────────────────
+static i2c_master_bus_handle_t s_bus = NULL;
+static i2c_master_dev_handle_t s_dev = NULL;
 static bool s_sleeping = false;
+
+// Boot message, redrawn every display_update() cycle (row 7) so it survives
+// the full-framebuffer clear each frame does. Persists until the next reboot.
+static char s_boot_msg[24] = "";
 
 // ── Adafruit 5×7 font — printable ASCII 0x20–0x7E ────────────────────────────
 // Source: glcdfont.c (Adafruit GFX library)
@@ -194,93 +130,120 @@ static const uint8_t s_font[95][5] = {
     {0x02,0x01,0x02,0x04,0x02}, // 0x7E ~
 };
 
-// ── Line buffer (one row, full LCD width) ─────────────────────────────────────
-// Must be 32-bit aligned for DMA.
-static uint16_t WORD_ALIGNED_ATTR s_line[LCD_W];
+// ── Monochrome framebuffer ────────────────────────────────────────────────────
+// One byte per column per 8-row page, matching SH1106 GDDRAM layout exactly —
+// a page's row is a single contiguous I2C data burst (see oled_flush()).
+static uint8_t s_fb[OLED_H / 8][OLED_W];
 
-// ── Low-level draw helpers ────────────────────────────────────────────────────
-// ST7789 expects RGB565 big-endian; ESP32 is little-endian → swap bytes.
-static inline uint16_t swap16(uint16_t c) { return (c >> 8) | (c << 8); }
-
-static void fill_rect(int x, int y, int w, int h, uint16_t color)
+static inline void set_pixel(int x, int y, bool on)
 {
-    if (x + w > LCD_W) w = LCD_W - x;  // clip to panel edge
-    if (w <= 0 || h <= 0) return;
-    uint16_t c = swap16(color);
-    for (int i = 0; i < w; i++) s_line[i] = c;
-    for (int row = y; row < y + h; row++)
-        esp_lcd_panel_draw_bitmap(s_panel, x, row, x + w, row + 1, s_line);
+    if (x < 0 || x >= OLED_W || y < 0 || y >= OLED_H) return;
+    uint8_t bit = 1u << (y & 7);
+    if (on) s_fb[y >> 3][x] |= bit;
+    else    s_fb[y >> 3][x] &= (uint8_t)~bit;
 }
 
-// Render one character cell (6×8 pixels). Char cell = 5 pixel columns + 1 gap column.
-// Two buffers used alternately: esp_lcd_panel_draw_bitmap() only *queues* the
-// colour transfer — DMA sends it in the background — so the previous character's
-// pixels must stay untouched while the next one is rendered. Two buffers suffice
-// because every draw_bitmap starts with a polling CASET command, which waits for
-// all queued colour transfers to finish; at most one is in flight at any time.
-static uint16_t WORD_ALIGNED_ATTR s_char_buf[2][6 * 8];
-static int s_char_buf_idx = 0;
+static void fill_rect(int x, int y, int w, int h, bool on)
+{
+    if (x + w > OLED_W) w = OLED_W - x;
+    if (y + h > OLED_H) h = OLED_H - y;
+    if (w <= 0 || h <= 0) return;
+    for (int yy = y; yy < y + h; yy++)
+        for (int xx = x; xx < x + w; xx++)
+            set_pixel(xx, yy, on);
+}
 
-static void draw_char(int x, int y, char c, uint16_t fg, uint16_t bg)
+static void draw_hline(int x, int y, int w, bool on)
+{
+    fill_rect(x, y, w, 1, on);
+}
+
+static void clear_fb(void)
+{
+    memset(s_fb, 0, sizeof(s_fb));
+}
+
+// Render one character cell (6×8 pixels: 5 glyph columns + 1 gap column).
+// Only "on" bits are set — the caller is expected to have cleared the
+// framebuffer already (display_update() does this once per frame), so there
+// is no separate background colour to paint.
+static void draw_char(int x, int y, char c)
 {
     if ((unsigned char)c < 0x20 || (unsigned char)c > 0x7E) c = '?';
     const uint8_t *glyph = s_font[(uint8_t)c - 0x20];
-    uint16_t fg_s = swap16(fg), bg_s = swap16(bg);
-
-    uint16_t *buf = s_char_buf[s_char_buf_idx];
-    s_char_buf_idx ^= 1;
-    for (int row = 0; row < 8; row++) {
-        for (int col = 0; col < 6; col++) {
-            uint8_t bit = (col < 5) ? ((glyph[col] >> row) & 1) : 0;
-            buf[row * 6 + col] = bit ? fg_s : bg_s;
-        }
-    }
-    esp_lcd_panel_draw_bitmap(s_panel, x, y, x + 6, y + 8, buf);
+    for (int col = 0; col < 5; col++)
+        for (int row = 0; row < 8; row++)
+            if ((glyph[col] >> row) & 1)
+                set_pixel(x + col, y + row, true);
 }
 
-static void draw_string(int x, int y, const char *s, uint16_t fg, uint16_t bg)
+static void draw_string(int x, int y, const char *s)
 {
     for (; *s; s++, x += 6)
-        draw_char(x, y, *s, fg, bg);
+        draw_char(x, y, *s);
 }
 
-static void draw_hline(int x, int y, int w, uint16_t color)
+// ── SH1106 I2C transport ──────────────────────────────────────────────────────
+// Protocol: first byte is a control byte (0x00 = command stream, 0x40 = data
+// stream); every following byte in the same I2C transaction is interpreted
+// sequentially by the controller, so a whole init sequence or a whole
+// framebuffer page can be sent as one burst.
+static void oled_write_cmds(const uint8_t *cmds, size_t n)
 {
-    fill_rect(x, y, w, 1, color);  // fill_rect clips to the panel edge
+    uint8_t buf[32];
+    buf[0] = 0x00;
+    memcpy(buf + 1, cmds, n);
+    i2c_master_transmit(s_dev, buf, n + 1, 100);
 }
 
-// ── Static labels (drawn once at init) ────────────────────────────────────────
-static void draw_labels(void)
+static void oled_write_cmd(uint8_t cmd)
 {
-    fill_rect(0, 0, LCD_W, LCD_H, COL_BG);
+    oled_write_cmds(&cmd, 1);
+}
 
-    draw_string(X_OFFSET, Y_TITLE,   "Polar H9",        COL_HDR,   COL_BG);
-    // 0x180D is the Bluetooth SIG Heart Rate Service UUID — a fixed constant.
-    draw_string(8*(5+1) + 6 + X_OFFSET, Y_TITLE + 4, "SVC:0x180D", COL_LABEL, COL_BG);
-    draw_hline(X_OFFSET, Y_DIV1,  LCD_W, COL_DIV);
-    draw_string(X_OFFSET, Y_A0_LBL, "-- Accel 0 --",    COL_LABEL, COL_BG);
-    draw_string(X_OFFSET, Y_A1_LBL, "-- Accel 1 --",    COL_LABEL, COL_BG);
-    draw_hline(X_OFFSET, Y_DIV2,  LCD_W, COL_DIV);
-    draw_string(X_OFFSET, Y_LDC_LBL,"-- LDC1612 --",    COL_LABEL, COL_BG);
+static void oled_write_page(uint8_t page, const uint8_t *data)
+{
+    // SH1106 drives a 132-segment column RAM behind a 128-pixel panel — the
+    // panel's column 0 sits at RAM column 2, hence the +2 column offset.
+    uint8_t page_cmds[3] = { (uint8_t)(0xB0 | page), 0x02, 0x10 };
+    oled_write_cmds(page_cmds, 3);
+
+    uint8_t buf[1 + OLED_W];
+    buf[0] = 0x40;
+    memcpy(buf + 1, data, OLED_W);
+    i2c_master_transmit(s_dev, buf, sizeof(buf), 100);
+}
+
+static void oled_flush(void)
+{
+    for (int page = 0; page < OLED_H / 8; page++)
+        oled_write_page((uint8_t)page, s_fb[page]);
+}
+
+// Title + divider only — shown at boot/wake before the first real
+// display_update() (from the sensor task, at 5 Hz) fills in live values.
+static void draw_static_frame(void)
+{
+    clear_fb();
+    draw_string(X_OFFSET, Y_TITLE, "PolySom");
+    draw_hline(0, Y_TITLE + 7, OLED_W, true);
+    oled_flush();
 }
 
 void display_boot_msg(const char *msg)
 {
     if (s_sleeping) return;
-    fill_rect(X_OFFSET, Y_BOOT, LCD_W, 10, COL_BG);
-    draw_string(X_OFFSET, Y_BOOT, msg, COL_WARN, COL_BG);
+    strncpy(s_boot_msg, msg, sizeof(s_boot_msg) - 1);
+    s_boot_msg[sizeof(s_boot_msg) - 1] = '\0';
+    fill_rect(0, Y_ROW7, OLED_W, 8, false);
+    draw_string(X_OFFSET, Y_ROW7, s_boot_msg);
+    oled_flush();
 }
-
-// ST7789 command bytes (no parameters).
-#define ST7789_CMD_SLPIN  0x10  // sleep in
-#define ST7789_CMD_SLPOUT 0x11  // sleep out
 
 void display_sleep(void)
 {
     if (s_sleeping) return;
-    backlight_set(false);
-    esp_lcd_panel_disp_on_off(s_panel, false);
-    esp_lcd_panel_io_tx_param(s_io, ST7789_CMD_SLPIN, NULL, 0);
+    oled_write_cmd(0xAE);  // display off
     s_sleeping = true;
     ESP_LOGI(TAG, "Display asleep");
 }
@@ -288,13 +251,9 @@ void display_sleep(void)
 void display_wake(void)
 {
     if (!s_sleeping) return;
-    esp_lcd_panel_io_tx_param(s_io, ST7789_CMD_SLPOUT, NULL, 0);
-    // ST7789 datasheet: allow >=120 ms after SLPOUT before further commands.
-    vTaskDelay(pdMS_TO_TICKS(120));
-    esp_lcd_panel_disp_on_off(s_panel, true);
-    backlight_set(true);
+    oled_write_cmd(0xAF);  // display on
     s_sleeping = false;
-    draw_labels();
+    draw_static_frame();
     ESP_LOGI(TAG, "Display awake");
 }
 
@@ -314,67 +273,48 @@ static void accel_angles(int16_t ax, int16_t ay, int16_t az,
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+i2c_master_bus_handle_t display_get_i2c_bus(void)
+{
+    return s_bus;
+}
+
 void display_init(void)
 {
-    // SPI bus (shared with SD card — logger_init() adds SD as a second device)
-    spi_bus_config_t bus = {};
-    bus.mosi_io_num     = SPI_MOSI_PIN;
-    bus.miso_io_num     = SPI_MISO_PIN;
-    bus.sclk_io_num     = SPI_CLK_PIN;
-    bus.quadwp_io_num   = -1;
-    bus.quadhd_io_num   = -1;
-    bus.max_transfer_sz = LCD_W * 40 * sizeof(uint16_t);
-    ESP_ERROR_CHECK(spi_bus_initialize(SPI_HOST_ID, &bus, SPI_DMA_CH_AUTO));
+    i2c_master_bus_config_t bus_cfg = {};
+    bus_cfg.i2c_port          = I2C_PORT;
+    bus_cfg.sda_io_num        = I2C_SDA_PIN;
+    bus_cfg.scl_io_num        = I2C_SCL_PIN;
+    bus_cfg.clk_source        = I2C_CLK_SRC_DEFAULT;
+    bus_cfg.glitch_ignore_cnt = 7;
+    bus_cfg.flags.enable_internal_pullup = true;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &s_bus));
 
-    // Panel IO (SPI device for LCD)
-    esp_lcd_panel_io_handle_t io;
-    esp_lcd_panel_io_spi_config_t io_cfg = {};
-    io_cfg.cs_gpio_num       = LCD_CS_PIN;
-    io_cfg.dc_gpio_num       = LCD_DC_PIN;
-    io_cfg.pclk_hz           = LCD_SPI_FREQ;
-    io_cfg.lcd_cmd_bits      = 8;
-    io_cfg.lcd_param_bits    = 8;
-    io_cfg.trans_queue_depth = 10;
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(
-        (esp_lcd_spi_bus_handle_t)SPI_HOST_ID, &io_cfg, &io));
-    s_io = io;
+    i2c_device_config_t dev_cfg = {};
+    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    dev_cfg.device_address  = OLED_ADDR;
+    dev_cfg.scl_speed_hz    = I2C_FREQ_HZ;
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(s_bus, &dev_cfg, &s_dev));
 
-    // ST7789 panel
-    esp_lcd_panel_dev_config_t panel_cfg = {};
-    panel_cfg.reset_gpio_num = LCD_RST_PIN;
-    panel_cfg.rgb_ele_order  = LCD_RGB_ELEMENT_ORDER_BGR;  // BGR — matches reference board
-    panel_cfg.bits_per_pixel = 16;
-    ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io, &panel_cfg, &s_panel));
+    static const uint8_t init_cmds[] = {
+        0xAE,             // display off
+        0xD5, 0x80,       // clock divide ratio / oscillator frequency
+        0xA8, OLED_H - 1, // multiplex ratio
+        0xD3, 0x00,       // display offset
+        0x40,             // display start line 0
+        0xAD, 0x8B,       // charge pump (DC-DC) enable — SH1106-specific
+        0xA1,             // segment remap
+        0xC8,             // COM output scan direction, remapped
+        0xDA, 0x12,       // COM pins hardware config
+        0x81, 0x80,       // contrast
+        0xD9, 0xF1,       // pre-charge period
+        0xDB, 0x40,       // VCOM deselect level
+        0xA4,             // resume to RAM content display
+        0xA6,             // normal display (not inverted)
+        0xAF,             // display on
+    };
+    oled_write_cmds(init_cmds, sizeof(init_cmds));
 
-    esp_lcd_panel_reset(s_panel);
-    esp_lcd_panel_init(s_panel);
-
-    // Panel tuning from the reference driver (Vernon_ST7789T.c) — the stock
-    // st7789 driver leaves these at power-on defaults, which on this panel give
-    // smeared pixels and washed-out contrast.
-    esp_lcd_panel_io_tx_param(io, 0xB2, (uint8_t[]){0x0C, 0x0C, 0x00, 0x33, 0x33}, 5); // porch
-    esp_lcd_panel_io_tx_param(io, 0xB7, (uint8_t[]){0x75}, 1);                         // gate voltages
-    esp_lcd_panel_io_tx_param(io, 0xBB, (uint8_t[]){0x1A}, 1);                         // VCOM
-    esp_lcd_panel_io_tx_param(io, 0xC2, (uint8_t[]){0x01, 0xFF}, 2);                   // VDV/VRH enable
-    esp_lcd_panel_io_tx_param(io, 0xC3, (uint8_t[]){0x13}, 1);                         // VRH
-    esp_lcd_panel_io_tx_param(io, 0xC4, (uint8_t[]){0x20}, 1);                         // VDV
-    esp_lcd_panel_io_tx_param(io, 0xC6, (uint8_t[]){0x0F}, 1);                         // frame rate 60 Hz
-    esp_lcd_panel_io_tx_param(io, 0xD0, (uint8_t[]){0xA4, 0xA1}, 2);                   // power control 1
-    esp_lcd_panel_io_tx_param(io, 0xE0, (uint8_t[]){0xD0, 0x0D, 0x14, 0x0D, 0x0D, 0x09, 0x38,
-                                                    0x44, 0x4E, 0x3A, 0x17, 0x18, 0x2F, 0x30}, 14); // gamma +
-    esp_lcd_panel_io_tx_param(io, 0xE1, (uint8_t[]){0xD0, 0x09, 0x0F, 0x08, 0x07, 0x14, 0x37,
-                                                    0x44, 0x4D, 0x38, 0x15, 0x16, 0x2C, 0x2E}, 14); // gamma -
-
-    // This panel needs display inversion for correct colours (reference sends INVON).
-    esp_lcd_panel_invert_color(s_panel, true);
-
-    esp_lcd_panel_set_gap(s_panel, 34, 0);  // GRAM X offset — 172px active area starts at col 34
-    esp_lcd_panel_mirror(s_panel, true, true);  // mirror X — matches reference board
-    esp_lcd_panel_disp_on_off(s_panel, true);
-
-    backlight_init();
-
-    draw_labels();
+    draw_static_frame();
     ESP_LOGI(TAG, "Display ready");
 }
 
@@ -382,83 +322,48 @@ void display_update(const display_data_t *data)
 {
     if (s_sleeping) return;
 
-    char buf[48];  // wide enough for "WiFi: " + a 32-char SSID
+    clear_fb();
+    char buf[24];  // 128px / 6px per char = 21 chars max per row
 
-    // ── Device / connection status ────────────────────────────────────────────
-    fill_rect(X_OFFSET, Y_DEV, LCD_W, 10, COL_BG);
-    draw_string(X_OFFSET, Y_DEV,
-                data->ble_connected ? data->ble_device_name : "Scanning...",
-                COL_VALUE, COL_BG);
-
-    // ── Heart rate / RR interval ──────────────────────────────────────────────
-    fill_rect(X_OFFSET, Y_HR, LCD_W, 10, COL_BG);
-    snprintf(buf, sizeof(buf), "HR:%3ubpm  RR:%4ums",
-             (unsigned)data->bpm, (unsigned)data->rr_ms);
-    draw_string(X_OFFSET, Y_HR, buf, COL_VALUE, COL_BG);
+    // ── Title + battery ───────────────────────────────────────────────────────
+    snprintf(buf, sizeof(buf), "PolySom  B:%3u%%", (unsigned)data->batt_percent);
+    draw_string(X_OFFSET, Y_TITLE, buf);
+    draw_hline(0, Y_TITLE + 7, OLED_W, true);
 
     // ── Accelerometer 0 ───────────────────────────────────────────────────────
     float mag0, p0, r0;
     accel_angles(data->accel0[0], data->accel0[1], data->accel0[2], &mag0, &p0, &r0);
-    fill_rect(X_OFFSET, Y_A0, LCD_W, 20, COL_BG);
-    snprintf(buf, sizeof(buf), "  Mag:%5.0f mg", mag0);
-    draw_string(X_OFFSET, Y_A0, buf, COL_VALUE, COL_BG);
-    snprintf(buf, sizeof(buf), "  P:%+6.1f  R:%+6.1f", p0, r0);
-    draw_string(X_OFFSET, Y_A0 + 10, buf, COL_VALUE, COL_BG);
+    snprintf(buf, sizeof(buf), "A0 M%4.0f P%+4.0f R%+4.0f", mag0, p0, r0);
+    draw_string(X_OFFSET, Y_A0, buf);
 
     // ── Accelerometer 1 ───────────────────────────────────────────────────────
     float mag1, p1, r1;
     accel_angles(data->accel1[0], data->accel1[1], data->accel1[2], &mag1, &p1, &r1);
-    fill_rect(X_OFFSET, Y_A1, LCD_W, 20, COL_BG);
-    snprintf(buf, sizeof(buf), "  Mag:%5.0f mg", mag1);
-    draw_string(X_OFFSET, Y_A1, buf, COL_VALUE, COL_BG);
-    snprintf(buf, sizeof(buf), "  P:%+6.1f  R:%+6.1f", p1, r1);
-    draw_string(X_OFFSET, Y_A1 + 10, buf, COL_VALUE, COL_BG);
+    snprintf(buf, sizeof(buf), "A1 M%4.0f P%+4.0f R%+4.0f", mag1, p1, r1);
+    draw_string(X_OFFSET, Y_A1, buf);
 
-    // ── LDC1612 ───────────────────────────────────────────────────────────────
-    fill_rect(X_OFFSET, Y_CH0, LCD_W, 20, COL_BG);
-    snprintf(buf, sizeof(buf), "  CH0:%9lu", (unsigned long)data->ldc0);
-    draw_string(X_OFFSET, Y_CH0, buf, COL_VALUE, COL_BG);
-    if (data->baseline_ok)
-        snprintf(buf, sizeof(buf), "  d0:%+10ld", (long)(int32_t)(data->ldc0 - data->ldc0_baseline));
-    else
-        snprintf(buf, sizeof(buf), "  d0: (no base)");
-    draw_string(X_OFFSET, Y_CH0 + 10, buf, COL_VALUE, COL_BG);
+    // ── LDC1612 (raw counts — no baseline on this screen) ────────────────────
+    snprintf(buf, sizeof(buf), "CH0:%6lu CH1:%6lu",
+             (unsigned long)data->ldc0, (unsigned long)data->ldc1);
+    draw_string(X_OFFSET, Y_LDC, buf);
 
-    fill_rect(X_OFFSET, Y_CH1, LCD_W, 20, COL_BG);
-    snprintf(buf, sizeof(buf), "  CH1:%9lu", (unsigned long)data->ldc1);
-    draw_string(X_OFFSET, Y_CH1, buf, COL_VALUE, COL_BG);
-    if (data->baseline_ok)
-        snprintf(buf, sizeof(buf), "  d1:%+10ld", (long)(int32_t)(data->ldc1 - data->ldc1_baseline));
-    else
-        snprintf(buf, sizeof(buf), "  d1: (no base)");
-    draw_string(X_OFFSET, Y_CH1 + 10, buf, COL_VALUE, COL_BG);
-
-    // ── Air Flow ──────────────────────────────────────────────────────────────
-    fill_rect(X_OFFSET, Y_FLOW, LCD_W, 10, COL_BG);
-    snprintf(buf, sizeof(buf), "  Flow:%8.1f mbar", data->pressure_mbar);
-    draw_string(X_OFFSET, Y_FLOW, buf, COL_VALUE, COL_BG);
-
-    // ── Battery Gauge ─────────────────────────────────────────────────────────
-    fill_rect(X_OFFSET, Y_BATT, LCD_W, 10, COL_BG);
-    snprintf(buf, sizeof(buf), "  Batt: %u%%", data->batt_percent);
-    draw_string(X_OFFSET, Y_BATT, buf, COL_VALUE, COL_BG);
+    // ── Air flow ──────────────────────────────────────────────────────────────
+    snprintf(buf, sizeof(buf), "Flow:%8.1f mbar", data->pressure_mbar);
+    draw_string(X_OFFSET, Y_FLOW, buf);
 
     // ── Recording status ──────────────────────────────────────────────────────
-    fill_rect(X_OFFSET, Y_WIFI_ST, LCD_W, 10, COL_BG);
-    if (data->ap_active) {
-        draw_string(X_OFFSET, Y_WIFI_ST, "AP ACTIVE - FILE SERVER", COL_WARN, COL_BG);
-    } else if (!data->recording) {
-        draw_string(X_OFFSET, Y_WIFI_ST, "NOT RECORDING - NO SD", COL_WARN, COL_BG);
+    if (!data->recording) {
+        draw_string(X_OFFSET, Y_REC, "NOT RECORDING - NO SD");
     } else {
         snprintf(buf, sizeof(buf), "RECORDING  %lus", (unsigned long)data->recording_seconds);
-        draw_string(X_OFFSET, Y_WIFI_ST, buf, COL_VALUE, COL_BG);
+        draw_string(X_OFFSET, Y_REC, buf);
     }
 
     // ── Current time ──────────────────────────────────────────────────────────
     // Reflects whichever source set the system clock at boot (DS1307 RTC or
-    // NTP — see main.cpp/sensors.cpp); a year sanity check catches the case
-    // where neither sync succeeded and the clock is still at its epoch default.
-    fill_rect(X_OFFSET, Y_TIME, LCD_W, 10, COL_BG);
+    // a serial time-sync command — see main.cpp/sensors.cpp/time_sync.c); a
+    // year sanity check catches the case where neither sync succeeded and the
+    // clock is still at its epoch default.
     time_t now = time(NULL);
     struct tm t;
     localtime_r(&now, &t);
@@ -472,17 +377,21 @@ void display_update(const display_data_t *data)
                  (unsigned)t.tm_hour % 100u,
                  (unsigned)t.tm_min % 100u,
                  (unsigned)t.tm_sec % 100u);
-        draw_string(X_OFFSET, Y_TIME, buf, COL_VALUE, COL_BG);
+        draw_string(X_OFFSET, Y_TIME, buf);
     } else {
-        draw_string(X_OFFSET, Y_TIME, "No time sync", COL_WARN, COL_BG);
+        draw_string(X_OFFSET, Y_TIME, "No time sync");
     }
 
-    // ── Wi-Fi network (boot-time NTP sync only — Wi-Fi is torn down after) ────
-    fill_rect(X_OFFSET, Y_WIFI_SSID, LCD_W, 10, COL_BG);
-    if (data->wifi_ssid && data->wifi_ssid[0] != '\0') {
-        snprintf(buf, sizeof(buf), "WiFi: %s", data->wifi_ssid);
-        draw_string(X_OFFSET, Y_WIFI_SSID, buf, COL_VALUE, COL_BG);
+    // ── Row 7: boot message (sticky) if set, else time-sync source ───────────
+    if (s_boot_msg[0] != '\0') {
+        draw_string(X_OFFSET, Y_ROW7, s_boot_msg);
     } else {
-        draw_string(X_OFFSET, Y_WIFI_SSID, "WiFi: (not used)", COL_LABEL, COL_BG);
+        const char *src = (data->time_sync_source && data->time_sync_source[0])
+                              ? data->time_sync_source
+                              : "none";
+        snprintf(buf, sizeof(buf), "Time sync: %s", src);
+        draw_string(X_OFFSET, Y_ROW7, buf);
     }
+
+    oled_flush();
 }

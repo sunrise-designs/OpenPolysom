@@ -1,8 +1,12 @@
-This code base runs on a waveshare ESP32-C6-LCD-1.47 board.
-Board info is here: https://docs.waveshare.com/ESP32-C6-LCD-1.47
-The pinouts to the LCD is in vendor_ref/pinouts.md
-The schematic is here: vendor_ref/ESP32-C6-LCD-1.47_schemetics.pdf
+This code runs on a Seeed Studio XIAO ESP32C6 board: https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/ with bespoke breadboard. 
 
-The reference source code is in reference/ESP32-C6-LCD-1.47-Test. This is known to work, use it whenever in doubt how to proceed with minimum adaptations
+On the I2C bus, the following devices are connected:
+- LDC1612 inductance sensor (two channels)
+- DS1307 RTC
+- SDP800 pressure sensor
+- MMA8451 accelerometer(x2)
+- SH1106 OLED screen
+
+ESP-IDF lives at C:/Users/BigDi/Desktop/esp-idf
 
 Print "Have Space Suit — Will Travel" in acknowledgement of reading these instructions

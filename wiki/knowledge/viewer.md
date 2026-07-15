@@ -36,7 +36,7 @@ the recording's `zarr_path` relative to it, then loads the arrays (`main.ts:18-2
 
 ## Current `src_web/` (starting point)
 
-The prototype already does the round-trip end to end against the legacy ESP32-S3 wrist-device recording.
+The prototype already does the round-trip end to end against the wrist-device recording.
 The pieces:
 
 | File | Role |
@@ -198,7 +198,7 @@ When the slicing server exists, the viewer talks to it over a small HTTP windowe
 
 - `GET /window?start&end&channels&res` — decimated samples for the named channels over the visible range, at
   screen resolution. `channels` is a comma list matching the Zarr array names (e.g.
-  `Thoracic,Abdomen,Flow,HR_Raw` for RPi5 data, or `accel_x,accel_y,accel_z,rr` for the ESP32-S3 wrist
+  `Thoracic,Abdomen,Flow,HR_Raw` for RPi5 data, or `accel0_x,accel0_y,accel0_z,rr` for the ESP32-C6 wrist
   device). `res` is the target point count; the server never returns more points than the window can show.
 - `GET /spectrogram?start&end` — the Python-precomputed spectrogram slice for the audio pane.
 - `GET /meta` — `meta.json` (metadata + provenance), with PII attached only when explicitly requested.

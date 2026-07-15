@@ -147,7 +147,7 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
                   the already-filtered `accel1_mag` trace for a new, smaller window).
     respiratory_raw : tuple(list, list, list) | None — Thoracic, Abdomen, Flow (physical
                   units: nH, nH, mbar), present on the RPi5 6-channel and ESP32-C6
-                  11-channel devices, absent on the wrist-only ESP32-S3 log. Written as
+                  11-channel devices, absent on wrist-only logs. Written as
                   `thoracic`/`abdomen`/`flow`, sharing the accelerometer time axis `t`
                   (same 50 Hz source rate, trimmed identically). No DSP applied yet — the
                   raw physical-unit trace, for display only.

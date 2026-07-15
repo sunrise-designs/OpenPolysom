@@ -56,13 +56,13 @@ The RPi5 acquisition (`src/main.cpp`) writes a **6-channel EDF+** file
 |---|---|---|---|---|---|
 | 0 | Thoracic | LDC1612 CH0 (RIP belt) | 50 | Inductance (nH) | ±1 000 000 |
 | 1 | Abdomen | LDC1612 CH1 (RIP belt) | 50 | Inductance (nH) | ±1 000 000 |
-| 2 | HR | Polar H9 via ESP32-S3 | 1 | BPM | 0–250 |
-| 3 | RR | Polar H9 via ESP32-S3 | 5 | ms | 0–2000 |
+| 2 | HR | Polar H9 via ESP32-C6 | 1 | BPM | 0–250 |
+| 3 | RR | Polar H9 via ESP32-C6 | 5 | ms | 0–2000 |
 | 4 | Flow | Sensirion SDP800-125P | 50 | Pressure | 0–1000 |
 | 5 | HR_Raw | AD8232 ECG | 100 | ADC | 0–4095 |
 
-The ESP32-S3 wrist device (`ESP32-S3-heart/.../logger.cpp`) writes its own
-**4-channel EDF+**: AccelX/Y/Z (12-bit ADC, 10 Hz) + RR (ms, 1 Hz).
+The ESP32-C6 wrist device (`ESP32-C6-heart-idf/components/logger/logger.cpp`) writes its own
+**11-channel EDF+**: Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z, Accel1X/Y/Z, RR.
 
 > **physical vs digital write path.** `main.cpp` writes **physical** doubles via
 > `edfwrite_physical_samples` (`src/main.cpp:286-291`) — edflib does the

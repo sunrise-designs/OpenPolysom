@@ -23,13 +23,21 @@
 #define DS1307_ADDR           0x68
 #define RTC_SYNC_INTERVAL_MS  600000
 
-// ── ADC — ECG signal ──────────────────────────────────────────────────────────
+// ── Serial time sync (used when no RTC is fitted / holds no valid time) ─────
+#define TIME_SYNC_TIMEOUT_MS  CONFIG_POLYSOM_TIME_SYNC_TIMEOUT_MS
+
+// ── ADC — ECG signal (AD8232, raw, logged for later analysis) ────────────────
 // ECG_ADC_UNIT stays as the enum constant; ECG_ADC_CHANNEL is the raw integer
 // from Kconfig — callers must cast to adc_channel_t at the call site.
 #define ECG_ADC_UNIT    ADC_UNIT_1
 #define ECG_ADC_CHANNEL 1
 
-// ── Shared SPI bus (LCD + SD card) ───────────────────────────────────────────
+// ── SH1106 OLED (128×64, I2C — shares the sensor I2C bus above) ──────────────
+#define OLED_ADDR     CONFIG_POLYSOM_OLED_ADDR
+#define OLED_W        CONFIG_POLYSOM_OLED_W
+#define OLED_H        CONFIG_POLYSOM_OLED_H
+
+// ── SPI bus (SD card only — the LCD used to share this bus, now I2C above) ──
 #define SPI_HOST_ID   SPI2_HOST
 #define SPI_MOSI_PIN  GPIO_NUM_18
 #define SPI_MISO_PIN  GPIO_NUM_20

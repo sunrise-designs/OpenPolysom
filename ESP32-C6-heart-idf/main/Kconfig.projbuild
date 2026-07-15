@@ -1,64 +1,14 @@
 menu "Polysom Application"
 
-    config POLYSOM_WIFI_SSID
-        string "Wi-Fi SSID"
-        default ""
+    config POLYSOM_TIME_SYNC_TIMEOUT_MS
+        int "Serial time-sync timeout (ms)"
+        default 30000
         help
-            SSID of the primary network to try for NTP time sync.
-            Set real credentials in sdkconfig.local (gitignored), not here.
-
-    config POLYSOM_WIFI_PASSWORD
-        string "Wi-Fi password"
-        default ""
-        help
-            Password for the primary Wi-Fi network.
-            Set real credentials in sdkconfig.local (gitignored), not here.
-
-    config POLYSOM_WIFI_SSID_2
-        string "Wi-Fi SSID (fallback 1)"
-        default ""
-        help
-            SSID of the second network to try if the primary one fails.
-
-    config POLYSOM_WIFI_PASSWORD_2
-        string "Wi-Fi password (fallback 1)"
-        default ""
-        help
-            Password for the second Wi-Fi network.
-
-    config POLYSOM_WIFI_SSID_3
-        string "Wi-Fi SSID (fallback 2)"
-        default ""
-        help
-            SSID of the third network to try if the first two fail.
-
-    config POLYSOM_WIFI_PASSWORD_3
-        string "Wi-Fi password (fallback 2)"
-        default ""
-        help
-            Password for the third Wi-Fi network.
-
-    config POLYSOM_NTP_SERVER
-        string "NTP server"
-        default "pool.ntp.org"
-        help
-            Hostname of the NTP server used for real-time clock sync.
-
-    config POLYSOM_FILESERVER_AP_SSID
-        string "File-server Wi-Fi AP SSID"
-        default "PolySom-Files"
-        help
-            SSID of the access point started when the download button
-            (GPIO20) is pressed, so recorded files can be pulled off over
-            Wi-Fi. The device is the AP; connect a laptop/phone to it
-            directly, no existing network required.
-
-    config POLYSOM_FILESERVER_AP_PASSWORD
-        string "File-server Wi-Fi AP password"
-        default "polysom123"
-        help
-            Password for the file-server access point. Must be empty (open
-            network) or at least 8 characters (WPA2 minimum).
+            How long to wait at boot for a binary time-sync command on the
+            console UART (115200 baud) before giving up and continuing
+            without a synced clock. Only used when no DS1307 RTC is fitted
+            or its time hasn't been set yet. See components/time_sync and
+            tools/set_time.py.
 
 endmenu
 
