@@ -2,8 +2,8 @@
 #include <WiFi.h>
 #include <Arduino.h>
 
-#define WIFI_SSID        "TNCAP26203D"
-#define WIFI_PASSWORD    "pFynYNnaMNk9syGR"
+#define WIFI_SSID        ""
+#define WIFI_PASSWORD    ""
 #define NTP_SERVER1      "pool.ntp.org"
 #define NTP_SERVER2      "time.nist.gov"
 #define WIFI_TIMEOUT_MS  10000
