@@ -72,18 +72,23 @@ menu "Board Configuration"
 
     config POLYSOM_SPI_MOSI_PIN
         int "SPI MOSI pin"
-        default 6
+        default 18
+        help
+            GPIO18 = XIAO ESP32C6 D10, the board's default hardware SPI MOSI pin.
 
     config POLYSOM_SPI_MISO_PIN
         int "SPI MISO pin"
-        default 5
+        default 20
         help
+            GPIO20 = XIAO ESP32C6 D9, the board's default hardware SPI MISO pin.
             GPIO12/13 are reserved for the native USB Serial/JTAG D-/D+ lines
             used by the console (/dev/ttyACM0) — do not assign them here.
 
     config POLYSOM_SPI_CLK_PIN
         int "SPI CLK pin"
-        default 7
+        default 19
+        help
+            GPIO19 = XIAO ESP32C6 D8, the board's default hardware SPI SCK pin.
 
     config POLYSOM_OLED_ADDR
         hex "SH1106 OLED I2C address"
@@ -104,7 +109,7 @@ menu "Board Configuration"
 
     config POLYSOM_SD_CS_PIN
         int "SD card CS pin"
-        default 4
+        default 21
 
     config POLYSOM_SD_SPI_FREQ_HZ
         int "SD card SPI frequency (Hz)"

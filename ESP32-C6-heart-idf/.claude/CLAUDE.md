@@ -9,4 +9,6 @@ On the I2C bus, the following devices are connected:
 
 ESP-IDF lives at C:/Users/BigDi/Desktop/esp-idf
 
+The wiki location is ../wiki/
+
 Print "Have Space Suit — Will Travel" in acknowledgement of reading these instructions

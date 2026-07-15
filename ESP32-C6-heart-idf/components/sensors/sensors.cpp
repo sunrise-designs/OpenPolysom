@@ -48,6 +48,7 @@ static esp_err_t add_dev(uint8_t addr, i2c_master_dev_handle_t *out)
 
 bool sensors_init(i2c_master_bus_handle_t bus)
 {
+    vTaskDelay(25);  // wait for sensors to power up (SDP800 datasheet §3.2 says 25ms minimum)
     s_i2c_bus = bus;
 
     bool ok = true;
@@ -57,27 +58,56 @@ bool sensors_init(i2c_master_bus_handle_t bus)
         ESP_LOGW(TAG, "MMA8451 #0 not found");
         ok = false;
     }
+    else {
+        ESP_LOGI(TAG, "MMA8451 #0 detected");
+    }
     g_mma1_present = (add_dev(MMA_ADDR_1, &s_mma1) == ESP_OK) && mma8451_init(s_mma1);
     if (!g_mma1_present) {
         ESP_LOGW(TAG, "MMA8451 #1 not found");
         ok = false;
+    }
+    else {
+        ESP_LOGI(TAG, "MMA8451 #1 detected");
     }
     g_ldc_present = (add_dev(LDC_ADDR, &s_ldc) == ESP_OK) && ldc1612_init(s_ldc);
     if (!g_ldc_present) {
         ESP_LOGW(TAG, "LDC1612 not found");
         ok = false;
     }
-    g_sdp_present = (add_dev(SDP800_ADDR, &s_sdp) == ESP_OK) && sdp800_init(s_sdp);
+    else {
+        ESP_LOGI(TAG, "LDC1612 detected");
+    }
+    g_sdp_present = (add_dev(SDP800_ADDR, &s_sdp) == ESP_OK);
     if (!g_sdp_present) {
-        ESP_LOGW(TAG, "SDP800 not found");
+        ESP_LOGW(TAG, "SDP800 device not found on address 0x%02X", SDP800_ADDR);
         ok = false;
     }
+    else {
+        g_sdp_present = sdp800_init(s_sdp);
+        if (!g_sdp_present) {
+            ESP_LOGW(TAG, "SDP800 detected but failed to initialize");
+            ok = false;
+        }
+        else {
+            ESP_LOGI(TAG, "SDP800 detected");
+        }
+    }
+
 
     // The RTC is optional (not fitted on every board), so its absence does
     // not fail sensors_init() the way the other sensors do.
-    g_rtc_present = (add_dev(DS1307_ADDR, &s_ds1307) == ESP_OK) && ds1307_init(s_ds1307);
+    g_rtc_present = (add_dev(DS1307_ADDR, &s_ds1307) == ESP_OK);
     if (!g_rtc_present) {
-        ESP_LOGW(TAG, "DS1307 RTC not found");
+        ESP_LOGW(TAG, "DS1307 RTC device not found on 0x%02X", DS1307_ADDR);
+    }
+    else {
+        if (ds1307_init(s_ds1307)) {
+            ESP_LOGI(TAG, "DS1307 RTC detected");
+        }
+        else {
+            ESP_LOGW(TAG, "DS1307 RTC detected but failed to initialize");
+            g_rtc_present = false;
+        }
     }
 
     adc_oneshot_unit_init_cfg_t adc_cfg = {};

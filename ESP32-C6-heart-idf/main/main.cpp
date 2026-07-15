@@ -46,58 +46,13 @@ static void show_reset_reason(void)
     ESP_LOGI(TAG, "Reset reason: %s, boot count %lu", rr, (unsigned long)s_boot_count);
 }
 
-// ── Download-mode button (GPIO20, falling edge) ──────────────────────────────
-// Wired to a momentary button to GND (internal pull-up enabled). On press:
-// stop recording and flush the EDF/log files.
-#define DOWNLOAD_BTN_PIN GPIO_NUM_19
-
 // Recording duration after which the display is shut down (§ wake button below).
 #define DISPLAY_SLEEP_AFTER_S (20 * 60)
 
-static QueueHandle_t s_download_evt_queue = NULL;
-
-static void IRAM_ATTR download_btn_isr(void *arg)
-{
-    (void)arg;
-    BaseType_t hpw = pdFALSE;
-    uint32_t dummy = 0;
-    xQueueSendFromISR(s_download_evt_queue, &dummy, &hpw);
-    if (hpw) portYIELD_FROM_ISR();
-}
-
-static void download_mode_task(void *arg)
-{
-    (void)arg;
-    uint32_t dummy;
-    for (;;) {
-        if (xQueueReceive(s_download_evt_queue, &dummy, portMAX_DELAY) == pdTRUE) {
-            ESP_LOGI(TAG, "Download button pressed: stopping recording");
-            logger_close();
-        }
-    }
-}
-
-static void download_button_init(void)
-{
-    s_download_evt_queue = xQueueCreate(4, sizeof(uint32_t));
-
-    gpio_config_t io_conf = {};
-    io_conf.pin_bit_mask = 1ULL << DOWNLOAD_BTN_PIN;
-    io_conf.mode         = GPIO_MODE_INPUT;
-    io_conf.pull_up_en   = GPIO_PULLUP_ENABLE;
-    io_conf.intr_type    = GPIO_INTR_NEGEDGE;
-    gpio_config(&io_conf);
-
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(DOWNLOAD_BTN_PIN, download_btn_isr, NULL);
-
-    xTaskCreate(download_mode_task, "dl_mode", 4096, NULL, 5, NULL);
-}
-
 // ── Display wake button (GPIO13, falling edge) ───────────────────────────────
-// Wired to a momentary button to GND (internal pull-up enabled), same wiring
-// as DOWNLOAD_BTN_PIN. Re-enables the display after display_sleep() has shut
-// it down 20 minutes into a recording (see DISPLAY_SLEEP_AFTER_S below).
+// Wired to a momentary button to GND (internal pull-up enabled). Re-enables
+// the display after display_sleep() has shut it down 20 minutes into a
+// recording (see DISPLAY_SLEEP_AFTER_S below).
 #define WAKE_BTN_PIN GPIO_NUM_13
 
 static QueueHandle_t s_wake_evt_queue = NULL;
@@ -134,7 +89,7 @@ static void wake_button_init(void)
     io_conf.intr_type    = GPIO_INTR_NEGEDGE;
     gpio_config(&io_conf);
 
-    // gpio_install_isr_service() is already called once in download_button_init().
+    gpio_install_isr_service(0);
     gpio_isr_handler_add(WAKE_BTN_PIN, wake_btn_isr, NULL);
 
     xTaskCreate(wake_button_task, "wake_btn", 4096, NULL, 5, NULL);
@@ -230,7 +185,9 @@ extern "C" void app_main(void)
     show_reset_reason();
 
     // Sensors (register devices on the I2C bus display_init() created + ADC)
-    sensors_init(display_get_i2c_bus());
+    if (!sensors_init(display_get_i2c_bus())) {
+        ESP_LOGE(TAG, "Not all sensors detected - continuing anyway");
+    }
     battery_gauge_init(sensors_get_adc_unit());
 
     // If a DS1307 RTC is fitted and already holds a plausible time (i.e. it
@@ -238,20 +195,17 @@ extern "C" void app_main(void)
     // prompt entirely. Otherwise wait for a host to send a time-sync command
     // over the console UART (see components/time_sync, tools/set_time.py)
     // and, if an RTC is fitted, seed it so future boots don't need the host.
-    if (sensors_rtc_startup_sync()) {
-        s_time_sync_source = "RTC";
-    } else if (time_sync_wait_for_command(TIME_SYNC_TIMEOUT_MS)) {
-        sensors_rtc_write_from_system();
-        s_time_sync_source = "Serial";
-    }
+    // if (sensors_rtc_startup_sync()) {
+    //     s_time_sync_source = "RTC";
+    // } else if (time_sync_wait_for_command(TIME_SYNC_TIMEOUT_MS)) {
+    //     sensors_rtc_write_from_system();
+    //     s_time_sync_source = "Serial";
+    // }
 
     // SD card + EDF file (logger owns the SD's SPI bus; display is I2C now)
     if (!logger_init()) {
         ESP_LOGE(TAG, "Logger init failed (no SD card?) - continuing without recording");
     }
-
-    // Download-mode button: stop recording
-    download_button_init();
 
     // Display wake button: re-enable the screen after display_sleep()
     wake_button_init();

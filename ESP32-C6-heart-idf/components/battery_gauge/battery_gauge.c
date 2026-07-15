@@ -5,7 +5,7 @@
 #include "hal/adc_types.h"
 
 // GPIO3 is ADC1_CHANNEL_3 on ESP32-C6.
-#define BATT_ADC_CHANNEL ADC_CHANNEL_3
+#define BATT_ADC_CHANNEL ADC_CHANNEL_0
 
 static const char *TAG = "battery_gauge";
 static adc_oneshot_unit_handle_t s_adc_unit;
