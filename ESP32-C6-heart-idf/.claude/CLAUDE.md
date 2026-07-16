@@ -7,7 +7,7 @@ On the I2C bus, the following devices are connected:
 - MMA8451 accelerometer(x2)
 - SH1106 OLED screen
 
-ESP-IDF lives at C:/Users/BigDi/Desktop/esp-idf
+ESP-IDF lives at C:/esp/v6.0.1/esp-idf (matches ESP32-C6-heart-idf/.vscode/settings.json's idf.currentSetup — the VS Code ESP-IDF extension's configured install)
 
 The wiki location is ../wiki/
 

@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Monitor (no-reset, direct)",
+      "type": "shell",
+      "command": "& 'C:\\Espressif\\tools\\python\\v6.0.1\\venv\\Scripts\\python.exe' 'C:\\esp\\v6.0.1\\esp-idf\\tools\\idf_monitor.py' -p COM7 -b 921600 --no-reset --toolchain-prefix riscv32-esp-elf- '${workspaceFolder}\\build\\polysom.elf'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Monitor (idf.py, no-reset)",
+      "type": "shell",
+      "command": "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; C:\\esp\\v6.0.1\\esp-idf\\export.ps1; idf.py -p COM7 monitor --no-reset",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "IDF: Install missing tools",
+      "type": "shell",
+      "command": "C:\\Espressif\\tools\\python\\v6.0.1\\venv\\Scripts\\python.exe C:\\esp\\v6.0.1\\esp-idf\\tools\\idf_tools.py install",
+      "problemMatcher": []
+    },
+    {
+      "label": "IDF: export.ps1 (debug)",
+      "type": "shell",
+      "command": "$env:ESP_IDF_EXPORT_DEBUG=1; C:\\esp\\v6.0.1\\esp-idf\\export.ps1",
+      "problemMatcher": []
+    }
+  ]
+}
