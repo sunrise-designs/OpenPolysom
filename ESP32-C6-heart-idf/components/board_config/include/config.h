@@ -33,7 +33,7 @@
 #define ECG_ADC_CHANNEL 1
 
 // ── SH1106 OLED (128×64, I2C — shares the sensor I2C bus above) ──────────────
-#define OLED_ADDR     0x3C
+#define OLED_ADDR     0x3D
 #define OLED_W        128
 #define OLED_H        64
 

@@ -48,7 +48,7 @@ static esp_err_t add_dev(uint8_t addr, i2c_master_dev_handle_t *out)
 
 bool sensors_init(i2c_master_bus_handle_t bus)
 {
-    vTaskDelay(25);  // wait for sensors to power up (SDP800 datasheet §3.2 says 25ms minimum)
+    vTaskDelay(pdMS_TO_TICKS(50));  // wait for sensors to power up (SDP800 datasheet §3.2 says 25ms minimum)
     s_i2c_bus = bus;
 
     bool ok = true;
@@ -96,19 +96,19 @@ bool sensors_init(i2c_master_bus_handle_t bus)
 
     // The RTC is optional (not fitted on every board), so its absence does
     // not fail sensors_init() the way the other sensors do.
-    g_rtc_present = (add_dev(DS1307_ADDR, &s_ds1307) == ESP_OK);
-    if (!g_rtc_present) {
-        ESP_LOGW(TAG, "DS1307 RTC device not found on 0x%02X", DS1307_ADDR);
-    }
-    else {
-        if (ds1307_init(s_ds1307)) {
-            ESP_LOGI(TAG, "DS1307 RTC detected");
-        }
-        else {
-            ESP_LOGW(TAG, "DS1307 RTC detected but failed to initialize");
-            g_rtc_present = false;
-        }
-    }
+    // g_rtc_present = (add_dev(DS1307_ADDR, &s_ds1307) == ESP_OK);
+    // if (!g_rtc_present) {
+    //     ESP_LOGW(TAG, "DS1307 RTC device not found on 0x%02X", DS1307_ADDR);
+    // }
+    // else {
+    //     if (ds1307_init(s_ds1307)) {
+    //         ESP_LOGI(TAG, "DS1307 RTC detected");
+    //     }
+    //     else {
+    //         ESP_LOGW(TAG, "DS1307 RTC detected but failed to initialize");
+    //         g_rtc_present = false;
+    //     }
+    // }
 
     adc_oneshot_unit_init_cfg_t adc_cfg = {};
     adc_cfg.unit_id = ECG_ADC_UNIT;
