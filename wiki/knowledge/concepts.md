@@ -2,7 +2,7 @@
 title: PSG & Pipeline Concepts (Glossary)
 domain: knowledge
 status: living
-updated: 2026-06-19
+updated: 2026-07-17
 summary: A concise glossary of the polysomnography, sleep-disorder, signal and data-tech terms used across the ProtoSom wiki and codebase.
 ---
 
@@ -157,6 +157,15 @@ surface from the captured signals. Plain-language sketches per `README.md:51-60`
 - **PLM (Periodic Limb Movement)** — LMs occurring in a **series of ≥4** with
   onset-to-onset gaps of **5–90 s**. Counted by `count_plm` per AASM rules
   ([`plans/removing accel baseline.md`](../../plans/removing%20accel%20baseline.md)).
+- **GPC (Gross Position Change)** — a whole-body posture change (rolling over,
+  turning) as opposed to a limb jerk. Swings a far larger amplitude than an LM
+  and, unlike an LM, leaves the accelerometer **pointing somewhere new** — that
+  rotation relative to gravity, not the amplitude, is what reliably tells the two
+  apart. GPCs are excluded from LM/PLM scoring; see
+  [signal processing § 2b](signal-processing.md) and
+  [decisions § S11](../state/decisions.md). ProtoSom-specific terminology (the AASM
+  manual speaks only of movements "longer than 10 s" being posture change), coined
+  by Dmitry.
 - **Index (events/hour)** — events normalised to recording duration:
   - **AHI (Apnea-Hypopnea Index)** — (apneas + hypopneas) ÷ sleep hours; the
     headline severity number for sleep-disordered breathing.

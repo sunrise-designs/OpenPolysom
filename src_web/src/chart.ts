@@ -120,42 +120,13 @@ const overlayMarkArea = (events: EventsDoc, channelKey: string): unknown[] => {
 
 const tMaxOf = (zarr: ZarrData): number => (zarr.t.length > 0 ? (zarr.t[zarr.t.length - 1] ?? 0) : 0);
 
-// Below this many "widths" zoomed in, a series stays fully decimated (ECharts' own LTTB
-// over the whole recording) — cheap and responsive for the initial full-night view. Past
-// it, only the samples actually inside the visible time window render (undecimated), since
-// at that zoom level the window itself holds few enough real samples to draw directly.
-export const DECIMATION_ZOOM_FACTOR = 5;
-
-const isZoomedIn = (start: number, end: number): boolean => {
-  const span = end - start;
-  return span > 0 && span <= 100 / DECIMATION_ZOOM_FACTOR;
-};
-
-const windowSlice = (x: Float64Array, y: ArrayLike<number>, t0: number, t1: number): readonly (readonly [number, number])[] => {
-  const n = Math.min(x.length, y.length);
-  return Array.from({ length: n }, (_, i): readonly [number, number] => [x[i] ?? 0, y[i] ?? 0])
-    .filter(([t]) => t >= t0 && t <= t1);
-};
-
-/**
- * The series `data`/`sampling` update for one chart at its current dataZoom [start,end]
- * (percent, 0-100) — meant to be merged via `chart.setOption(...)` on every 'dataZoom'
- * event. Zoomed out (span > 100/DECIMATION_ZOOM_FACTOR %): the whole series with ECharts'
- * own LTTB decimation. Zoomed in past that: only the samples inside the visible time
- * window, at full resolution — "the data the chart needs" is the visible window (see
- * wiki/knowledge/concepts.md's Decimation entry), not the whole recording re-thinned.
- */
-export function seriesOptionForZoom(zarr: ZarrData, index: number, start: number, end: number): EChartsOption {
-  const ch = channels(zarr)[index];
-  if (ch === undefined) return {};
-  if (!isZoomedIn(start, end)) {
-    return { series: [{ data: zip(ch.x, ch.y) as unknown as number[][], sampling: 'lttb' }] } as EChartsOption;
-  }
-  const tMax = tMaxOf(zarr);
-  const t0 = (start / 100) * tMax;
-  const t1 = (end / 100) * tMax;
-  return { series: [{ data: windowSlice(ch.x, ch.y, t0, t1) as unknown as number[][], sampling: 'none' }] } as EChartsOption;
-}
+// Decimation is now fully native: each series carries the whole recording once, and
+// ECharts' dataZoom (filterMode 'weakFilter') windows it on zoom while `sampling: 'lttb'`
+// re-thins whatever's in that window to plotting-area pixel width. Zoomed out → thinned to
+// ~pixels (cheap); zoomed in → the window holds fewer samples than pixels, so LTTB thins
+// nothing and every real point renders — "the data the chart needs" is the visible window
+// (see wiki/knowledge/concepts.md's Decimation entry), computed in ECharts' own typed-array
+// loops rather than rebuilt in JS on every zoom event.
 
 export function channelCount(zarr: ZarrData): number {
   return channels(zarr).length;
@@ -169,6 +140,30 @@ export function channelIndexAtY(yPx: number, heightPx: number, count: number): n
   const tops = Array.from({ length: count }, (_, r) => TOP_PCT + r * (rowH + GAP_PCT));
   return tops.findIndex((top) => yPct >= top && yPct <= top + rowH);
 }
+
+/**
+ * The explicit x-axis scroll handle, in one place so every pane's looks and behaves
+ * identically. `extra` layers on per-view layout (height/placement/target axes).
+ *
+ * Declaring the whole `dataZoom` array the same way on every connected chart is
+ * load-bearing, not just tidiness: `echarts.connect` syncs by re-dispatching the
+ * source chart's event, and a slider drag carries `dataZoomId` (SliderZoomView) —
+ * which the receiving chart resolves via `findEffectedDataZooms`' `query: payload`.
+ * Auto-generated component ids are `'\0<name>\0<n>'` derived from the component's
+ * index within its type (util/model.js `makeIdAndName`), so they only line up across
+ * instances while every chart declares its dataZooms in the same order. Reorder them
+ * on one chart and that chart silently stops following the others.
+ */
+const xScrollSlider = (extra: Readonly<Record<string, unknown>> = {}): Record<string, unknown> => ({
+  type: 'slider',
+  filterMode: 'weakFilter',
+  backgroundColor: COLORS.bg,
+  borderColor: COLORS.ring,
+  fillerColor: 'rgba(95,208,196,0.14)',
+  handleStyle: { color: COLORS.movement },
+  labelFormatter: (v: number) => formatElapsed(v),
+  ...extra,
+});
 
 // Single-band x-range brush, shared shape for every bubble chart so the
 // selection main.ts mirrors across panes looks identical on each of them.
@@ -240,7 +235,8 @@ export function buildBubbleOption(zarr: ZarrData, events: EventsDoc, index: numb
     backgroundColor: 'transparent',
     animation: false,
     textStyle: { color: COLORS.textMut, fontFamily: 'Inter, system-ui, sans-serif' },
-    grid: { left: 38, right: 8, top: 8, bottom: 22 },
+    // `bottom` clears the scroll handle below (bottom 4 + height 18) plus the time axis' labels.
+    grid: { left: 38, right: 8, top: 8, bottom: 36 },
     tooltip: {
       ...sharedTooltip(touch),
       formatter: (params: unknown) => {
@@ -274,7 +270,24 @@ export function buildBubbleOption(zarr: ZarrData, events: EventsDoc, index: numb
     // since zrender's canvas swallows wheel events outright regardless of
     // this config, and only a manual handler can replay the scroll for the
     // non-Ctrl case. See wireCtrlZoom's comment for the full story.
-    dataZoom: touch ? [] : [{ type: 'inside', filterMode: 'none', zoomOnMouseWheel: false, moveOnMouseWheel: false, moveOnMouseMove: false }],
+    //
+    // The slider is the explicit x-axis scroll handle, on every pane (including
+    // touch, which has no inside-zoom to pan with). Per-pane rather than one shared
+    // bar because the panes stack vertically at 300px each — a single handle would
+    // sit off-screen for most of the page. echarts.connect() keeps them in lockstep;
+    // see xScrollSlider on why the array's shape must match across charts.
+    //
+    // filterMode 'weakFilter': on zoom, ECharts windows the series to the visible range
+    // (keeping the points just outside so the line still reaches both edges), then
+    // `sampling: 'lttb'` re-thins that window — native adaptive decimation, no per-event
+    // JS rebuild. Top-level `animation: false` (above) keeps the y-axis rescale that
+    // 'weakFilter' triggers instant, so the line doesn't morph/tween mid-zoom.
+    dataZoom: [
+      ...(touch ? [] : [{ type: 'inside', filterMode: 'weakFilter', zoomOnMouseWheel: false, moveOnMouseWheel: false, moveOnMouseMove: false }]),
+      // showDetail off: the time axis directly above already relabels to the zoomed
+      // range, so the drag tooltip is redundant clutter in a pane this compact.
+      xScrollSlider({ bottom: 4, height: 18, showDetail: false, textStyle: { color: COLORS.textDim, fontSize: 9 } }),
+    ],
     // Desktop: drag-to-select an x-range (main.ts activates brush mode on init
     // and mirrors the selection across every chart). Dropped on touch — a drag
     // gesture there is a page-scroll swipe, per the dataZoom rule above.
@@ -343,8 +356,8 @@ export function buildSingleChannelOption(zarr: ZarrData, events: EventsDoc, inde
       splitLine: { lineStyle: { color: COLORS.grid, opacity: 0.6 } },
     },
     dataZoom: [
-      { type: 'inside', filterMode: 'none' },
-      { type: 'slider', filterMode: 'none', bottom: 14, height: 24, backgroundColor: COLORS.bg, borderColor: COLORS.ring, fillerColor: 'rgba(95,208,196,0.14)', handleStyle: { color: COLORS.movement }, textStyle: { color: COLORS.textDim }, labelFormatter: (v: number) => formatElapsed(v) },
+      { type: 'inside', filterMode: 'weakFilter' },
+      xScrollSlider({ bottom: 14, height: 24, textStyle: { color: COLORS.textDim } }),
     ],
     series: [oneSeries],
   };
@@ -395,8 +408,8 @@ export function buildChartOption(zarr: ZarrData, events: EventsDoc, touch = fals
       },
     },
     dataZoom: [
-      ...(touch ? [] : [{ type: 'inside' as const, xAxisIndex: allGridIdx, filterMode: 'none' as const }]),
-      { type: 'slider', xAxisIndex: allGridIdx, filterMode: 'none', bottom: 6, height: 20, backgroundColor: COLORS.bg, borderColor: COLORS.ring, fillerColor: 'rgba(95,208,196,0.14)', handleStyle: { color: COLORS.movement }, textStyle: { color: COLORS.textDim, fontSize: 10 }, labelFormatter: (v: number) => formatElapsed(v) },
+      ...(touch ? [] : [{ type: 'inside' as const, xAxisIndex: allGridIdx, filterMode: 'weakFilter' as const }]),
+      xScrollSlider({ xAxisIndex: allGridIdx, bottom: 6, height: 20, textStyle: { color: COLORS.textDim, fontSize: 10 } }),
     ],
     grid, xAxis, yAxis, series,
   };

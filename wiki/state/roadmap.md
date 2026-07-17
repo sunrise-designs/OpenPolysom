@@ -2,7 +2,7 @@
 title: Build Roadmap
 domain: state
 status: living
-updated: 2026-07-08
+updated: 2026-07-17
 summary: The ordered build plan from the current repo state to the target three-language pipeline, with dependencies, exit criteria, and the open forks that gate it.
 ---
 
@@ -27,8 +27,12 @@ This page is **living** — re-order and tick items as the build moves.
 - **Python processing** ([`src_python/signal_processing.py`](../../src_python/signal_processing.py))
   reads the **EDF+ raw anchor directly** via
   [`edf_reader.py`](../../src_python/edf_reader.py) (`edfio`), not the raw Zarr:
-  `remove_baseline`, `count_plm` (AASM PLM/LM, run per accelerometer),
-  `compute_hrv` (RMSSD). It has **no tests**.
+  `remove_baseline`, `count_plm` (AASM PLM/LM, run per accelerometer, with
+  Gross-Position-Change rejection per [decisions § S11](../state/decisions.md)),
+  `compute_hrv` (RMSSD). Tests are **partial**: `src_python/tests/` covers the GPC
+  gate directly and exercises `count_plm` indirectly through the windowed-metrics
+  registry, but the AASM duration/gap/series rules, `compute_hrv`, and
+  `remove_baseline` still have **no direct tests** of their own.
 - **Zarr is written from Python** ([`export_zarr.py`](../../src_python/export_zarr.py),
   `zarr_format=2`, single-chunk arrays, `meta.json` + `events.json` sidecars following
   the canonical schema) — the right *layer*, but written from the wrong stage (Python,

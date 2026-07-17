@@ -33,6 +33,12 @@ def main():
     parser.add_argument('--window', type=float, default=30.0, help='Median filter window in seconds for baseline removal (default: 30)')
     parser.add_argument('-c', '--count', action='store_true', help='Count PLMs per AASM scoring rules and print total count + PLMI')
     parser.add_argument('--threshold', type=float, default=8.0, help='Accelerometer amplitude threshold (mg) for LM detection (default: 8)')
+    parser.add_argument('--max-threshold', '--max_threshold', dest='max_threshold', type=float, default=500.0,
+                        help='Peak amplitude (mg) above which a movement is a gross position change, not an LM. '
+                             '0 disables the ceiling (default: 500)')
+    parser.add_argument('--tilt-threshold', '--tilt_threshold', dest='tilt_threshold', type=float, default=10.0,
+                        help='Rotation vs gravity (degrees) above which a movement is a gross position change, '
+                             'not an LM. 0 disables the rotation gate (default: 10)')
     parser.add_argument('--skip', type=float, default=70.0, help='Seconds to trim from the start of each channel (default: 70)')
     parser.add_argument('--ignore_last', type=float, default=0.0, help='Seconds to trim from the end of each channel (default: 0)')
     parser.add_argument('--chart', choices=['echarts', 'plotly'], default='echarts',
@@ -83,23 +89,36 @@ def main():
         )
 
     if args.count:
+        # 0 means "off" on the CLI; the DSP spells that None, since 0 as a
+        # threshold would classify everything as a GPC rather than nothing.
+        max_threshold = args.max_threshold if args.max_threshold > 0 else None
+        tilt_threshold = args.tilt_threshold if args.tilt_threshold > 0 else None
+        gpc_args = {'max_threshold': max_threshold, 'tilt_threshold_deg': tilt_threshold,
+                    'window_sec': args.window}
+
         print("--- Accel0 ---")
-        result0 = count_plm(a0x, a0y, a0z, threshold=args.threshold, fs=fs_accel)
+        result0 = count_plm(a0x, a0y, a0z, threshold=args.threshold, fs=fs_accel, **gpc_args)
         print("--- Accel1 ---")
-        result1 = count_plm(a1x, a1y, a1z, threshold=args.threshold, fs=fs_accel)
+        result1 = count_plm(a1x, a1y, a1z, threshold=args.threshold, fs=fs_accel, **gpc_args)
 
         print("--- Combined (bilateral) ---")
-        combined = combine_bilateral_vm(result0['vm'], result1['vm'], threshold=args.threshold, fs=fs_accel)
+        # Both legs' GPC masks gate the combined trace: it is an elementwise max
+        # of the two, so a roll that rotates either sensor contaminates it.
+        combined = combine_bilateral_vm(result0['vm'], result1['vm'], threshold=args.threshold,
+                                        fs=fs_accel, max_threshold=max_threshold,
+                                        gpc0=result0['gpc'], gpc1=result1['gpc'])
         print(f"Recording duration : {combined['total_hours']:.2f} hours")
         print(f"LMs detected       : {combined['total_lms']}")
-        print(f"PLMs (series ≥4, 5–90 s apart): {combined['total_plms']}")
-        print(f"PLMI               : {combined['plmi']:.1f} /hour  [AASM threshold ≥15/hour for adults]")
+        print(f"GPCs excluded      : {combined['total_gpcs']}")
+        print(f"PLMs (series >=4, 5-90 s apart): {combined['total_plms']}")
+        print(f"PLMI               : {combined['plmi']:.1f} /hour  [AASM threshold >=15/hour for adults]")
 
         # The combined bilateral score (either leg moved) is the clinical
         # headline number; per-accelerometer results are carried alongside it
         # for the leg-independent chart panes and events.
         result = combined
-        result.update({'threshold': args.threshold, 'window_sec': args.window, 'fs': fs_accel})
+        result.update({'threshold': args.threshold, 'window_sec': args.window, 'fs': fs_accel,
+                       'max_threshold': max_threshold, 'tilt_threshold_deg': tilt_threshold})
 
         hrv_overall, hrv_t, hrv_rmssd = compute_hrv(rr, fs=fs_rr)
         result.update({'hrv_overall': hrv_overall, 'hrv_t': hrv_t, 'hrv_rmssd': hrv_rmssd})

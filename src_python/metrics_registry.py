@@ -41,13 +41,25 @@ def _plmi_channels(channel):
 
 def _plmi_compute(arrays, fs, params):
     threshold = params.get('threshold', 8.0)
+    # 0 means "gate off" over the wire, matching read_log.py's CLI; the DSP
+    # spells that None (0 would reject everything, not nothing).
+    max_threshold = params.get('max_threshold', 500.0) or None
+    tilt = params.get('tilt_threshold_deg', 10.0) or None
+    gpc_args = {'max_threshold': max_threshold, 'tilt_threshold_deg': tilt}
+
     if 'accel1_x' not in arrays:
-        return count_plm(arrays['accel_x'], arrays['accel_y'], arrays['accel_z'], threshold=threshold, fs=fs)
+        return count_plm(arrays['accel_x'], arrays['accel_y'], arrays['accel_z'],
+                         threshold=threshold, fs=fs, **gpc_args)
     if 'accel_x' not in arrays:
-        return count_plm(arrays['accel1_x'], arrays['accel1_y'], arrays['accel1_z'], threshold=threshold, fs=fs)
-    r0 = count_plm(arrays['accel_x'], arrays['accel_y'], arrays['accel_z'], threshold=threshold, fs=fs)
-    r1 = count_plm(arrays['accel1_x'], arrays['accel1_y'], arrays['accel1_z'], threshold=threshold, fs=fs)
-    return combine_bilateral_vm(r0['vm'], r1['vm'], threshold=threshold, fs=fs)
+        return count_plm(arrays['accel1_x'], arrays['accel1_y'], arrays['accel1_z'],
+                         threshold=threshold, fs=fs, **gpc_args)
+    r0 = count_plm(arrays['accel_x'], arrays['accel_y'], arrays['accel_z'],
+                   threshold=threshold, fs=fs, **gpc_args)
+    r1 = count_plm(arrays['accel1_x'], arrays['accel1_y'], arrays['accel1_z'],
+                   threshold=threshold, fs=fs, **gpc_args)
+    return combine_bilateral_vm(r0['vm'], r1['vm'], threshold=threshold, fs=fs,
+                                max_threshold=max_threshold,
+                                gpc0=r0['gpc'], gpc1=r1['gpc'])
 
 
 PLMI_SPEC = MetricSpec(
@@ -55,7 +67,15 @@ PLMI_SPEC = MetricSpec(
     channel_options=('accel_mag', 'accel1_mag', 'accel_combined_mag'),
     zarr_arrays=_plmi_channels,
     compute=_plmi_compute,
-    params_schema={'threshold': {'type': 'number', 'default': 8.0, 'min': 0.0}},
+    params_schema={
+        'threshold':         {'type': 'number', 'default': 8.0,   'min': 0.0},
+        'max_threshold':     {'type': 'number', 'default': 500.0, 'min': 0.0},
+        'tilt_threshold_deg': {'type': 'number', 'default': 10.0, 'min': 0.0, 'max': 180.0},
+    },
+    # 120 s of padding already covers GPC detection's needs: the tilt at a sample
+    # reads the gravity baseline half a window (15 s) either side, and each
+    # baseline point is itself a 30 s-window median — so the tilt at the window
+    # edge depends on raw samples up to 30 s outside it.
     context_before_s=120.0, context_after_s=120.0, min_window_s=15.0,
     result_fields=('plmi', 'total_lms', 'total_plms', 'total_hours'),
 )

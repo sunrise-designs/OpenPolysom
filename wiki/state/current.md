@@ -2,7 +2,7 @@
 title: Current State
 domain: state
 status: living
-updated: 2026-07-09
+updated: 2026-07-17
 summary: What exists in the repo today (C++ EDF+ writers, Python DSP reading EDF+ directly via edfio, a prototype ECharts/Zarr TS viewer that now carries both accelerometers plus a combined bilateral score and a brush-selected windowed-metrics card, a standalone FastAPI windowed-metrics service, and a multi-study Netlify landing page) versus the planned three-layer pipeline — and where the gaps are.
 ---
 
@@ -51,7 +51,9 @@ point `read_log.py`:
   (Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z, Accel1X/Y/Z, RR), returning
   physical-unit arrays + each signal's native sample rate.
 - `signal_processing.py`: `remove_baseline` (median-window), `count_plm` (AASM PLM/LM
-  scoring), `compute_hrv` (RMSSD), `accel_magnitude`, `combine_bilateral_vm`. These
+  scoring), `compute_hrv` (RMSSD), `accel_magnitude`, `combine_bilateral_vm`, and the
+  Gross-Position-Change gate (`gravity_baseline`/`gravity_tilt`/`gpc_mask` + `count_plm`'s
+  `max_threshold`/`tilt_threshold_deg` — see [decisions § S11](decisions.md)). These
   take plain physical-unit arrays + `fs` directly. `count_plm`/`accel_magnitude` run
   once per accelerometer (Accel0, Accel1); `combine_bilateral_vm` then re-scores the
   elementwise-max envelope of both legs' vector magnitudes as the headline bilateral

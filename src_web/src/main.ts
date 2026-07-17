@@ -1,6 +1,6 @@
 import * as echarts from 'echarts';
 import { loadMeta, loadEvents, loadZarr, loadStudies, httpStore } from './zarr_loader';
-import { buildBubbleOption, buildSingleChannelOption, channelCount, brushRangeFromEvent, seriesOptionForZoom } from './chart';
+import { buildBubbleOption, buildSingleChannelOption, channelCount, brushRangeFromEvent } from './chart';
 import type { BrushRange } from './chart';
 import { renderShell, NO_RANGE_TEXT, renderWindowMetricsBody } from './shell';
 import { renderLanding } from './landing';
@@ -79,7 +79,6 @@ function createFullscreen(zarr: ZarrData, events: EventsDoc): (index: number) =>
     const chart = echarts.init(canvas, null, { renderer: 'canvas' });
     fsChart = chart;
     chart.setOption(buildSingleChannelOption(zarr, events, index));
-    wireChartZoomDecimation(chart, zarr, index);
     void (async (): Promise<void> => {
       try { await overlay.requestFullscreen(); } catch { /* unsupported */ }
       try { await screen.orientation.lock('landscape'); } catch { /* unsupported (e.g. iOS) */ }
@@ -229,20 +228,6 @@ function wireCtrlZoom(charts: readonly echarts.ECharts[]): void {
   });
 }
 
-/**
- * Re-derives one chart's series `data`/`sampling` on every 'dataZoom' event, via
- * `chart.ts`'s `seriesOptionForZoom` — the whole recording, LTTB-decimated, while zoomed
- * out; just the visible time window, undecimated, once zoomed in past
- * `DECIMATION_ZOOM_FACTOR`. Panning while already zoomed in re-windows on every event too,
- * so the rendered slice keeps tracking whatever's actually on screen.
- */
-function wireChartZoomDecimation(chart: echarts.ECharts, zarr: ZarrData, index: number): void {
-  chart.on('dataZoom', () => {
-    const { start, end } = currentZoomRange(chart);
-    chart.setOption(seriesOptionForZoom(zarr, index, start, end));
-  });
-}
-
 async function run(app: HTMLElement, metaUrl: string): Promise<void> {
   const meta: Meta = await loadMeta(metaUrl);
   const base = baseDirOf(metaUrl);
@@ -276,7 +261,6 @@ async function run(app: HTMLElement, metaUrl: string): Promise<void> {
     if (openFs !== undefined) {
       c.getZr().on('click', () => { openFs(i); });
     }
-    if (!touch) wireChartZoomDecimation(c, zarrData, i);
     return c;
   }).filter((c): c is echarts.ECharts => c !== undefined);
 

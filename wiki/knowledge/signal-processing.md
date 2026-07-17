@@ -2,8 +2,8 @@
 title: Signal Processing (Python)
 domain: knowledge
 status: living
-updated: 2026-07-09
-summary: The Python processing stage — baseline removal, AASM PLM/LM, bilateral-combined PLM, HRV/RMSSD — documented as the executable spec, with the future apnea / EEG / snore roadmap and the Python-vs-C++ watch-item.
+updated: 2026-07-17
+summary: The Python processing stage — baseline removal, AASM PLM/LM, Gross Position Change rejection, bilateral-combined PLM, HRV/RMSSD — documented as the executable spec, with the future apnea / EEG / snore roadmap and the Python-vs-C++ watch-item.
 ---
 
 # Signal Processing (Python)
@@ -66,7 +66,9 @@ All three live in [`src_python/signal_processing.py`](../../src_python/signal_pr
 
 ### 2. AASM PLM / LM detection
 
-`count_plm(ax, ay, az, threshold=8, fs=50)` (`:17`). Periodic Limb Movement scoring per the **AASM Scoring Manual v2.6** (rules transcribed in [`plans/removing accel baseline.md`](../../plans/removing%20accel%20baseline.md)). Runs once per accelerometer — the ESP32-C6 logger has two (Accel0, Accel1) — scored independently, **and** combined into one bilateral score (below); all three are exported and plotted, see [current state](../state/current.md) and [viewer](viewer.md).
+`count_plm(ax, ay, az, threshold=8, fs=50, max_threshold=None, tilt_threshold_deg=10.0, window_sec=30)`.
+The trailing three arguments are [§ 2b](#2b-gross-position-change-gpc-rejection)'s; the rest of this
+section describes the AASM core. Periodic Limb Movement scoring per the **AASM Scoring Manual v2.6** (rules transcribed in [`plans/removing accel baseline.md`](../../plans/removing%20accel%20baseline.md)). Runs once per accelerometer — the ESP32-C6 logger has two (Accel0, Accel1) — scored independently, **and** combined into one bilateral score (below); all three are exported and plotted, see [current state](../state/current.md) and [viewer](viewer.md).
 
 The threshold/duration/gap/grouping logic (`:23-58` of the pre-refactor code) is
 factored into a shared `_score_vm(vm, threshold, fs)` helper that takes an
@@ -88,6 +90,15 @@ regardless of which vm trace is being scored.
 | PLM series | **≥ 4** consecutive LMs meeting the interval rule | `:48`, `:51` |
 | PLMI | total in-series PLMs ÷ recording hours; **clinical threshold ≥ 15/h (adults)** | `:56`, `:58` |
 
+> **`window_sec` now actually reaches the baseline (changed 2026-07-17).** `count_plm`
+> used to call `remove_baseline(..., fs=fs)` *without* `window_sec`, so PLM detection
+> silently used the 30 s default no matter what `--window` said — and `meta.json`
+> recorded the argparse value, which was therefore a lie whenever it wasn't 30. The
+> [zarr schema spec § 6.5](../planning/zarr-schema-spec.md) flags this and recommends
+> exactly this fix. `count_plm` now takes `window_sec` and threads it through, and
+> `read_log.py` passes `--window`. **Only affects runs with `--window` ≠ 30**; the
+> default path is unchanged, and the recorded provenance is now true.
+
 **Algorithm.**
 1. Apply `remove_baseline()` internally to each of the three axes so raw or pre-filtered input both work (`:19`).
 2. **Vector magnitude** combining all three axes: `vm = sqrt(ax² + ay² + az²)` (`:20`) over the baseline-removed (zero-centered) channels. One activity signal from three channels.
@@ -106,9 +117,76 @@ regardless of which vm trace is being scored.
 
 `accel_magnitude(ax, ay, az, window_sec=30, fs=50)` (`:71`) is the same `vm` computation exposed standalone (no thresholding) — feeds the [viewer](viewer.md) as a derived activity trace.
 
+### 2b. Gross Position Change (GPC) rejection
+
+`gravity_baseline` · `gravity_tilt` · `gpc_mask`, plus the `max_threshold` /
+`tilt_threshold_deg` arguments on `count_plm`.
+
+**Intent.** A night's accelerometry contains two kinds of movement, and only one
+is an LM. A **limb movement** is a jerk: the limb accelerates and returns, and the
+sensor ends up pointing where it started. A **Gross Position Change** — rolling
+over, turning — moves the whole body, swings a far larger amplitude, and leaves
+the sensor pointing somewhere new. Before this gate, GPCs both scored as LMs
+themselves and **drafted** spurious neighbours: the baseline step throws off extra
+threshold crossings either side of the roll, so one position change could
+manufacture a handful of "LMs".
+
+The AASM `MAX_DUR` rule (≤10 s) already catches the slowest position changes. It
+does not catch a fast one, which is why these two gates exist.
+
+**The two gates** (independent; either alone rejects a run, and both are optional):
+
+| Gate | Rule | Catches |
+|---|---|---|
+| **Amplitude ceiling** | peak `vm` > `max_threshold` ⇒ not an LM | A violent transient that never rotated the sensor — a device knock, the unit coming off |
+| **Rotation** | orientation vs gravity changes > `tilt_threshold_deg` across the run ⇒ not an LM | A roll of any amplitude, plus the LMs it drafts |
+
+**Algorithm (rotation gate).**
+1. `gravity_baseline` — the rolling median *kept* rather than subtracted. For raw
+   axes the median rejects jerks, so what survives is gravity: the sensor's
+   orientation.
+2. `gravity_tilt` — per sample, the angle between the gravity vector `window_sec`/2
+   **before** and **after** it: `θ = arccos( (g₋ · g₊) / (|g₋| |g₊|) )`. A jerk leaves
+   both vectors equal (θ≈0°); a roll makes them diverge (θ large). **Amplitude cannot
+   separate the two — a hard kick and a roll both swing hundreds of mg — rotation can.**
+3. `gpc_mask` — `θ ≥ tilt_threshold_deg`. An LM overlapping any True sample is dropped.
+4. Rejected runs are reported as `gpc_events` / `total_gpcs`, not dropped silently.
+
+**Spec invariants (what a port must hold):**
+- The tilt comparison is **centred** (half a window either side), not trailing. This
+  is load-bearing twice over: the angle peaks *over* the rotation instead of lagging
+  it, and the elevated span **brackets** the movement — which is what suppresses the
+  drafted LMs on either side. A trailing comparison would leave them scored.
+- **Rotation is undefined without gravity.** Where either gravity vector is weaker
+  than `MIN_GRAVITY_MG` (100 mg — 1 g ≈ 1000 mg), tilt is **0°, never a rotation**.
+  An unguarded `arccos` of a 0/0 quotient fabricates 90° and would mark every sample
+  a GPC. This is what makes the gate degrade to a no-op on already-baseline-removed
+  or synthetic input rather than destroying the score.
+- Gating is **subtractive only**: `lm_events` after ⊆ `lm_events` before, and
+  `total_lms + total_gpcs` == the ungated `total_lms`.
+- `combine_bilateral_vm` **unions** the two legs' masks, never intersects them: the
+  combined trace is an elementwise max, so a rotation on either leg contaminates it,
+  and a whole-body position change need only rotate one sensor to have thrown the
+  other limb around too. Masks truncate to the shorter leg alongside the traces.
+- The gates are disabled with `None`, **never 0** — a 0° tilt threshold marks every
+  sample a GPC, and a 0 mg ceiling every movement one. `read_log.py`'s CLI accepts 0
+  as "off" and maps it to `None` at the edge.
+
+> **Threshold provenance — read this before trusting the defaults.**
+> `tilt_threshold_deg=10.0` and `max_threshold=500.0` (mg) were tuned against **one**
+> recording, `biometric_2026-07-16_23-00-00.zarr` (2 h, 50 Hz, MMA8451 mg). In it the
+> tilt distribution is starkly bimodal — p50 0.02°, p90 0.09°, versus 13–124° at the
+> four position changes — so **any** threshold in ~5–15° separates them identically;
+> 10° is not a knife-edge. The ceiling is the weaker of the two: real LMs peaked at
+> ≤264 mg and GPC/artefact runs at ≥641 mg in that recording, but a genuinely violent
+> kick could exceed 500 mg, and unlike the rotation gate that would be a false
+> rejection. Both are **scale-dependent placeholders**, in the same position as
+> `threshold=8` (see §2) — they mean nothing across a units change and are not
+> validated against a corpus. See [decisions § S11](../state/decisions.md).
+
 ### 3. Bilateral combined PLM score
 
-`combine_bilateral_vm(vm0, vm1, threshold=8, fs=50)`. Standard PSG practice
+`combine_bilateral_vm(vm0, vm1, threshold=8, fs=50, max_threshold=None, gpc0=None, gpc1=None)`. Standard PSG practice
 scores leg movements per-leg **and** on one combined bilateral channel; a
 movement on *either* leg counts once toward the combined index, without
 double-counting movements both legs make together. This is the headline
@@ -173,6 +251,30 @@ Per [coding standards](../standards/coding.md), the spec is pinned by **property
 - *Reference:* hand-built fixtures with a **known** LM/PLM count — e.g. exactly 4 jerks 10 s apart → 1 series, 4 PLMs; 3 jerks → 0 PLMs (below the ≥4 gate); jerks 100 s apart → LMs but 0 PLMs (gap > 90 s); a 0.3 s blip → 0 LMs (< MIN_DUR); a 12 s plateau → 0 LMs (> MAX_DUR).
 - *Property:* `total_plms ≤ total_lms` always; `plmi == total_plms / total_hours`.
 - *Reference:* a committed example EDF+ recording (e.g. under `examples/`) → recorded golden `(total_lms, total_plms, plmi)` per accelerometer (regression lock).
+
+**GPC rejection** (`src_python/tests/test_gpc_rejection.py` — built)
+- *Property:* a still sensor reads 0° tilt; a jerk of **any** amplitude that does not
+  rotate the sensor reads ~0°; a synthetic roll of θ° recovers θ° within tolerance.
+- *Property:* gravity-free input (zeros, or |g| < `MIN_GRAVITY_MG`) reads **0°, not 90°**
+  — the regression guard on the 0/0 `arccos`. Scoring a gravity-free fixture gated and
+  ungated gives the identical result, which is why the pre-existing windowed-metrics
+  fixtures are untouched by this feature.
+- *Property:* gating is subtractive — `total_lms` gated ≤ ungated, `lm_events` gated ⊆
+  ungated, and `total_lms + total_gpcs` == ungated `total_lms`.
+- *Reference:* a roll → 0 LMs and ≥1 GPC with `max_threshold=None` (isolating the
+  rotation gate, so the ceiling cannot take credit); jerks 2 s either side of a roll →
+  0 LMs (the drafting case); a jerk 250 s away → still scored (the GPC span must not
+  swallow the recording).
+- *Reference:* a 900 mg transient that never rotates → 1 LM ungated, 0 LMs + 1 GPC with
+  `max_threshold=500` (isolating the ceiling — the case rotation cannot see).
+- *Reference (bilateral):* leg 0 rolls where leg 1 shows a clean jerk → combined scores
+  **0** LMs; passing only leg 1's mask scores ≥1, proving the **union** rejected it.
+- **Fixture note:** a GPC fixture **must** include a transient burst on top of the
+  orientation step. A rolling median passes a step edge through untouched, so an
+  idealised instant roll leaves a residual of ~16 mg — far under any threshold — and
+  would never be mistaken for an LM in the first place. What makes a real GPC
+  masquerade as a giant LM is the acceleration needed to rotate the limb. A
+  step-only fixture tests nothing.
 
 **`combine_bilateral_vm`**
 - *Property:* `combined_vm == elementwise max(vm0, vm1)`, so a movement scored on one leg alone still shows up in the combined trace at full amplitude.

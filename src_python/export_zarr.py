@@ -238,9 +238,15 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
             'plmi':               stats.get('plmi', 0.0),
             'total_lms':          stats.get('total_lms', 0),
             'total_plms':         stats.get('total_plms', 0),
+            'total_gpcs':         stats.get('total_gpcs', 0),
             'total_hours':        stats.get('total_hours', 0.0),
             'hrv_rmssd_overall':  hrv_val,
             'threshold':          stats.get('threshold'),
+            # The two GPC-rejection gates. Recorded because they change the LM
+            # count: a reader cannot interpret `total_lms` without knowing what
+            # was excluded from it. null = that gate was disabled for this run.
+            'max_threshold':      stats.get('max_threshold'),
+            'tilt_threshold_deg': stats.get('tilt_threshold_deg'),
             'window_sec':         stats.get('window_sec'),
             'fs':                 fs,
             **({'legs': {
@@ -248,6 +254,7 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
                     'plmi':        leg_stats[leg].get('plmi', 0.0),
                     'total_lms':   leg_stats[leg].get('total_lms', 0),
                     'total_plms':  leg_stats[leg].get('total_plms', 0),
+                    'total_gpcs':  leg_stats[leg].get('total_gpcs', 0),
                     'total_hours': leg_stats[leg].get('total_hours', 0.0),
                 } for leg in ('accel0', 'accel1') if leg_stats.get(leg) is not None
             }} if leg_stats is not None else {}),
