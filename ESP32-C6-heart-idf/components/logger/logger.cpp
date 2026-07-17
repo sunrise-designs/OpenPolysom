@@ -9,6 +9,7 @@
 #include "driver/sdspi_host.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "sensors.h"
 #include <time.h>
 #include <stdio.h>
@@ -17,19 +18,30 @@
 #include <unistd.h>
 #include <math.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
 static const char *TAG = "logger";
 
 // ── ESP_LOG capture to SD ──────────────────────────────────────────────────────
 // Buffers formatted log lines in RAM and only touches the SD card when the
 // buffer fills (or at existing safe flush points), to keep write wear low.
+// Warnings and errors are written through immediately — they are rare, and
+// they are the lines worth spending a write on.
 #define LOG_BUF_SIZE 4096
 static char             log_buf[LOG_BUF_SIZE];
 static size_t           log_buf_len = 0;
 static FILE            *log_file = NULL;
-static char             log_file_path[64];
+static char             log_file_path[80];
 static SemaphoreHandle_t log_mutex = NULL;
 static vprintf_like_t   prev_vprintf = NULL;
+
+// Task currently inside log_mutex, or NULL. log_flush_locked() does SD I/O
+// while holding the mutex, and the SD/FATFS driver logs its own errors when a
+// write fails — so a flush can be re-entered by the very task performing it,
+// on exactly the failure path this capture exists to record. log_mutex is
+// non-recursive, so that nested line would otherwise block the task for the
+// full take-timeout and be dropped anyway. Recognise ourselves and bail early.
+static volatile TaskHandle_t log_owner = NULL;
 
 // Caller must hold log_mutex.
 static void log_flush_locked(void)
@@ -39,6 +51,19 @@ static void log_flush_locked(void)
     fflush(log_file);
     fsync(fileno(log_file));
     log_buf_len = 0;
+}
+
+// ESP_LOG's format string opens with the level letter ("E (123) tag: ..."),
+// behind an ANSI colour escape when CONFIG_LOG_COLORS is on (it currently
+// isn't, but skipping the escape keeps this working if it's ever enabled).
+static bool log_line_is_urgent(const char *line)
+{
+    const char *p = line;
+    if (*p == '\033') {
+        while (*p && *p != 'm') p++;
+        if (*p == 'm') p++;
+    }
+    return *p == 'E' || *p == 'W';
 }
 
 static int log_capture_vprintf(const char *fmt, va_list args)
@@ -53,7 +78,13 @@ static int log_capture_vprintf(const char *fmt, va_list args)
     if (xPortInIsrContext()) {
         va_end(args_copy);
         return console_n;
-    } 
+    }
+
+    // Nested log from inside our own flush (see log_owner) — console only.
+    if (log_owner == xTaskGetCurrentTaskHandle()) {
+        va_end(args_copy);
+        return console_n;
+    }
 
     char line[256];
     int n = vsnprintf(line, sizeof(line), fmt, args_copy);
@@ -62,6 +93,7 @@ static int log_capture_vprintf(const char *fmt, va_list args)
         if ((size_t)n >= sizeof(line)) n = sizeof(line) - 1; // truncated, still buffer what we have
 
         if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            log_owner = xTaskGetCurrentTaskHandle();
             if (log_buf_len + (size_t)n > LOG_BUF_SIZE) {
                 log_flush_locked(); // no-op if log_file isn't open yet (e.g. no SD card)
             }
@@ -71,6 +103,14 @@ static int log_capture_vprintf(const char *fmt, va_list args)
                 memcpy(log_buf + log_buf_len, line, n);
                 log_buf_len += n;
             }
+            // The 10-record cadence in logger_record() leaves up to 100 s of log
+            // in RAM, so a fault that stops the firmware before the next flush
+            // takes its own explanation down with it. Warnings and errors are
+            // the lines that explain a fault: write them through now.
+            if (log_line_is_urgent(line)) {
+                log_flush_locked();
+            }
+            log_owner = NULL;
             xSemaphoreGive(log_mutex);
         }
     }
@@ -89,7 +129,9 @@ static void log_flush(void)
 {
     if (!log_mutex) return;
     if (xSemaphoreTake(log_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        log_owner = xTaskGetCurrentTaskHandle();
         log_flush_locked();
+        log_owner = NULL;
         xSemaphoreGive(log_mutex);
     }
 }
@@ -101,9 +143,11 @@ static void log_open_file(void)
     if (!log_mutex) return;
     bool opened = false;
     if (xSemaphoreTake(log_mutex, portMAX_DELAY) == pdTRUE) {
+        log_owner = xTaskGetCurrentTaskHandle();
         log_file = fopen(log_file_path, "w");
         opened = (log_file != NULL);
         log_flush_locked();
+        log_owner = NULL;
         xSemaphoreGive(log_mutex);
     }
     // Logged outside the lock: ESP_LOGx re-enters log_capture_vprintf, which
@@ -117,11 +161,13 @@ static void log_close_file(void)
 {
     if (!log_mutex) return;
     if (xSemaphoreTake(log_mutex, portMAX_DELAY) == pdTRUE) {
+        log_owner = xTaskGetCurrentTaskHandle();
         log_flush_locked();
         if (log_file) {
             fclose(log_file);
             log_file = NULL;
         }
+        log_owner = NULL;
         xSemaphoreGive(log_mutex);
     }
 }
@@ -151,10 +197,11 @@ static void log_close_file(void)
 
 static int edf_handle = -1;
 static bool logging_active = false;
+static bool write_failed = false;
 static SemaphoreHandle_t edf_mutex = NULL;
 static uint32_t record_count = 0;
-static char edf_file_path[64];
-static char json_file_path[64];
+static char edf_file_path[80];
+static char json_file_path[80];
 static time_t recording_start_time = 0;
 
 // ── Sample buffers ────────────────────────────────────────────────────────────
@@ -191,6 +238,7 @@ uint32_t logger_get_ldc0_baseline(void) { return ldc0_baseline; }
 uint32_t logger_get_ldc1_baseline(void) { return ldc1_baseline; }
 bool     logger_get_baseline_ok(void)   { return baseline_ok; }
 bool     logger_is_active(void)         { return logging_active; }
+bool     logger_had_write_error(void)   { return write_failed; }
 uint32_t logger_get_elapsed_seconds(void)
 {
     return logging_active ? (uint32_t)difftime(time(NULL), recording_start_time) : 0;
@@ -303,23 +351,45 @@ static void write_json_sidecar(const struct tm *start_t, const struct tm *end_t)
 }
 
 // ── EDF setup ────────────────────────────────────────────────────────────────
+// The timestamp stem is not unique on its own: with no time source the clock
+// reads 1970-01-01T00:00:00 on every boot, so a reboot mid-study would rebuild
+// the same three paths — and both fopen(..., "w") here and edflib's
+// fopen(..., "wb") truncate, silently destroying the night's recording. Probe
+// for a stem whose .edf does not exist yet, so an existing recording is never
+// overwritten whatever the clock says. The unsuffixed name is tried first, so
+// a run with a working clock keeps today's exact filename.
+static bool build_unique_paths(const struct tm *t)
+{
+    for (int seq = 0; seq < 1000; seq++) {
+        char stem[64];
+        int n = snprintf(stem, sizeof(stem),
+                         EDF_FILE_DIR "/" EDF_FILE_PREFIX "_%04d-%02d-%02d_%02d-%02d-%02d",
+                         t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+                         t->tm_hour, t->tm_min, t->tm_sec);
+        if (seq > 0) snprintf(stem + n, sizeof(stem) - n, "_%03d", seq);
+
+        snprintf(edf_file_path, sizeof(edf_file_path), "%s.edf", stem);
+
+        struct stat st;
+        if (stat(edf_file_path, &st) == 0) continue;  // taken — try the next seq
+
+        snprintf(log_file_path,  sizeof(log_file_path),  "%s.log",  stem);
+        snprintf(json_file_path, sizeof(json_file_path), "%s.json", stem);
+        if (seq > 0) {
+            ESP_LOGW(TAG, "Recording paths for this timestamp exist; using suffix _%03d", seq);
+        }
+        return true;
+    }
+    ESP_LOGE(TAG, "No free recording filename for this timestamp (1000 taken)");
+    return false;
+}
+
 static bool open_edf(void)
 {
     struct tm t = {};
     time_t now = time(NULL);
     localtime_r(&now, &t);
-    snprintf(edf_file_path, sizeof(edf_file_path),
-             EDF_FILE_DIR "/" EDF_FILE_PREFIX "_%04d-%02d-%02d_%02d-%02d-%02d.edf",
-             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-             t.tm_hour, t.tm_min, t.tm_sec);
-    snprintf(log_file_path, sizeof(log_file_path),
-             EDF_FILE_DIR "/" EDF_FILE_PREFIX "_%04d-%02d-%02d_%02d-%02d-%02d.log",
-             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-             t.tm_hour, t.tm_min, t.tm_sec);
-    snprintf(json_file_path, sizeof(json_file_path),
-             EDF_FILE_DIR "/" EDF_FILE_PREFIX "_%04d-%02d-%02d_%02d-%02d-%02d.json",
-             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-             t.tm_hour, t.tm_min, t.tm_sec);
+    if (!build_unique_paths(&t)) return false;
     log_open_file();
 
     edf_handle = edfopen_file_writeonly(edf_file_path,
@@ -373,6 +443,7 @@ static bool open_edf(void)
     rr_idx        = 0;
     ecg_idx       = 0;
     record_count  = 0;
+    write_failed  = false;
     recording_start_time = now;
     logging_active = true;
     ESP_LOGI(TAG, "EDF recording started: %s", edf_file_path);
@@ -386,6 +457,47 @@ bool logger_init(void)
     }
     if (!sd_mount()) return false;
     return open_edf();
+}
+
+// Writes one complete EDF data record: one call per signal, in the SIG_* order
+// declared in open_edf(). Caller must hold edf_mutex.
+//
+// These returns must not be ignored: a card that stops accepting writes is
+// otherwise invisible, and the recording ends at the last flushed record with
+// nothing to say why. A failure part-way through also leaves the record short
+// while edflib holds signal_write_sequence_pos at the failed signal, so the
+// interleaving cannot be resumed at a known offset — the caller stops rather
+// than append misaligned data behind a header that claims otherwise.
+static bool write_record_locked(void)
+{
+    int *const bufs[NUM_SIGNALS] = {
+        thoracic_buf, abdomen_buf, flow_buf, ecg_buf,
+        a0x_buf, a0y_buf, a0z_buf,
+        a1x_buf, a1y_buf, a1z_buf,
+        rr_buf,
+    };
+
+    for (int i = 0; i < NUM_SIGNALS; i++) {
+        if (edfwrite_digital_samples(edf_handle, bufs[i]) != 0) {
+            ESP_LOGE(TAG, "EDF write failed: signal %d of record %lu (%lu records safe on card)",
+                     i, (unsigned long)record_count + 1, (unsigned long)(record_count / 10) * 10);
+            return false;
+        }
+    }
+    return true;
+}
+
+// Caller must hold edf_mutex. Leaves the EDF handle open so logger_close() can
+// still run, but stops the 50 Hz path from hammering a card that is not
+// accepting writes. Everything up to the last edfflush_file() is valid on disk:
+// the header's record count is what a reader trusts, and it is only ever
+// advanced by a flush that succeeded.
+static void stop_on_write_error_locked(void)
+{
+    logging_active = false;
+    write_failed   = true;
+    ESP_LOGE(TAG, "Recording stopped after SD write failure at %.1f min",
+             (float)record_count * RECORD_DURATION_S / 60.0f);
 }
 
 void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
@@ -437,29 +549,32 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
     sample_idx++;
 
     if (sample_idx >= SAMPLES_50HZ) {
-        edfwrite_digital_samples(edf_handle, thoracic_buf);
-        edfwrite_digital_samples(edf_handle, abdomen_buf);
-        edfwrite_digital_samples(edf_handle, flow_buf);
-        edfwrite_digital_samples(edf_handle, ecg_buf);
-        edfwrite_digital_samples(edf_handle, a0x_buf);
-        edfwrite_digital_samples(edf_handle, a0y_buf);
-        edfwrite_digital_samples(edf_handle, a0z_buf);
-        edfwrite_digital_samples(edf_handle, a1x_buf);
-        edfwrite_digital_samples(edf_handle, a1y_buf);
-        edfwrite_digital_samples(edf_handle, a1z_buf);
-        edfwrite_digital_samples(edf_handle, rr_buf);
+        bool ok = write_record_locked();
 
         sample_idx = 0;
         rr_idx     = 0;
         ecg_idx    = 0;
-        record_count++;
 
-        if (record_count % 10 == 0) {
-            edfflush_file(edf_handle, (int)record_count);
-            ESP_LOGI(TAG, "EDF: %lu records (%.1f min)",
-                     (unsigned long)record_count,
-                     (float)record_count * RECORD_DURATION_S / 60.0f);
-            log_flush(); // piggyback on the EDF flush cadence to limit SD wear
+        if (!ok) {
+            stop_on_write_error_locked();
+        } else {
+            record_count++;
+
+            if (record_count % 10 == 0) {
+                // Until this lands, the header still says record_count-10, so a
+                // failure here means the last 10 records are on the card but
+                // unreadable — worth stopping for, same as a data write failure.
+                if (edfflush_file(edf_handle, (int)record_count) != 0) {
+                    ESP_LOGE(TAG, "EDF header flush failed at record %lu",
+                             (unsigned long)record_count);
+                    stop_on_write_error_locked();
+                } else {
+                    ESP_LOGI(TAG, "EDF: %lu records (%.1f min)",
+                             (unsigned long)record_count,
+                             (float)record_count * RECORD_DURATION_S / 60.0f);
+                    log_flush(); // piggyback on the EDF flush cadence to limit SD wear
+                }
+            }
         }
     }
     if (edf_mutex) xSemaphoreGive(edf_mutex);

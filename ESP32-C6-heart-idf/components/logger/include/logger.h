@@ -15,7 +15,9 @@ extern "C" {
 // app_main, before any other init, so early boot logs aren't missed.
 // Logs are still echoed to the console as before; the SD write only happens
 // when the 4 KB RAM buffer fills or at existing safe flush points, to limit
-// SD card wear.
+// SD card wear. ESP_LOGW/ESP_LOGE lines are the exception and reach the card
+// immediately — a fault that stops the firmware before the next flush point
+// would otherwise take its own explanation down with it.
 void logger_log_init(void);
 
 // Initialise SD card and open EDF file for writing.
@@ -46,9 +48,17 @@ uint32_t logger_get_ldc1_baseline(void);
 bool     logger_get_baseline_ok(void);
 
 // True once logger_init() has successfully mounted the SD card and opened the
-// EDF file. False if logger_init() failed (e.g. no SD card present) — used by
-// the display module to warn that samples are not being recorded.
+// EDF file. False if logger_init() failed (e.g. no SD card present), or if a
+// recording stopped itself after an SD write failure (see
+// logger_had_write_error) — used by the display module to warn that samples are
+// not being recorded.
 bool     logger_is_active(void);
+
+// True if a recording started but then stopped because the SD card rejected a
+// write. Distinguishes "recording aborted mid-study" from the never-started
+// case that logger_is_active() alone reports. The EDF is valid up to its last
+// flushed record; the reason is in the .log file beside it.
+bool     logger_had_write_error(void);
 
 // Seconds elapsed since the current recording started. 0 if not recording.
 uint32_t logger_get_elapsed_seconds(void);
