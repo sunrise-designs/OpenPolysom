@@ -2,6 +2,32 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Build (idf.py)",
+      "type": "shell",
+      "command": "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; C:\\esp\\v6.0.1\\esp-idf\\export.ps1; idf.py build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Build (minimal, fast incremental)",
+      "type": "shell",
+      "command": "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; C:\\esp\\v6.0.1\\esp-idf\\export.ps1; ninja -C '${workspaceFolder}\\build'",
+      "detail": "Calls ninja directly against the existing build dir, skipping idf.py's Python startup and reconfigure checks. Only works after at least one 'Build (idf.py)' has generated the build dir.",
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
       "label": "Monitor (no-reset, direct)",
       "type": "shell",
       "command": "& 'C:\\Espressif\\tools\\python\\v6.0.1\\venv\\Scripts\\python.exe' 'C:\\esp\\v6.0.1\\esp-idf\\tools\\idf_monitor.py' -p COM7 -b 921600 --no-reset --toolchain-prefix riscv32-esp-elf- '${workspaceFolder}\\build\\polysom.elf'",
