@@ -67,8 +67,8 @@ export async function loadZarr(store: zarr.Readable): Promise<ZarrData> {
     readOptionalArray(root, 'flow'),
     readArray(root, 'rr'),
     readArray(root, 'rr_t'),
-    readArray(root, 'hrv_t'),
-    readArray(root, 'hrv_rmssd'),
+    readOptionalArray(root, 'hrv_t'),
+    readOptionalArray(root, 'hrv_rmssd'),
   ]);
   return {
     t: t as Float64Array,
