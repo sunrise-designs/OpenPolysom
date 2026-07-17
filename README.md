@@ -12,6 +12,10 @@ It runs on an ESP32 microcontroller, and collects these signals from a patient:
 - Sound recording for [snoring detection](#snoring-classification-and-feature-extraction)
 - Acceleration data from the leg sensors to [detect leg twitching](#accelerometer-data-processing)
 
+New! Some real recordings:
+===========================
+[A somewhat truncated 2 hours of real sleep data - 17 July 2026](https://polysom.netlify.app/index.html?meta=studies%2Fbiometric_2026-07-16_23-00-00%2Fmeta.json)
+
 Why do this?
 ===========================
 It's about creating an _accessible, rapid_ diagnostic pathway for sleep disorders. Many, many people suffer from sleep disorders, breathing-related ones in particular. They have a significant effect on the quality of life, safety (falling asleep while driving) and serious long-term adverse health effects.
