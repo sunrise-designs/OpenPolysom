@@ -190,7 +190,7 @@ extern "C" void app_main(void)
     }
     battery_gauge_init(sensors_get_adc_unit());
 
-    // If a DS1307 RTC is fitted and already holds a plausible time (i.e. it
+    // If a DS3231 RTC is fitted and already holds a plausible time (i.e. it
     // has been set on a previous boot), use it and skip the serial time-sync
     // prompt entirely. Otherwise wait for a host to send a time-sync command
     // over the console UART (see components/time_sync, tools/set_time.py)
@@ -208,7 +208,8 @@ extern "C" void app_main(void)
     }
 
     // Display wake button: re-enable the screen after display_sleep()
-    wake_button_init();
+    // Disabled for now.
+    // wake_button_init();
 
     // Sensor loop
     xTaskCreate(sensor_task, "sensor", 8192, NULL, 5, NULL);

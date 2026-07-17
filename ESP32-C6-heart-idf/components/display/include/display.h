@@ -25,7 +25,7 @@ typedef struct {
 void display_init(void);
 
 // The shared I2C bus display_init() creates. sensors_init() adds the
-// MMA8451/LDC1612/SDP800/DS1307 devices onto this same bus rather than
+// MMA8451/LDC1612/SDP800/DS3231 devices onto this same bus rather than
 // creating a second one, since only one master bus handle can own a port.
 i2c_master_bus_handle_t display_get_i2c_bus(void);
 

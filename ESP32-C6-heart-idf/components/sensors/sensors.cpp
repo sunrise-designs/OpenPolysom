@@ -2,7 +2,7 @@
 #include "MMA8451.h"
 #include "LDC1612.h"
 #include "SDP800.h"
-#include "DS1307.h"
+#include "DS3231.h"
 #include "config.h"
 #include "driver/i2c_master.h"
 #include "esp_adc/adc_oneshot.h"
@@ -29,7 +29,7 @@ volatile bool     g_sdp_present;
 
 // ── I2C handles ───────────────────────────────────────────────────────────────
 static i2c_master_bus_handle_t   s_i2c_bus;
-static i2c_master_dev_handle_t   s_mma0, s_mma1, s_ldc, s_sdp, s_ds1307;
+static i2c_master_dev_handle_t   s_mma0, s_mma1, s_ldc, s_sdp, s_ds3231;
 static adc_oneshot_unit_handle_t s_adc;
 
 adc_oneshot_unit_handle_t sensors_get_adc_unit(void)
@@ -96,16 +96,16 @@ bool sensors_init(i2c_master_bus_handle_t bus)
 
     // The RTC is optional (not fitted on every board), so its absence does
     // not fail sensors_init() the way the other sensors do.
-    // g_rtc_present = (add_dev(DS1307_ADDR, &s_ds1307) == ESP_OK);
+    // g_rtc_present = (add_dev(DS3231_ADDR, &s_ds3231) == ESP_OK);
     // if (!g_rtc_present) {
-    //     ESP_LOGW(TAG, "DS1307 RTC device not found on 0x%02X", DS1307_ADDR);
+    //     ESP_LOGW(TAG, "DS3231 RTC device not found on 0x%02X", DS3231_ADDR);
     // }
     // else {
-    //     if (ds1307_init(s_ds1307)) {
-    //         ESP_LOGI(TAG, "DS1307 RTC detected");
+    //     if (ds3231_init(s_ds3231)) {
+    //         ESP_LOGI(TAG, "DS3231 RTC detected");
     //     }
     //     else {
-    //         ESP_LOGW(TAG, "DS1307 RTC detected but failed to initialize");
+    //         ESP_LOGW(TAG, "DS3231 RTC detected but failed to initialize");
     //         g_rtc_present = false;
     //     }
     // }
@@ -130,8 +130,10 @@ void sensors_read(void)
     g_ldc1          = ldc1612_read_channel(s_ldc, 1);
     // sdp800_read() returns Pascals (raw / on-chip scale factor, §6.5 of the
     // SDP810-125Pa datasheet); convert to mbar (1 mbar = 100 Pa) to match the
-    // EDF+ Flow channel's declared physical dimension.
-    g_pressure_mbar = sdp800_read(s_sdp) / 100.0f;
+    // EDF+ Flow channel's declared physical dimension. Skip the read entirely
+    // when init failed, rather than polling a sensor that was never told to
+    // start continuous measurement.
+    g_pressure_mbar = g_sdp_present ? sdp800_read(s_sdp) : 0.0f;
 }
 
 void sensors_read_ecg(void)
@@ -141,16 +143,16 @@ void sensors_read_ecg(void)
     g_ecg_raw = (uint16_t)raw;
 }
 
-// ── RTC (DS1307) time sync ──────────────────────────────────────────────────
+// ── RTC (DS3231) time sync ──────────────────────────────────────────────────
 
 // Reads the RTC and treats it as valid only once it holds a plausible time —
 // i.e. it has already been set at least once (year >= 2026 rules out the
-// power-up default of the DS1307's clock never having been set, or a dead
+// power-up default of the DS3231's clock never having been set, or a dead
 // battery having reset it to an earlier date).
 static bool read_valid_rtc_time(struct tm *out)
 {
     if (!g_rtc_present) return false;
-    if (!ds1307_get_time(s_ds1307, out)) return false;
+    if (!ds3231_get_time(s_ds3231, out)) return false;
     return (out->tm_year + 1900) >= 2026;
 }
 
@@ -199,7 +201,7 @@ void sensors_rtc_write_from_system(void)
     time_t now = time(NULL);
     struct tm t;
     gmtime_r(&now, &t);
-    if (!ds1307_set_time(s_ds1307, &t)) {
+    if (!ds3231_set_time(s_ds3231, &t)) {
         ESP_LOGW(TAG, "Failed to write time to RTC");
     }
 }

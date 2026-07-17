@@ -85,12 +85,35 @@ bool sdp800_init(i2c_master_dev_handle_t dev)
     return r == ESP_OK;
 }
 
+// Logs a failure transition once, not every call, since this runs at
+// SENSOR_RATE_HZ and would otherwise flood the log while the sensor stays down.
 float sdp800_read(i2c_master_dev_handle_t dev)
 {
+    static bool s_read_failing = false;
+
     uint8_t rx[9];
-    if (i2c_master_receive(dev, rx, 9, 50) != ESP_OK) return 0.0f;
+    esp_err_t err = i2c_master_receive(dev, rx, 9, 50);
+    if (err != ESP_OK) {
+        if (!s_read_failing) {
+            ESP_LOGW(TAG, "read failed: %s", esp_err_to_name(err));
+            s_read_failing = true;
+        }
+        return 0.0f;
+    }
+
     int16_t raw   = (int16_t)(((uint16_t)rx[0] << 8) | rx[1]);
     int16_t scale = (int16_t)(((uint16_t)rx[6] << 8) | rx[7]);
-    if (scale == 0) return 0.0f;
+    if (scale == 0) {
+        if (!s_read_failing) {
+            ESP_LOGW(TAG, "zero scale factor in reading (raw=%d)", raw);
+            s_read_failing = true;
+        }
+        return 0.0f;
+    }
+
+    if (s_read_failing) {
+        ESP_LOGI(TAG, "read recovered");
+        s_read_failing = false;
+    }
     return (float)raw / (float)scale;
 }

@@ -269,7 +269,7 @@ static void write_json_sidecar(const struct tm *start_t, const struct tm *end_t)
         {"LDC1612 (thoracic/abdomen)", g_ldc_present,       50.0},
         {"SDP800 flow",                g_sdp_present,       50.0},
         {"AD8232 ECG",                 true,               100.0},
-        {"DS1307 RTC",                 g_rtc_present,        0.0},
+        {"DS3231 RTC",                 g_rtc_present,        0.0},
     };
     const int num_sensors = sizeof(sensors) / sizeof(sensors[0]);
 

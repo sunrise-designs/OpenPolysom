@@ -6,7 +6,7 @@ menu "Polysom Application"
         help
             How long to wait at boot for a binary time-sync command on the
             console UART (115200 baud) before giving up and continuing
-            without a synced clock. Only used when no DS1307 RTC is fitted
+            without a synced clock. Only used when no DS3231 RTC is fitted
             or its time hasn't been set yet. See components/time_sync and
             tools/set_time.py.
 

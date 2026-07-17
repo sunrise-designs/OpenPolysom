@@ -3,7 +3,7 @@
 
 The firmware (components/time_sync) waits at boot for this frame on its
 console UART (115200 baud — the same port used for flashing/monitoring)
-whenever no DS1307 RTC is fitted or its stored time isn't valid yet.
+whenever no DS3231 RTC is fitted or its stored time isn't valid yet.
 
 Frame format (little-endian, no padding, 51 bytes total):
 

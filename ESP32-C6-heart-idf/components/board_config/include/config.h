@@ -19,8 +19,8 @@
 // ── SDP800 differential pressure sensor ──────────────────────────────────────
 #define SDP800_ADDR   0x25
 
-// ── DS1307 real-time clock ────────────────────────────────────────────────────
-#define DS1307_ADDR           0x68
+// ── DS3231 real-time clock ────────────────────────────────────────────────────
+#define DS3231_ADDR           0x68
 #define RTC_SYNC_INTERVAL_MS  600000
 
 // ── Serial time sync (used when no RTC is fitted / holds no valid time) ─────
@@ -33,7 +33,7 @@
 #define ECG_ADC_CHANNEL 1
 
 // ── SH1106 OLED (128×64, I2C — shares the sensor I2C bus above) ──────────────
-#define OLED_ADDR     0x3D
+#define OLED_ADDR     0x3C
 #define OLED_W        128
 #define OLED_H        64
 

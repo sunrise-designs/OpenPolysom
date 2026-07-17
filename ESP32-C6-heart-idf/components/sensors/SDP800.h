@@ -17,7 +17,7 @@ typedef struct {
 // SDP810-125Pa product number (datasheet §6.3.6). The low byte is a revision
 // number that "can be subject to change" per the datasheet, so mask it off
 // with SDP8XX_PRODUCT_NUMBER_VARIANT_MASK before comparing.
-#define SDP810_125PA_PRODUCT_NUMBER       0x03020B00u
+#define SDP810_125PA_PRODUCT_NUMBER       0x03020200u
 #define SDP8XX_PRODUCT_NUMBER_VARIANT_MASK 0xFFFFFF00u
 
 bool sdp800_init(i2c_master_dev_handle_t dev);

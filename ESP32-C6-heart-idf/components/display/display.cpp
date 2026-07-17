@@ -360,7 +360,7 @@ void display_update(const display_data_t *data)
     }
 
     // ── Current time ──────────────────────────────────────────────────────────
-    // Reflects whichever source set the system clock at boot (DS1307 RTC or
+    // Reflects whichever source set the system clock at boot (DS3231 RTC or
     // a serial time-sync command — see main.cpp/sensors.cpp/time_sync.c); a
     // year sanity check catches the case where neither sync succeeded and the
     // clock is still at its epoch default.
