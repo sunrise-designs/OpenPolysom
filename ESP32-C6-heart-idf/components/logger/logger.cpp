@@ -407,7 +407,7 @@ static bool open_edf(void)
     static const SigDef sigs[NUM_SIGNALS] = {
         {"Thoracic","LDC1612 CH0",  "counts",50, 32767,-32767,  1e6, -1e6},
         {"Abdomen", "LDC1612 CH1",  "counts",50, 32767,-32767,  1e6, -1e6},
-        {"Flow",    "SDP800-125Pa", "mbar",  50, 32767,-32767,  2.0, -2.0},
+        {"Flow",    "SDP800-125Pa", "mbar",  50, 32767,-32767,  100.0, -100.0},
         {"ECG",     "AD8232 ADC0",  "ADC",  100,  4095,     0, 4095.0, 0.0},
         {"Accel0X", "MMA8451 ch0",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
         {"Accel0Y", "MMA8451 ch0",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
