@@ -9,7 +9,6 @@
 #include "freertos/queue.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
-#include "esp_sleep.h"
 #include "esp_system.h"
 #include <stdio.h>
 
@@ -44,6 +43,18 @@ static void show_reset_reason(void)
     snprintf(msg, sizeof(msg), "RST:%s BOOT#%lu", rr, (unsigned long)s_boot_count);
     display_boot_msg(msg);
     ESP_LOGI(TAG, "Reset reason: %s, boot count %lu", rr, (unsigned long)s_boot_count);
+}
+
+// ── Serial time sync ─────────────────────────────────────────────────────────
+// Called from the time_sync task on every accepted frame — at boot, and again
+// whenever the host re-syncs mid-recording. The RTC write is what makes a
+// mid-recording sync stick: sensor_task re-applies the RTC to the system clock
+// every RTC_SYNC_INTERVAL_MS, which would otherwise undo the new time within
+// ten minutes. The LED flash lives in the time_sync component itself.
+static void on_time_sync(void)
+{
+    sensors_rtc_write_from_system();
+    s_time_sync_source = "Serial";
 }
 
 // Recording duration after which the display is shut down (§ wake button below).
@@ -190,17 +201,20 @@ extern "C" void app_main(void)
     }
     battery_gauge_init(sensors_get_adc_unit());
 
-    // If a DS3231 RTC is fitted and already holds a plausible time (i.e. it
-    // has been set on a previous boot), use it and skip the serial time-sync
-    // prompt entirely. Otherwise wait for a host to send a time-sync command
-    // over the console UART (see components/time_sync, tools/set_time.py)
-    // and, if an RTC is fitted, seed it so future boots don't need the host.
-    // if (sensors_rtc_startup_sync()) {
-    //     s_time_sync_source = "RTC";
-    // } else if (time_sync_wait_for_command(TIME_SYNC_TIMEOUT_MS)) {
-    //     sensors_rtc_write_from_system();
-    //     s_time_sync_source = "Serial";
-    // }
+    // Listen for host time-sync commands on the console UART for the whole run,
+    // not just at boot (see components/time_sync, tools/set_time.py), so the
+    // clock can be corrected mid-recording. on_time_sync() seeds the RTC from
+    // each accepted frame so future boots don't need the host.
+    time_sync_start(on_time_sync);
+
+    // If a DS3231 RTC is fitted and already holds a plausible time (i.e. it has
+    // been set on a previous boot), use it and don't hold up boot waiting for a
+    // host that may never send anything. The listener above stays up either way.
+    if (sensors_rtc_startup_sync()) {
+        s_time_sync_source = "RTC";
+    } else {
+        time_sync_wait_for_command(TIME_SYNC_TIMEOUT_MS);  // sets the source via on_time_sync()
+    }
 
     // SD card + EDF file (logger owns the SD's SPI bus; display is I2C now)
     if (!logger_init()) {

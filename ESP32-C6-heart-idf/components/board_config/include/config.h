@@ -24,7 +24,7 @@
 #define RTC_SYNC_INTERVAL_MS  600000
 
 // ── Serial time sync (used when no RTC is fitted / holds no valid time) ─────
-#define TIME_SYNC_TIMEOUT_MS  CONFIG_POLYSOM_TIME_SYNC_TIMEOUT_MS
+#define TIME_SYNC_TIMEOUT_MS  30000
 
 // ── ADC — ECG signal (AD8232, raw, logged for later analysis) ────────────────
 // ECG_ADC_UNIT stays as the enum constant; ECG_ADC_CHANNEL is the raw integer
@@ -46,6 +46,10 @@
 // ── SD card ───────────────────────────────────────────────────────────────────
 #define SD_CS_PIN     GPIO_NUM_21
 #define SD_SPI_FREQ   20000000
+
+// ── User LED ──────────────────────────────────────────────────────────────────
+// Active-high indicator; blinked to confirm a successful serial time sync.
+#define USER_LED_PIN  GPIO_NUM_15
 
 // ── Sample rates ──────────────────────────────────────────────────────────────
 #define ECG_RATE_HZ        100

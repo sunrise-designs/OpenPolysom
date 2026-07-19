@@ -15,11 +15,25 @@ extern "C" {
 //   uint8_t  checksum     sum of all preceding bytes, truncated to uint8_t
 #define TIME_SYNC_TZ_LEN 40
 
-// Waits up to timeout_ms for a valid time-sync frame on the console UART
-// (115200 baud, the same port used for flashing/monitoring) and, if one
-// arrives, applies it to the system clock via settimeofday(). Replaces the
-// old Wi-Fi/NTP sync: the host runs tools/set_time.py to send the frame.
-// Returns true iff the system clock was set.
+// Invoked from the time-sync task after a valid frame has been applied to the
+// system clock (and after the user LED has flashed). Runs on the time-sync
+// task, not the caller's — keep it short and don't assume the sensor loop is
+// running yet, since the first sync normally lands during app_main().
+typedef void (*time_sync_cb_t)(void);
+
+// Installs the interrupt-driven console-UART driver and starts a background
+// task that listens for time-sync frames for the lifetime of the firmware, so
+// the host can re-sync the clock at any point, not just during boot. Each
+// accepted frame sets the system clock via settimeofday(), flashes the user
+// LED, then calls `on_sync` (may be NULL).
+//
+// Call once, before time_sync_wait_for_command().
+void time_sync_start(time_sync_cb_t on_sync);
+
+// Blocks up to timeout_ms for the task above to accept a frame, so boot can
+// hold off on opening the timestamped EDF file until the clock is right.
+// Returns true iff a frame arrived within the timeout. A frame accepted before
+// this call (or between calls) is remembered, so no sync is ever missed.
 bool time_sync_wait_for_command(uint32_t timeout_ms);
 
 #ifdef __cplusplus

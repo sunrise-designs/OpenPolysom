@@ -96,19 +96,19 @@ bool sensors_init(i2c_master_bus_handle_t bus)
 
     // The RTC is optional (not fitted on every board), so its absence does
     // not fail sensors_init() the way the other sensors do.
-    // g_rtc_present = (add_dev(DS3231_ADDR, &s_ds3231) == ESP_OK);
-    // if (!g_rtc_present) {
-    //     ESP_LOGW(TAG, "DS3231 RTC device not found on 0x%02X", DS3231_ADDR);
-    // }
-    // else {
-    //     if (ds3231_init(s_ds3231)) {
-    //         ESP_LOGI(TAG, "DS3231 RTC detected");
-    //     }
-    //     else {
-    //         ESP_LOGW(TAG, "DS3231 RTC detected but failed to initialize");
-    //         g_rtc_present = false;
-    //     }
-    // }
+    g_rtc_present = (add_dev(DS3231_ADDR, &s_ds3231) == ESP_OK);
+    if (!g_rtc_present) {
+        ESP_LOGW(TAG, "DS3231 RTC device not found on 0x%02X", DS3231_ADDR);
+    }
+    else {
+        if (ds3231_init(s_ds3231)) {
+            ESP_LOGI(TAG, "DS3231 RTC detected");
+        }
+        else {
+            ESP_LOGW(TAG, "DS3231 RTC detected but failed to initialize");
+            g_rtc_present = false;
+        }
+    }
 
     adc_oneshot_unit_init_cfg_t adc_cfg = {};
     adc_cfg.unit_id = ECG_ADC_UNIT;
