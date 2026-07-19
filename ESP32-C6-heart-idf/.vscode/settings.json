@@ -3,12 +3,12 @@
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32c6"
 },
-  "clangd.path": "/home/dmitry/.espressif/tools/esp-clang/esp-20.1.1_20250829/esp-clang/bin/clangd",
   "clangd.arguments": [
     "--background-index",
     "--query-driver=**",
-    "--compile-commands-dir=/home/dmitry/OpenPolysom/ESP32-C6-heart-idf/build"
+    "--compile-commands-dir=${workspaceFolder}/build"
   ],
+  "C_Cpp.intelliSenseEngine": "disabled",
   "idf.flashType": "UART",
   "idf.port": "/dev/ttyACM0",
   "idf.monitorBaudRate": "921600",

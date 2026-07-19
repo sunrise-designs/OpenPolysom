@@ -23,5 +23,11 @@
     "Wels",
     "Zarr"
   ],
-  "idf.customExtraVars": {}
+  "idf.customExtraVars": {},
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=${workspaceFolder}/ESP32-C6-heart-idf/build"
+  ],
+  "C_Cpp.intelliSenseEngine": "disabled"
 }
