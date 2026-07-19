@@ -37,3 +37,5 @@ ESP32-C6-heart-idf/sdkconfig
 node_modules/.vite/
 src_web/dist/chart.js
 src_web/dist/chart.js
+ESP32-C6-heart-idf/.cache/clangd
+
