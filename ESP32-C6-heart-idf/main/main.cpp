@@ -11,6 +11,8 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 
 static const char *TAG = "main";
 
@@ -184,6 +186,14 @@ static void sensor_task(void *arg)
 // ── app_main ──────────────────────────────────────────────────────────────────
 extern "C" void app_main(void)
 {
+    // Apply the local time-zone rule before anything reads the clock. Every
+    // consumer (EDF filename/header, the display, the JSON sidecar) uses
+    // localtime_r(), which reports UTC until a TZ rule is installed — i.e. an
+    // hour behind through BST. A time-sync frame carrying its own TZ
+    // still overrides this later.
+    setenv("TZ", LOCAL_TZ, 1);
+    tzset();
+
     // Capture ESP_LOG output to SD as early as possible, before anything else logs.
     // The previous intermittent heap panic was caused by an EDF write race condition,
     // which has now been fixed with `edf_mutex`. Re-enabling boot log capture.
@@ -201,7 +211,7 @@ extern "C" void app_main(void)
     }
     battery_gauge_init(sensors_get_adc_unit());
 
-    // Listen for host time-sync commands on the console UART for the whole run,
+    // Listen for host time-sync commands on the USB CDC port for the whole run,
     // not just at boot (see components/time_sync, tools/set_time.py), so the
     // clock can be corrected mid-recording. on_time_sync() seeds the RTC from
     // each accepted frame so future boots don't need the host.

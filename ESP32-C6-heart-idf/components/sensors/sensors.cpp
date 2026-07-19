@@ -156,30 +156,25 @@ static bool read_valid_rtc_time(struct tm *out)
     return (out->tm_year + 1900) >= 2026;
 }
 
-// t is interpreted as UTC (this project always stores UTC in the RTC, same
-// as what SNTP puts in the system clock). Temporarily switches TZ to UTC so
-// mktime() doesn't apply the local offset, then restores the project's TZ.
+// t is interpreted as UTC (this project always stores UTC in the RTC, same as
+// what a serial time-sync frame carries). timegm() converts a UTC broken-down
+// time directly, where mktime() would apply the local offset to it.
+//
+// This used to swap the global TZ to "UTC0" around a mktime() call and restore
+// it afterwards. Two problems with that: every localtime_r() in any other task
+// reported UTC for the width of the window, and once time_sync gained its own
+// task — which can setenv("TZ", ...) from a host frame at any moment — the
+// restore could revert a host-supplied zone to the previously saved one.
+// timegm() touches no global state, so both go away.
+//
+// The old version also installed LOCAL_TZ as a side effect when TZ was unset.
+// app_main() now sets it unconditionally at boot, which is where that belongs.
 static void apply_utc_tm_to_system_clock(const struct tm *t)
 {
     struct tm tmp = *t;
-    const char *current_tz = getenv("TZ");
-    char saved_tz[64] = {0};
-    if (current_tz) {
-        strncpy(saved_tz, current_tz, sizeof(saved_tz) - 1);
-    }
+    tmp.tm_isdst = 0;  // UTC has no DST, and the DS3231 read leaves this unset
 
-    setenv("TZ", "UTC0", 1);
-    tzset();
-    time_t utc = mktime(&tmp);
-
-    if (current_tz && saved_tz[0] != '\0') {
-        setenv("TZ", saved_tz, 1);
-    } else {
-        setenv("TZ", LOCAL_TZ, 1);
-    }
-    tzset();
-
-    struct timeval tv = { .tv_sec = utc, .tv_usec = 0 };
+    struct timeval tv = { .tv_sec = timegm(&tmp), .tv_usec = 0 };
     settimeofday(&tv, NULL);
 }
 

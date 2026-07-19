@@ -1,9 +1,7 @@
 #include "time_sync.h"
 #include "config.h"
-#include "sdkconfig.h"
 #include "driver/gpio.h"
-#include "driver/uart.h"
-#include "driver/uart_vfs.h"
+#include "driver/usb_serial_jtag.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -69,28 +67,23 @@ static void user_led_init(void)
     gpio_set_level(USER_LED_PIN, 0);
 }
 
-// The console UART defaults to non-blocking, ROM-polled I/O, which has no
-// notion of a read timeout and would otherwise busy-spin waiting for bytes.
-// Installing the interrupt-driven driver and handing the VFS console layer
-// over to it (uart_vfs_dev_use_driver) lets the listener task block in
-// uart_read_bytes() until the ISR has bytes for it, while leaving stdout and
-// ESP_LOG working as before.
-static void uart_driver_init(void)
+// The XIAO ESP32C6's USB-C port is wired straight to the chip's native USB, so
+// the COM port tools/set_time.py opens is the USB-Serial-JTAG CDC device, not
+// UART0. The console config makes UART0 primary and USB-Serial-JTAG only the
+// *secondary* console, and a secondary console is output-only — host bytes
+// arriving over USB are never delivered to the UART driver. So read the
+// USB-Serial-JTAG peripheral directly.
+//
+// Installing this driver is safe alongside the secondary console: that path
+// writes the TX FIFO polled (usb_serial_jtag_ll_write_txfifo) and we never call
+// usb_serial_jtag_write_bytes(), so the driver's TX ring stays empty and ESP_LOG
+// output is untouched. We take the driver purely for its interrupt-driven RX,
+// which gives usb_serial_jtag_read_bytes() a real blocking timeout.
+static void serial_driver_init(void)
 {
-    uart_vfs_dev_port_set_rx_line_endings(CONFIG_ESP_CONSOLE_UART_NUM, ESP_LINE_ENDINGS_LF);
-    uart_vfs_dev_port_set_tx_line_endings(CONFIG_ESP_CONSOLE_UART_NUM, ESP_LINE_ENDINGS_CRLF);
-
-    uart_config_t uart_config = {
-        .baud_rate = CONFIG_ESP_CONSOLE_UART_BAUDRATE,
-        .data_bits = UART_DATA_8_BITS,
-        .parity    = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_DEFAULT,
-    };
-    ESP_ERROR_CHECK(uart_param_config(CONFIG_ESP_CONSOLE_UART_NUM, &uart_config));
-    ESP_ERROR_CHECK(uart_driver_install(CONFIG_ESP_CONSOLE_UART_NUM, 256, 0, 0, NULL, 0));
-    uart_vfs_dev_use_driver(CONFIG_ESP_CONSOLE_UART_NUM);
+    // tx_buffer_size must be > 0 even though we only ever read.
+    usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&cfg));
 }
 
 static uint8_t sum_bytes(const uint8_t *buf, size_t len)
@@ -102,11 +95,11 @@ static uint8_t sum_bytes(const uint8_t *buf, size_t len)
 
 // Blocks indefinitely for one byte. Only used while hunting for the magic
 // bytes, where there is nothing to time out on — the task simply sleeps in the
-// UART driver until the host sends something.
+// USB-Serial-JTAG driver until the host sends something.
 static uint8_t read_byte(void)
 {
     uint8_t b;
-    while (uart_read_bytes(CONFIG_ESP_CONSOLE_UART_NUM, &b, 1, portMAX_DELAY) != 1) {
+    while (usb_serial_jtag_read_bytes(&b, 1, portMAX_DELAY) != 1) {
         // portMAX_DELAY only returns short on error; retry.
     }
     return b;
@@ -124,7 +117,7 @@ static bool read_exact(uint8_t *buf, size_t len, int64_t deadline_us)
         TickType_t ticks = pdMS_TO_TICKS(remaining_us / 1000);
         if (ticks == 0) ticks = 1;
 
-        int n = uart_read_bytes(CONFIG_ESP_CONSOLE_UART_NUM, buf + got, len - got, ticks);
+        int n = usb_serial_jtag_read_bytes(buf + got, len - got, ticks);
         if (n <= 0) return false;
         got += (size_t)n;
     }
@@ -156,14 +149,17 @@ static bool read_and_apply_frame(void)
         return false;
     }
 
+    // Set the clock before tzset(). A POSIX TZ rule's DST transitions are
+    // year-dependent, so installing the rule while the clock still reads 1970
+    // has newlib compute the BST switchover dates for the wrong year.
+    struct timeval tv = { .tv_sec = (time_t)frame.unix_time_s, .tv_usec = 0 };
+    settimeofday(&tv, NULL);
+
     frame.tz[TIME_SYNC_TZ_LEN - 1] = '\0'; // defensive, in case the host sent a full field
     if (frame.tz[0] != '\0') {
         setenv("TZ", frame.tz, 1);
         tzset();
     }
-
-    struct timeval tv = { .tv_sec = (time_t)frame.unix_time_s, .tv_usec = 0 };
-    settimeofday(&tv, NULL);
 
     time_t now = (time_t)frame.unix_time_s;
     struct tm t;
@@ -201,7 +197,7 @@ void time_sync_start(time_sync_cb_t on_sync)
     s_synced  = xSemaphoreCreateBinary();
 
     user_led_init();
-    uart_driver_init();
+    serial_driver_init();
 
     xTaskCreate(time_sync_task, "time_sync", 4096, NULL, 5, NULL);
 }

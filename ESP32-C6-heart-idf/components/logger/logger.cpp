@@ -1,8 +1,10 @@
 #include "logger.h"
 #include "config.h"
 #include "edflib.h"
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_system.h"
 #include "esp_vfs_fat.h"
 #include "driver/sdspi_host.h"
 #include "freertos/semphr.h"
@@ -222,11 +224,36 @@ static int ecg_idx    = 0;
 // thoracic/abdomen samples are written against a zero baseline (raw counts,
 // effectively clipped/uncalibrated) — accepted drift-over-no-data tradeoff,
 // same as main.cpp.
+//
+// That tradeoff is only acceptable once per study. A reboot mid-night (panic,
+// WDT, brownout recovery) would otherwise restart the 20-minute clock and leave
+// another 20 minutes of thoracic/abdomen uncalibrated every time. So the
+// captured baseline is mirrored into RTC memory and restored on any reset whose
+// reason is not power-on: the belts have not moved across a watchdog reset, so
+// the previous baseline is still the correct one. A power-on means the device
+// was unplugged, which in practice means the belts came off — that path still
+// captures fresh.
+//
+// RTC_NOINIT_ATTR, not RTC_DATA_ATTR: `.rtc.data` is a *loaded* segment, so the
+// bootloader re-initialises it from the app image on every boot that is not a
+// deep-sleep wake — a panic reset would wipe it. `.rtc_noinit` is NOLOAD and
+// survives every reset except power-on, which is exactly the lifetime wanted.
+// Nothing initialises it either, hence the magic word: after a cold boot the
+// contents are whatever the RAM happened to power up as.
 #define BASELINE_DELAY_S     1200
 #define BASELINE_AVG_SAMPLES 50
+#define BASELINE_RTC_MAGIC   0xB5E1A5E0u
+
+static RTC_NOINIT_ATTR struct {
+    uint32_t magic;
+    uint32_t ldc0;
+    uint32_t ldc1;
+} baseline_rtc;
+
 static uint32_t ldc0_baseline   = 0;
 static uint32_t ldc1_baseline   = 0;
 static bool     baseline_ok     = false;
+static bool     baseline_reused = false;  // recorded in the JSON sidecar
 static uint64_t baseline_sum0   = 0;
 static uint64_t baseline_sum1   = 0;
 static int      baseline_avg_n  = 0;
@@ -234,6 +261,37 @@ static int      baseline_avg_n  = 0;
 uint32_t logger_get_ldc0_baseline(void) { return ldc0_baseline; }
 uint32_t logger_get_ldc1_baseline(void) { return ldc1_baseline; }
 bool     logger_get_baseline_ok(void)   { return baseline_ok; }
+
+// Call once per boot, before open_edf() so the sidecar can record the outcome.
+static void baseline_restore_from_rtc(void)
+{
+    esp_reset_reason_t rr = esp_reset_reason();
+
+    if (rr == ESP_RST_POWERON) {
+        // Cold start: whatever is in .rtc_noinit is uninitialised RAM, and the
+        // belts were almost certainly re-fitted anyway. Invalidate so a chance
+        // bit pattern can never be mistaken for a stored baseline.
+        baseline_rtc.magic = 0;
+        return;
+    }
+    if (baseline_rtc.magic != BASELINE_RTC_MAGIC) {
+        // Rebooted before this study ever reached BASELINE_DELAY_S — there is
+        // nothing to reuse, so fall through to a normal 20-minute capture.
+        ESP_LOGW(TAG, "Reset reason %d but no stored LDC baseline; "
+                      "capturing fresh over the next %d s",
+                 (int)rr, BASELINE_DELAY_S);
+        return;
+    }
+
+    ldc0_baseline   = baseline_rtc.ldc0;
+    ldc1_baseline   = baseline_rtc.ldc1;
+    baseline_ok     = true;
+    baseline_reused = true;
+    ESP_LOGW(TAG, "Reset reason %d: reusing stored LDC baseline %lu/%lu "
+                  "instead of waiting %d s",
+             (int)rr, (unsigned long)ldc0_baseline,
+             (unsigned long)ldc1_baseline, BASELINE_DELAY_S);
+}
 bool     logger_is_active(void)         { return logging_active; }
 bool     logger_had_write_error(void)   { return write_failed; }
 uint32_t logger_get_elapsed_seconds(void)
@@ -341,7 +399,18 @@ static void write_json_sidecar(const struct tm *start_t, const struct tm *end_t)
         }
         fprintf(f, "%s\n", (i == num_sensors - 1) ? "" : ",");
     }
-    fprintf(f, "  ]\n");
+    fprintf(f, "  ],\n");
+
+    // Thoracic/abdomen are written as (raw - baseline), so downstream cannot
+    // interpret them without knowing which baseline was in force and where it
+    // came from. `reused` true means this recording inherited the previous
+    // boot's baseline rather than capturing its own.
+    fprintf(f, "  \"ldc_baseline\": {\"ch0\": %lu, \"ch1\": %lu, \"valid\": %s, "
+               "\"reused\": %s, \"reset_reason\": %d, \"delay_s\": %d}\n",
+            (unsigned long)ldc0_baseline, (unsigned long)ldc1_baseline,
+            baseline_ok      ? "true" : "false",
+            baseline_reused  ? "true" : "false",
+            (int)esp_reset_reason(), BASELINE_DELAY_S);
     fprintf(f, "}\n");
     fclose(f);
     ESP_LOGI(TAG, "Sidecar written: %s", json_file_path);
@@ -453,6 +522,7 @@ bool logger_init(void)
         edf_mutex = xSemaphoreCreateMutex();
     }
     if (!sd_mount()) return false;
+    baseline_restore_from_rtc();
     return open_edf();
 }
 
@@ -518,6 +588,17 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
             ldc0_baseline = (uint32_t)(baseline_sum0 / baseline_avg_n);
             ldc1_baseline = (uint32_t)(baseline_sum1 / baseline_avg_n);
             baseline_ok   = true;
+
+            // Mirror into RTC memory so a reboot later in the night can pick
+            // this up instead of spending another 20 minutes uncalibrated.
+            // Magic last: a reset landing mid-write must not leave a valid
+            // marker over half-written values.
+            baseline_rtc.ldc0  = ldc0_baseline;
+            baseline_rtc.ldc1  = ldc1_baseline;
+            baseline_rtc.magic = BASELINE_RTC_MAGIC;
+
+            ESP_LOGI(TAG, "LDC baseline captured: %lu/%lu",
+                     (unsigned long)ldc0_baseline, (unsigned long)ldc1_baseline);
         }
     }
 
@@ -619,7 +700,11 @@ bool logger_format_sd(void)
         ESP_LOGE(TAG, "SD format failed: %s", esp_err_to_name(r));
         return false;
     }
-    baseline_ok = false;
+    // Formatting starts a new study, so force a fresh capture — including on
+    // the next boot, which would otherwise restore the baseline being cleared.
+    baseline_ok        = false;
+    baseline_reused    = false;
+    baseline_rtc.magic = 0;
     ESP_LOGI(TAG, "SD card formatted");
     return true;
 }

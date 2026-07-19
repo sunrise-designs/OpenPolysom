@@ -21,7 +21,7 @@ extern "C" {
 // running yet, since the first sync normally lands during app_main().
 typedef void (*time_sync_cb_t)(void);
 
-// Installs the interrupt-driven console-UART driver and starts a background
+// Installs the interrupt-driven USB-Serial-JTAG driver and starts a background
 // task that listens for time-sync frames for the lifetime of the firmware, so
 // the host can re-sync the clock at any point, not just during boot. Each
 // accepted frame sets the system clock via settimeofday(), flashes the user
