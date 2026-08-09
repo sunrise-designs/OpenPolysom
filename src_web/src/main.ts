@@ -1,14 +1,24 @@
 import * as echarts from 'echarts';
-import { loadMeta, loadEvents, loadZarr, loadStudies, httpStore } from './zarr_loader';
-import { buildBubbleOption, buildSingleChannelOption, channelCount, brushRangeFromEvent } from './chart';
+import { loadMeta, loadEvents, loadZarr, loadStudies, httpStore, toSignalSource } from './zarr_loader';
+import {
+  buildBubbleOption, buildSingleChannelOption, channelCount, brushRangeFromEvent,
+  zoomToRangeAction, followLiveAction, liveUpdateOption, ZOOM_TO_WINDOW_LABEL, SELECT_WINDOW_LABEL,
+  NO_EVENTS,
+} from './chart';
 import type { BrushRange } from './chart';
-import { renderShell, NO_RANGE_TEXT, renderWindowMetricsBody } from './shell';
+import { renderShell, renderRealtimeShell, renderRtStatus, NO_RANGE_TEXT, renderWindowMetricsBody } from './shell';
+import type { RtStatusView } from './shell';
 import { renderLanding } from './landing';
 import { buildNarrative } from './narrative';
 import { formatElapsed } from './format';
 import { metricsBaseUrl } from './metrics_config';
+import { rtWsUrl } from './rt_config';
+import { connectRt } from './rt_client';
+import { RtStore } from './rt_store';
 import { requestWindowedMetrics } from './metrics_client';
-import type { Meta, EventsDoc, MetricRequestItem, ZarrData } from './types';
+import type { RtHello, RtLinkState, RtStatus } from './rt_types';
+import type { SignalSource } from './signals';
+import type { Meta, EventsDoc, MetricRequestItem } from './types';
 
 const CONNECT_GROUP = 'protosom-signals';
 
@@ -44,8 +54,11 @@ function wireMontageToggles(): void {
 /**
  * Mobile: open one channel full-screen in forced landscape. Returns an `open`
  * callback the bubbles wire to their tap handler.
+ *
+ * Takes a getter rather than the source itself so live mode opens on the
+ * current buffer instead of whatever had arrived when the panes were built.
  */
-function createFullscreen(zarr: ZarrData, events: EventsDoc): (index: number) => void {
+function createFullscreen(getSource: () => SignalSource, events: EventsDoc): (index: number) => void {
   const overlay = document.createElement('div');
   overlay.id = 'chart-fs';
   overlay.innerHTML =
@@ -78,7 +91,7 @@ function createFullscreen(zarr: ZarrData, events: EventsDoc): (index: number) =>
     overlay.classList.add('open');
     const chart = echarts.init(canvas, null, { renderer: 'canvas' });
     fsChart = chart;
-    chart.setOption(buildSingleChannelOption(zarr, events, index));
+    chart.setOption(buildSingleChannelOption(getSource(), events, index));
     void (async (): Promise<void> => {
       try { await overlay.requestFullscreen(); } catch { /* unsupported */ }
       try { await screen.orientation.lock('landscape'); } catch { /* unsupported (e.g. iOS) */ }
@@ -149,12 +162,25 @@ function wireWindowMetrics(recordingId: string, metricsUrl: string | undefined):
   };
 }
 
-function wireBrushSync(charts: readonly echarts.ECharts[], onRangeChange: (range: BrushRange | undefined) => void): void {
+/**
+ * Turn the brush cursor on, so the next drag over a pane draws a selection band
+ * instead of doing nothing. Split out of `wireBrushSync` because the two input
+ * modes arm it at different moments: desktop at init (a drag has no other
+ * meaning there), touch only when the long-press menu's "Select a window" is
+ * chosen — arming it permanently on touch would turn every vertical page-scroll
+ * swipe over a pane into a selection. See `buildBubbleOption`'s `brush` comment.
+ */
+function armBrush(charts: readonly echarts.ECharts[]): void {
+  charts.forEach((chart) => {
+    chart.dispatchAction({ type: 'takeGlobalCursor', key: 'brush', brushOption: { brushType: 'lineX' } });
+  });
+}
+
+function wireBrushSync(charts: readonly echarts.ECharts[], onRangeChange: (range: BrushRange | undefined) => void): () => BrushRange | undefined {
   const rangeEl = document.getElementById('sig-range');
   let lastRange: BrushRange | undefined = undefined;
 
   charts.forEach((chart, i) => {
-    chart.dispatchAction({ type: 'takeGlobalCursor', key: 'brush', brushOption: { brushType: 'lineX' } });
     chart.on('brushSelected', (params: unknown) => {
       const range: BrushRange | undefined = brushRangeFromEvent(params);
       if (rangesEqual(range, lastRange)) return;
@@ -171,6 +197,115 @@ function wireBrushSync(charts: readonly echarts.ECharts[], onRangeChange: (range
       });
     });
   });
+
+  return () => lastRange;
+}
+
+const LONG_PRESS_MS = 500; // touch equivalent of a right-click; matches the platform convention
+const LONG_PRESS_SLOP_PX = 10; // finger drift beyond this is a scroll, not a press — cancel
+const TAP_SUPPRESS_MS = 500; // window after a long-press in which the synthetic tap is ignored
+
+/**
+ * A right-click (desktop) / long-press (touch) menu on any signal pane, offering
+ * "Zoom to window" — zoom every connected pane to the band last brush-selected.
+ *
+ * A plain DOM menu on `body` rather than an ECharts toolbox button: the bubbles are
+ * ~300px tall and a toolbox would eat plotting area on every one of them, and both
+ * `contextmenu` and a held touch reach the container before zrender does anything
+ * with them.
+ *
+ * Two input modes, one menu:
+ *  - **Desktop** — `contextmenu`. The brush is already armed, so "Zoom to window" is
+ *    the only item; it is *disabled* rather than hidden when nothing is selected, so
+ *    the menu still advertises the feature to someone who hasn't found the drag.
+ *  - **Touch** — a 500 ms press that survives <10px of drift (so scrolling a pane
+ *    still just scrolls). There is no always-on brush to select with, so the menu
+ *    leads with "Select a window", which arms the brush for the following drag;
+ *    "Zoom to window" then applies it.
+ *
+ * `onOpen` lets the caller swallow the synthetic tap a long-press emits on release,
+ * which would otherwise also open the mobile full-screen overlay.
+ */
+function wireContextMenu(
+  charts: readonly echarts.ECharts[],
+  selection: () => BrushRange | undefined,
+  touch: boolean,
+  onOpen: () => void,
+): void {
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.innerHTML =
+    (touch ? `<button type="button" class="ctx-item" data-action="select">${SELECT_WINDOW_LABEL}</button>` : '') +
+    `<button type="button" class="ctx-item" data-action="zoom">${ZOOM_TO_WINDOW_LABEL}</button>`;
+  document.body.appendChild(menu);
+
+  const zoomItem = menu.querySelector<HTMLButtonElement>('[data-action="zoom"]');
+  const selectItem = menu.querySelector<HTMLButtonElement>('[data-action="select"]');
+  if (zoomItem === null) return;
+
+  const hide = (): void => { menu.classList.remove('open'); };
+
+  const open = (x: number, y: number): void => {
+    zoomItem.disabled = selection() === undefined;
+    menu.classList.add('open'); // before measuring, so the edge-flip below sees real dimensions
+    const { width, height } = menu.getBoundingClientRect();
+    menu.style.left = `${String(Math.max(4, Math.min(x, window.innerWidth - width - 8)))}px`;
+    menu.style.top = `${String(Math.max(4, Math.min(y, window.innerHeight - height - 8)))}px`;
+    onOpen();
+  };
+
+  zoomItem.addEventListener('click', () => {
+    const range = selection();
+    hide();
+    // One dispatch is enough — echarts.connect mirrors dataZoom across the group.
+    if (range !== undefined) charts[0]?.dispatchAction(zoomToRangeAction(range));
+  });
+  selectItem?.addEventListener('click', () => {
+    hide();
+    armBrush(charts);
+  });
+
+  charts.forEach((chart) => {
+    const dom = chart.getDom();
+    dom.addEventListener('contextmenu', (e: MouseEvent) => {
+      e.preventDefault();
+      open(e.clientX, e.clientY);
+    });
+
+    if (!touch) return;
+    let timer: number | undefined;
+    let origin: { readonly x: number; readonly y: number } | undefined;
+    const cancel = (): void => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = undefined;
+      origin = undefined;
+    };
+
+    // `.item(0)` rather than `touches[0]`: TouchList's indexed access is typed
+    // non-nullable, so an empty list would read back as a phantom Touch.
+    dom.addEventListener('touchstart', (e: TouchEvent) => {
+      const t = e.touches.item(0);
+      if (t === null || e.touches.length > 1) { cancel(); return; } // a pinch is not a press
+      const { clientX, clientY } = t;
+      origin = { x: clientX, y: clientY };
+      timer = window.setTimeout(() => { open(clientX, clientY); cancel(); }, LONG_PRESS_MS);
+    }, { passive: true });
+
+    dom.addEventListener('touchmove', (e: TouchEvent) => {
+      const t = e.touches.item(0);
+      if (t === null || origin === undefined) return;
+      if (Math.abs(t.clientX - origin.x) > LONG_PRESS_SLOP_PX || Math.abs(t.clientY - origin.y) > LONG_PRESS_SLOP_PX) cancel();
+    }, { passive: true });
+
+    dom.addEventListener('touchend', cancel, { passive: true });
+    dom.addEventListener('touchcancel', cancel, { passive: true });
+  });
+
+  document.addEventListener('pointerdown', (e) => {
+    if (!(e.target instanceof Node) || !menu.contains(e.target)) hide();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+  window.addEventListener('scroll', hide, { passive: true });
 }
 
 const ZOOM_STEP = 0.15; // fraction of the current visible window to shrink/grow per wheel notch
@@ -235,8 +370,9 @@ async function run(app: HTMLElement, metaUrl: string): Promise<void> {
     loadEvents(new URL('events.json', base).href),
     loadZarr(httpStore(new URL(meta.layers.working.path, base).href)),
   ]);
+  const source = toSignalSource(zarrData);
 
-  app.innerHTML = renderShell(meta, buildNarrative(meta.stats), zarrData);
+  app.innerHTML = renderShell(meta, buildNarrative(meta.stats), source);
 
   // Windowed-metrics card: hidden entirely when no metrics service is
   // configured for this deployment (see metrics_config.ts) rather than
@@ -249,28 +385,218 @@ async function run(app: HTMLElement, metaUrl: string): Promise<void> {
 
   // On touch: drop tooltip + inside-zoom (so swipes scroll) and enable tap-to-fullscreen.
   const touch = window.matchMedia('(pointer: coarse), (max-width: 760px)').matches;
-  const openFs = touch ? createFullscreen(zarrData, events) : undefined;
-  const count = channelCount(zarrData);
+  const openFs = touch ? createFullscreen(() => source, events) : undefined;
+  const count = channelCount(source);
+
+  // A long-press fires a synthetic tap on release; without this the mobile
+  // full-screen overlay would open behind the menu that press just summoned.
+  let menuOpenedAt = 0;
 
   const charts = Array.from({ length: count }, (_, i) => {
     const el = document.getElementById(`sig-${String(i)}`);
     if (el === null) return undefined;
     const c = echarts.init(el, null, { renderer: 'canvas' });
-    c.setOption(buildBubbleOption(zarrData, events, i, touch));
+    c.setOption(buildBubbleOption(source, events, i, touch));
     c.group = CONNECT_GROUP;
     if (openFs !== undefined) {
-      c.getZr().on('click', () => { openFs(i); });
+      c.getZr().on('click', () => {
+        if (Date.now() - menuOpenedAt < TAP_SUPPRESS_MS) return;
+        openFs(i);
+      });
     }
     return c;
   }).filter((c): c is echarts.ECharts => c !== undefined);
 
   echarts.connect(CONNECT_GROUP);
+  const selection = wireBrushSync(charts, wireWindowMetrics(meta.recording_id, metricsUrl));
+  // Desktop arms the brush up front; touch arms it from the menu (see wireContextMenu).
   if (!touch) {
-    wireBrushSync(charts, wireWindowMetrics(meta.recording_id, metricsUrl));
+    armBrush(charts);
     wireCtrlZoom(charts);
   }
+  wireContextMenu(charts, selection, touch, () => { menuOpenedAt = Date.now(); });
   wireMontageToggles();
   window.addEventListener('resize', () => { charts.forEach((c) => { c.resize(); }); });
+}
+
+// ── RT (live) mode ───────────────────────────────────────────────────────────
+
+/** Fastest live redraw. 10 Hz looks continuous without out-running the data. */
+const RT_MIN_TICK_MS = 100;
+/** Slowest live redraw, once a long session has made each redraw expensive. */
+const RT_MAX_TICK_MS = 2000;
+/** Points a redraw may re-ingest per millisecond of tick period (see `liveTickMs`). */
+const RT_POINTS_PER_MS = 2000;
+
+/**
+ * How long to wait before the next live redraw.
+ *
+ * Every tick hands ECharts the whole buffer again, because the alternative
+ * (`chart.appendData`) cannot grow a coordinate system's extent and a live axis
+ * does nothing but grow. Re-ingest is a bulk typed-array copy, so it is cheap
+ * per point — but it is O(total points), and the user chose to keep everything
+ * since connect. Scaling the period with the buffer keeps the *fraction* of
+ * time spent redrawing roughly constant: 10 Hz for the first few minutes,
+ * easing to 0.5 Hz deep into a night, where a second of latency on a trend view
+ * costs nothing.
+ */
+function liveTickMs(points: number): number {
+  return Math.min(RT_MAX_TICK_MS, Math.max(RT_MIN_TICK_MS, points / RT_POINTS_PER_MS));
+}
+
+/** A dispatch of our own that came back as a `dataZoom` event, within this window, is not user intent. */
+const SELF_ZOOM_GUARD_MS = 50;
+
+/**
+ * Whether a `hello` continues the stream we were already watching, rather than
+ * announcing a new one. A device that merely lost the link comes back with the
+ * same recording start and channel table, and its buffers stay valid; one that
+ * rebooted into a fresh recording does not, and needs the panes rebuilt.
+ */
+const isSameStream = (prev: RtHello, next: RtHello): boolean =>
+  prev.recording_start_iso === next.recording_start_iso
+  && prev.channels.length === next.channels.length;
+
+/**
+ * Live mode: plot samples as the device streams them.
+ *
+ * Structurally identical to `run()` once the panes exist — same
+ * `buildBubbleOption`, same `echarts.connect` group, same brush/zoom/context
+ * menu wiring. The differences are that the data arrives over time instead of
+ * all at once, and that everything downstream of Python processing (scored
+ * events, PLMI, HRV, the windowed-metrics card) has nothing to show yet and is
+ * absent from the live shell rather than rendered empty.
+ */
+function runRealtime(app: HTMLElement, url: string): void {
+  let store: RtStore | undefined;
+  let charts: echarts.ECharts[] = [];
+  let hello: RtHello | undefined;
+  let status: RtStatus | undefined;
+  let link: RtLinkState = 'connecting';
+  let linkDetail: string | undefined;
+  let following = true;
+  let selfZoomAt = 0;
+  let renderedPoints = -1;
+  let badFrames = (): number => 0;
+
+  const paintStatus = (): void => {
+    const el = document.getElementById('rt-status');
+    if (el === null || hello === undefined) return;
+    const view: RtStatusView = {
+      link,
+      detail: linkDetail,
+      deviceUid: hello.device_uid,
+      startIso: hello.recording_start_iso,
+      elapsedS: status?.elapsed_s ?? 0,
+      recording: status?.recording ?? hello.recording_active,
+      sdError: status?.sd_error ?? false,
+      battPct: status?.batt_pct ?? null,
+      deviceDropped: status?.dropped_frames ?? 0,
+      badFrames: badFrames(),
+      breaks: store?.breakCount ?? 0,
+      points: store?.totalPoints ?? 0,
+    };
+    el.innerHTML = renderRtStatus(view);
+  };
+
+  const setFollowing = (on: boolean): void => {
+    following = on;
+    const btn = document.getElementById('rt-follow');
+    if (btn === null) return;
+    btn.classList.toggle('on', on);
+    btn.textContent = on ? 'Following live' : 'Jump to live';
+  };
+
+  /** (Re)build the panes. Called on the first `hello`, and again if the device starts a new recording. */
+  const buildPanes = (h: RtHello, s: RtStore): void => {
+    charts.forEach((c) => { c.dispose(); });
+    const source = s.source();
+    app.innerHTML = renderRealtimeShell(h, source);
+
+    const touch = window.matchMedia('(pointer: coarse), (max-width: 760px)').matches;
+    // The source object is rebuilt every tick, so the full-screen view is handed
+    // a getter rather than a snapshot — otherwise it would open frozen at
+    // whatever the buffer held when the panes were built.
+    const openFs = touch ? createFullscreen(() => (store ?? s).source(), NO_EVENTS) : undefined;
+    let menuOpenedAt = 0;
+
+    charts = Array.from({ length: channelCount(source) }, (_, i) => {
+      const el = document.getElementById(`sig-${String(i)}`);
+      if (el === null) return undefined;
+      const c = echarts.init(el, null, { renderer: 'canvas' });
+      c.setOption(buildBubbleOption(source, NO_EVENTS, i, touch));
+      c.group = CONNECT_GROUP;
+      if (openFs !== undefined) {
+        c.getZr().on('click', () => {
+          if (Date.now() - menuOpenedAt < TAP_SUPPRESS_MS) return;
+          openFs(i);
+        });
+      }
+      // Any zoom the user drives drops out of follow mode, so scrolling back
+      // through the night isn't yanked forward again on the next frame. Our own
+      // follow dispatch echoes back as the same event, hence the time guard.
+      c.on('dataZoom', () => {
+        if (Date.now() - selfZoomAt > SELF_ZOOM_GUARD_MS && following) setFollowing(false);
+      });
+      return c;
+    }).filter((c): c is echarts.ECharts => c !== undefined);
+
+    echarts.connect(CONNECT_GROUP);
+    // No metrics service in live mode: it scores a stored recording, and this
+    // one isn't finished. The brush still works, for reading a span's duration.
+    const selection = wireBrushSync(charts, () => undefined);
+    if (!touch) {
+      armBrush(charts);
+      wireCtrlZoom(charts);
+    }
+    wireContextMenu(charts, selection, touch, () => { menuOpenedAt = Date.now(); });
+    wireMontageToggles();
+
+    document.getElementById('rt-follow')?.addEventListener('click', () => { setFollowing(!following); });
+    setFollowing(true);
+    renderedPoints = -1;
+    paintStatus();
+  };
+
+  const tick = (): void => {
+    const s = store;
+    if (s !== undefined && charts.length > 0 && s.totalPoints !== renderedPoints) {
+      renderedPoints = s.totalPoints;
+      const source = s.source();
+      const tMax = s.latestTime();
+      charts.forEach((c, i) => { c.setOption(liveUpdateOption(source, i, tMax)); });
+      if (following && tMax > 0) {
+        selfZoomAt = Date.now();
+        // One dispatch — echarts.connect mirrors dataZoom across the group.
+        charts[0]?.dispatchAction(followLiveAction(tMax));
+      }
+      paintStatus();
+    }
+    globalThis.setTimeout(tick, liveTickMs(s?.totalPoints ?? 0));
+  };
+
+  const client = connectRt(url, {
+    onHello: (h) => {
+      const sameSession = hello !== undefined && isSameStream(hello, h);
+      hello = h;
+      // A reconnect into the same recording keeps the buffers: every block
+      // carries an absolute sample index, so the history already held stays
+      // correctly placed and only the missed span shows as a gap.
+      if (!sameSession || store === undefined) {
+        store = new RtStore(h.channels);
+        buildPanes(h, store);
+      } else {
+        paintStatus();
+      }
+    },
+    onSamples: (frame) => { store?.append(frame); },
+    onStatus: (s) => { status = s; paintStatus(); },
+    onState: (state, detail) => { link = state; linkDetail = detail; paintStatus(); },
+  });
+  badFrames = client.badFrames;
+
+  window.addEventListener('resize', () => { charts.forEach((c) => { c.resize(); }); });
+  tick();
 }
 
 /** No `?meta=` param: show the landing page listing every study `deploy.py` has published. */
@@ -283,8 +609,13 @@ function main(): void {
   const app = document.getElementById('app');
   if (app === null) return;
   const param = new URLSearchParams(window.location.search).get('meta');
+  const rtUrl = rtWsUrl(window.location);
 
-  if (param === null) {
+  // RT wins over `?meta=`: asking for a live stream is explicit, and the two
+  // are different recordings by definition — one in progress, one finished.
+  if (rtUrl !== undefined) {
+    runRealtime(app, rtUrl);
+  } else if (param === null) {
     runLanding(app).catch((err: unknown) => {
       app.innerHTML = `<pre class="fatal">Error loading studies:\n${String(err)}</pre>`;
       console.error(err);

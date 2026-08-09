@@ -34,6 +34,18 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
 // every 10 ms tick, independently of logger_record()'s 50 Hz cadence.
 void logger_record_ecg(uint16_t ecg_raw);
 
+// ── The digital sample conversions, shared with components/rt_stream ─────────
+// Three channels are not written to the EDF+ as the sensor reported them:
+// thoracic/abdomen are baseline-subtracted and divided by their per-channel
+// constants, and flow is scaled from mbar. logger_record() calls these, and the
+// real-time stream calls them too, so a streamed data point is the *same
+// integer* that reaches the card rather than a second derivation of it that
+// could drift out of step. Pure functions of their input plus the current
+// baseline; no side effects, safe to call from anywhere.
+int16_t logger_thoracic_digital(uint32_t ldc0);
+int16_t logger_abdomen_digital(uint32_t ldc1);
+int16_t logger_flow_digital(float pressure_mbar);
+
 // Format the SD card as FAT32. Closes any open EDF file first.
 // Mounts the card if not already mounted. Does NOT reopen the EDF file.
 bool logger_format_sd(void);

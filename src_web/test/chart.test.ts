@@ -1,12 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { channelCount, channelIndex, channelMeta, buildBubbleOption } from '../src/chart';
+import { channelCount, channelIndex, channelMeta, buildBubbleOption, zoomToRangeAction, followLiveAction, NO_EVENTS } from '../src/chart';
+import { RtStore } from '../src/rt_store';
+import { EDF_CHANNELS } from './helpers/rtFixtures';
+import { toSignalSource } from '../src/zarr_loader';
+import type { SignalSource } from '../src/signals';
 import type { ZarrData, EventsDoc } from '../src/types';
 
 const n = (len: number, fill = 1): Float64Array => new Float64Array(len).fill(fill);
 const f32 = (len: number, fill = 1): Float32Array => new Float32Array(len).fill(fill);
 
 /** A legacy single-accelerometer store (e.g. tools/make_fixture.py's sample) — no Accel1/combined/respiratory arrays. */
-const legacyZarr: ZarrData = {
+const legacyStore: ZarrData = {
   t: n(10, 1),
   accel_x: f32(10),
   accel_y: f32(10),
@@ -24,19 +28,27 @@ const legacyZarr: ZarrData = {
 };
 
 /** A dual-accelerometer store — both legs scored, per read_log.py's --count path. Still no respiratory device. */
-const dualZarr: ZarrData = {
-  ...legacyZarr,
+const dualStore: ZarrData = {
+  ...legacyStore,
   accel1_mag: f32(10, 2),
   accel_combined_mag: f32(10, 2),
 };
 
 /** The ESP32-C6 11-channel case: dual accelerometer AND Thoracic/Abdomen/Flow both present at once. */
-const fullZarr: ZarrData = {
-  ...dualZarr,
+const fullStore: ZarrData = {
+  ...dualStore,
   thoracic: f32(10, 3),
   abdomen: f32(10, 4),
   flow: f32(10, 5),
 };
+
+// The chart reads a `SignalSource`, not the raw decode result, so every fixture
+// goes through the same adapter the batch path uses — which keeps the canonical
+// channel-name mapping (`accel_x` -> `accel0_x`, `hrv_t`/`hrv_rmssd` -> one
+// series) under test rather than duplicated here.
+const legacyZarr: SignalSource = toSignalSource(legacyStore);
+const dualZarr: SignalSource = toSignalSource(dualStore);
+const fullZarr: SignalSource = toSignalSource(fullStore);
 
 describe('chart channel filtering (Accel1 / combined bilateral)', () => {
   it('hides the Accel1/combined panes when the store has no second accelerometer', () => {
@@ -96,6 +108,20 @@ describe('chart channel filtering (Accel1 / combined bilateral)', () => {
   });
 });
 
+describe('zoomToRangeAction (the context menu\'s "Zoom to window")', () => {
+  it('zooms to exactly the selected band when it is wider than the floor', () => {
+    expect(zoomToRangeAction([120, 300])).toEqual({ type: 'dataZoom', startValue: 120, endValue: 300 });
+  });
+
+  it('widens a sub-second selection about its midpoint rather than collapsing the axis', () => {
+    // A few-pixel drag is a real selection (removeOnClick only clears a true click),
+    // but zooming to it would leave an empty pane with no way back but the slider.
+    const action = zoomToRangeAction([100, 100.2]);
+    expect(action.endValue - action.startValue).toBeCloseTo(1);
+    expect((action.startValue + action.endValue) / 2).toBeCloseTo(100.1);
+  });
+});
+
 describe('chart channel filtering (Respiratory: Thoracic/Abdomen/Flow)', () => {
   it('hides the Respiratory panes when the store has no respiratory device', () => {
     const names = channelMeta(dualZarr).map((m) => m.name);
@@ -135,4 +161,85 @@ describe('chart channel filtering (Respiratory: Thoracic/Abdomen/Flow)', () => {
       }
     },
   );
+});
+
+describe('chart channel binding in RT (live) mode', () => {
+  const liveSource = (): SignalSource => {
+    const store = new RtStore(EDF_CHANNELS);
+    store.append({
+      type: 'samples',
+      seq: 1,
+      blocks: Object.fromEntries(EDF_CHANNELS.map((c) => [c.name, { n0: 0, v: [1, 2, 3] }])),
+    });
+    return store.source();
+  };
+
+  it('renders one pane per streamed EDF+ channel, in EDF signal order within the table', () => {
+    const names = channelMeta(liveSource()).map((m) => m.name);
+    expect(names).toEqual([
+      'RR · ms', 'ECG · ADC',
+      'Accel X', 'Accel Y', 'Accel Z',
+      'Accel1 X (leg 2)', 'Accel1 Y (leg 2)', 'Accel1 Z (leg 2)',
+      'Thoracic', 'Abdomen', 'Flow',
+    ]);
+    expect(channelCount(liveSource())).toBe(11);
+  });
+
+  it('shows no derived panes — vector magnitude, HRV and the bilateral score need Python processing', () => {
+    const names = channelMeta(liveSource()).map((m) => m.name);
+    expect(names).not.toContain('Accel mag');
+    expect(names).not.toContain('HRV · ms');
+    expect(names).not.toContain('Accel1 mag (leg 2)');
+    expect(names).not.toContain('Combined LM (bilateral)');
+  });
+
+  it('shows the ECG and Accel1 axis panes that no derived store carries', () => {
+    const src = liveSource();
+    expect(channelIndex(src, 'ECG · ADC')).toBeGreaterThanOrEqual(0);
+    expect(channelIndex(src, 'Accel1 X (leg 2)')).toBeGreaterThanOrEqual(0);
+    // …and those panes stay hidden in batch, where no such array exists.
+    expect(channelIndex(dualZarr, 'ECG · ADC')).toBe(-1);
+    expect(channelIndex(fullZarr, 'Accel1 X (leg 2)')).toBe(-1);
+  });
+
+  it('draws no markArea in live mode — there is no scoring to overlay yet', () => {
+    const src = liveSource();
+    for (let i = 0; i < channelCount(src); i++) {
+      const opt = buildBubbleOption(src, NO_EVENTS, i);
+      const series = (opt.series as readonly { readonly markArea?: unknown }[])[0];
+      expect(series?.markArea).toBeUndefined();
+    }
+  });
+
+  it('hands ECharts the interleaved buffer directly, with the dimensions a typed array needs', () => {
+    // The zero-copy path: no per-point array objects, which is what makes an
+    // unbounded live session affordable. `dimensions` is what tells ECharts the
+    // flat buffer is two values per point.
+    const opt = buildBubbleOption(liveSource(), NO_EVENTS, 1); // ECG
+    const series = (opt.series as readonly { readonly data?: unknown; readonly dimensions?: unknown }[])[0];
+    expect(series?.data).toBeInstanceOf(Float64Array);
+    expect(series?.dimensions).toEqual(['t', 'v']);
+  });
+
+  it('keeps the batch path on plain [t, v] pairs, unchanged', () => {
+    const opt = buildBubbleOption(dualZarr, NO_EVENTS, 1);
+    const series = (opt.series as readonly { readonly data?: unknown; readonly dimensions?: unknown }[])[0];
+    expect(Array.isArray(series?.data)).toBe(true);
+    expect(series?.dimensions).toBeUndefined();
+  });
+
+  it('declares a pane for a channel that has not sent a sample yet', () => {
+    // RR is 2.5 Hz: most 100 ms frames carry nothing for it, and the panes are
+    // built from `hello` before any frame at all. An empty pane is correct; a
+    // missing one would appear later and reshuffle every index after it.
+    const store = new RtStore(EDF_CHANNELS);
+    expect(channelCount(store.source())).toBe(11);
+  });
+
+  it('follows the newest samples with a window that ends at the live edge', () => {
+    expect(followLiveAction(300, 60)).toEqual({ type: 'dataZoom', startValue: 240, endValue: 300 });
+    // Early in a session there is less history than the window; clamp at 0
+    // rather than scrolling to negative time.
+    expect(followLiveAction(12, 60)).toEqual({ type: 'dataZoom', startValue: 0, endValue: 12 });
+  });
 });

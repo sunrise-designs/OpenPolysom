@@ -2,7 +2,7 @@
 title: PSG & Pipeline Concepts (Glossary)
 domain: knowledge
 status: living
-updated: 2026-07-17
+updated: 2026-07-19
 summary: A concise glossary of the polysomnography, sleep-disorder, signal and data-tech terms used across the ProtoSom wiki and codebase.
 ---
 
@@ -72,8 +72,9 @@ surface from the captured signals. Plain-language sketches per `README.md:51-60`
 - **RIP (Respiratory Inductance Plethysmography)** — two inductive belts
   (Thoracic + Abdomen) whose inductance changes as the cross-sectional area of
   the ribcage/abdomen changes with breathing. ProtoSom reads them via an
-  **LDC1612** inductance-to-frequency sensor; raw units are nanohenries (nH) at
-  50 Hz ([hardware](hardware.md), `README.md:90`). Thoracic−Abdomen phase is the
+  **LDC1612** inductance-to-frequency sensor at 50 Hz; the EDF+ header declares
+  nanohenries but the channel actually carries pre-divided raw counts
+  ([hardware](hardware.md)). Thoracic−Abdomen phase is the
   central/obstructive discriminator above.
 - **Nasal airflow** — airflow rate measured by a differential-pressure sensor
   (**SDP800-125Pa**, ±125 Pa, 50 Hz). The "is air actually moving" channel that
@@ -90,12 +91,14 @@ surface from the captured signals. Plain-language sketches per `README.md:51-60`
 
 ### Cardiac
 
-- **Heart rate (HR)** — beats per minute (BPM, 1 Hz channel). Source is a Polar
-  H9 chest strap, migrating to an **AD8232** single-lead ECG module
-  (`README.md:92`).
+- **Heart rate (HR)** — beats per minute. **No longer a captured channel**: the
+  Polar H9 chest strap that fed it is retired along with the RPi5 unit, and the
+  ESP32-C6 has no `HR` channel at all. Heart rate is now something to *derive*
+  from the ECG trace, not a signal read off a sensor.
 - **RR interval** — the time (ms) between successive R-peaks of consecutive
-  heartbeats; the beat-to-beat timing series (a 5 Hz channel on the RPi5 device;
-  1 Hz on the ESP32-C6 wrist device). Note: *RR interval* (cardiac) is distinct
+  heartbeats; the beat-to-beat timing series. A 2.5 Hz channel on the ESP32-C6,
+  but currently a **dead channel logging zeros** — the device has no R-peak
+  detection ([hardware](hardware.md)). Note: *RR interval* (cardiac) is distinct
   from *RR = respiratory rate* in other PSG literature — in ProtoSom "RR" means
   the cardiac interval.
 - **HRV (Heart Rate Variability)** — variability of the RR-interval series; a
@@ -105,20 +108,23 @@ surface from the captured signals. Plain-language sketches per `README.md:51-60`
   time-domain HRV metric: the RMS of the differences between successive RR
   intervals. Computed by `compute_hrv` in
   [`src_python/signal_processing.py`](../../src_python/signal_processing.py).
-- **ECG (electrocardiogram)** — the raw cardiac electrical trace; on the RPi5
-  device an AD8232 ADC channel (`HR_Raw`, 100 Hz) from which R-peaks (and hence RR
-  intervals) are derived.
+- **ECG (electrocardiogram)** — the raw cardiac electrical trace; an AD8232 ADC
+  channel (`ECG`, 100 Hz) and the device's **only** cardiac source. R-peaks (and
+  hence RR intervals, and hence HRV) would be derived from it — that derivation is
+  not yet built on-device or host-side.
 
 ### Movement
 
-- **Accelerometry** — 3-axis acceleration (Accel0X/Y/Z, Accel1X/Y/Z) from the ESP32-C6 wrist
-  device (12-bit @ 10 Hz). Used to detect limb movement for PLMD. The legacy
-  binary log packs accel + RR at 10 Hz; baseline drift (posture changes) is
+- **Accelerometry** — 3-axis acceleration (Accel0X/Y/Z, Accel1X/Y/Z) from two
+  MMA8451 accelerometers on the ESP32-C6, reported in **mg at 50 Hz**. Two of them
+  gives the bilateral (per-leg plus combined) scoring standard PSG practice wants.
+  Used to detect limb movement for PLMD; baseline drift (posture changes) is
   stripped by rolling-median subtraction before PLM detection
   ([`plans/removing accel baseline.md`](../../plans/removing%20accel%20baseline.md)).
-- **Vector magnitude** — `sqrt((ax-128)² + (ay-128)² + (az-128)²)` per sample:
-  the three accel axes collapsed into one activity signal for limb-movement
-  detection.
+- **Vector magnitude** — `sqrt(ax² + ay² + az²)` per sample over the
+  **baseline-removed** (zero-centred) axes: the three accel axes collapsed into one
+  activity signal for limb-movement detection. (The `−128` centring seen in older
+  notes belonged to the retired uint8 byte-log format, not to the current mg scale.)
 
 ### Acoustic (snoring)
 
@@ -152,7 +158,7 @@ surface from the captured signals. Plain-language sketches per `README.md:51-60`
 - **Hypnogram** — the staged timeline of a night's sleep (the sequence of sleep
   stages across all epochs), the classic step-plot summary of sleep architecture.
 - **LM (Limb Movement)** — a single qualifying limb movement: amplitude ≥ a
-  threshold above baseline, duration **0.5–10 s** (5–100 samples @ 10 Hz; longer
+  threshold above baseline, duration **0.5–10 s** (25–500 samples @ 50 Hz; longer
   = posture change, not a jerk).
 - **PLM (Periodic Limb Movement)** — LMs occurring in a **series of ≥4** with
   onset-to-onset gaps of **5–90 s**. Counted by `count_plm` per AASM rules

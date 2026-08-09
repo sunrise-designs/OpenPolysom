@@ -2,6 +2,7 @@
 #include "sensors.h"
 #include "battery_gauge.h"
 #include "logger.h"
+#include "rt_stream.h"
 #include "display.h"
 #include "time_sync.h"
 #include "freertos/FreeRTOS.h"
@@ -127,6 +128,7 @@ static void sensor_task(void *arg)
         // 100 Hz: ECG ADC (AD8232, ADC channel 0)
         sensors_read_ecg();
         logger_record_ecg(g_ecg_raw);
+        rt_stream_push_ecg(g_ecg_raw);
 
         // 50 Hz: all other sensors + logging + display
         if (++tick50 >= 2) {
@@ -136,6 +138,16 @@ static void sensor_task(void *arg)
 
             // BLE removed: HR/RR have no live source, logged as zero for now.
             logger_record(
+                g_accel0_x, g_accel0_y, g_accel0_z,
+                g_accel1_x, g_accel1_y, g_accel1_z,
+                g_ldc0, g_ldc1,
+                g_pressure_mbar,
+                0);
+
+            // Live stream tap. No-op unless streaming was enabled for this
+            // device, and never blocks: a frame it cannot queue is dropped
+            // rather than delaying the SD write above.
+            rt_stream_push_50hz(
                 g_accel0_x, g_accel0_y, g_accel0_z,
                 g_accel1_x, g_accel1_y, g_accel1_z,
                 g_ldc0, g_ldc1,
@@ -170,6 +182,10 @@ static void sensor_task(void *arg)
                     dd.recording_seconds = logger_get_elapsed_seconds();
                     dd.time_sync_source = s_time_sync_source;
                     dd.batt_percent    = battery_gauge_get_percentage();
+                    dd.rt_streaming    = rt_stream_is_up();
+                    dd.rt_clients      = rt_stream_client_count();
+                    dd.rt_ssid         = rt_stream_ssid();
+                    dd.rt_password     = rt_stream_password();
                     display_update(&dd);
                 }
             }
@@ -217,6 +233,11 @@ extern "C" void app_main(void)
     // each accepted frame so future boots don't need the host.
     time_sync_start(on_time_sync);
 
+    // Second command on the same link: enable/disable live streaming
+    // (tools/set_rt_stream.py). Persisted to NVS and applied on the next boot —
+    // see rt_stream_set_enabled() for why it is not applied live.
+    time_sync_set_rt_stream_cb(rt_stream_set_enabled);
+
     // If a DS3231 RTC is fitted and already holds a plausible time (i.e. it has
     // been set on a previous boot), use it and don't hold up boot waiting for a
     // host that may never send anything. The listener above stays up either way.
@@ -230,6 +251,11 @@ extern "C" void app_main(void)
     if (!logger_init()) {
         ESP_LOGE(TAG, "Logger init failed (no SD card?) - continuing without recording");
     }
+
+    // Live sample streaming over Wi-Fi. After logger_init(), so the stream's
+    // first `hello` can report whether a recording is actually being written.
+    // Does nothing (and leaves the radio off) unless enabled for this device.
+    rt_stream_start();
 
     // Display wake button: re-enable the screen after display_sleep()
     // Disabled for now.

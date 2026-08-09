@@ -63,6 +63,47 @@
 #define EDF_FILE_DIR    "/sdcard"
 #define EDF_FILE_PREFIX "biometric"
 
+// ── Real-time streaming (components/rt_stream) ───────────────────────────────
+// Live sample streaming over Wi-Fi, for watching the signals while a recording
+// runs. OFF by default: the radio costs the power this firmware otherwise saves
+// (see ../wiki/knowledge/hardware.md), so a normal unattended night is
+// unaffected. Enable per-device over the serial command channel, which persists
+// the choice in NVS; RT_STREAM_ENABLED_DEFAULT is only the value used before
+// anything has ever been stored.
+#define RT_STREAM_ENABLED_DEFAULT   false
+
+// SoftAP by default — a bedside device with no network to join, and live
+// physiological data that has no business on a home LAN. The SSID gets the last
+// three MAC bytes appended so two units in one room are distinguishable.
+#define RT_STREAM_SOFTAP            1
+#define RT_STREAM_SSID_PREFIX       "ProtoSom-"
+#define RT_STREAM_AP_CHANNEL        6
+#define RT_STREAM_AP_MAX_CONN       2
+
+// WPA2 password, derived per-device from the MAC and shown on the OLED, so it
+// is neither blank nor the same on every unit. See rt_stream_password().
+#define RT_STREAM_PASSWORD_PREFIX   "som"
+
+// STA mode (join an existing network) — only used when RT_STREAM_SOFTAP is 0.
+#define RT_STREAM_STA_SSID          ""
+#define RT_STREAM_STA_PASSWORD      ""
+
+#define RT_STREAM_PORT              80
+#define RT_STREAM_WS_PATH           "/rt"
+
+// One frame per 100 ms: 5 samples of each 50 Hz channel, 10 of ECG. Matches the
+// cadence src_web/src/rt_store.ts is tuned for, and keeps a frame comfortably
+// inside one TCP segment at ~4 KB of JSON.
+#define RT_STREAM_FRAME_MS          100
+
+// Queue depth in frames. 2 s of buffering: enough to ride out a retransmit,
+// short enough that a wedged client is dropped rather than accumulating stale
+// samples nobody will look at.
+#define RT_STREAM_QUEUE_FRAMES      20
+
+// Stop the radio after this long with no client connected.
+#define RT_STREAM_IDLE_TIMEOUT_S    600
+
 // ── Local time zone ───────────────────────────────────────────────────────────
 // UK time: GMT in winter, BST (UTC+1) from last Sunday in March to last Sunday
 // in October. SNTP sets the system clock to UTC; this POSIX TZ rule is what

@@ -2,14 +2,14 @@
 title: Component-2 Architecture
 domain: knowledge
 status: living
-updated: 2026-07-08
+updated: 2026-07-19
 summary: The canonical reference for ProtoSom's data pipeline after data leaves the device — the four-stage pipeline, the three-layer data model, and the C++ ingest / Python processing / TS web-app language boundary that meets at the Zarr store plus metadata.
 ---
 
 # Component-2 Architecture
 
-ProtoSom has two components. **Component 1** is the hardware data acquisition (a bespoke PCB,
-RPi5 + ESP32-C6, owned by Dmitry). **Component 2** is everything *after* the data leaves the device:
+ProtoSom has two components. **Component 1** is the hardware data acquisition (an ESP32-C6 on a
+bespoke breadboard, with a KiCad PCB in progress, owned by Dmitry). **Component 2** is everything *after* the data leaves the device:
 ingest, signal processing, the viewer, and the report. This page is the spine — the canonical
 reference for how component 2 is structured. Everything else in the wiki hangs off it.
 
@@ -59,13 +59,13 @@ for future 24-bit EEG), **FLAC** for audio, time-anchored to the biosignal timel
 **immutable and content-hashed** — the provenance anchor that every derived product is stamped
 against. It is **never modified** by any stage of component 2.
 
-The 6-channel EDF+ written by [`src/main.cpp`](../../src/main.cpp) (RPi5 acquisition) is a concrete
-raw anchor — Thoracic + Abdomen (LDC1612 RIP belts, nH, 50 Hz), HR (BPM, 1 Hz), RR (ms, 5 Hz),
-Flow (SDP800, 50 Hz), HR_Raw (AD8232 ECG ADC, 100 Hz); see the `ChannelInfo` table at
-[`src/main.cpp:145`](../../src/main.cpp). The ESP32-C6 wrist device adds an 11-channel EDF+
-(AccelX/Y/Z @10 Hz + RR @1 Hz), and the newer ESP32-C6 wrist logger
-([`logger.cpp`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)) writes an 11-channel
-EDF+ (Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z, Accel1X/Y/Z, RR).
+The concrete raw anchor is the **11-channel EDF+** written by the ESP32-C6
+([`logger.cpp`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)) — Thoracic + Abdomen
+(LDC1612 RIP belts, 50 Hz), Flow (SDP800, mbar, 50 Hz), ECG (AD8232 ADC, 100 Hz),
+Accel0X/Y/Z + Accel1X/Y/Z (MMA8451 ×2, mg, 50 Hz), and RR (ms, 2.5 Hz — currently a dead channel
+with no live source); see the `SigDef` table at
+[`logger.cpp:473`](../../ESP32-C6-heart-idf/components/logger/logger.cpp) and
+[hardware](hardware.md) for the full layout.
 
 ### Layer 2 — Working store
 
@@ -83,10 +83,10 @@ Two producers write this layer:
 - **derived Zarr** — produced by **Python processing** (filtered signals, feature arrays, the
   audio spectrogram array, etc.).
 
-Per-array Zarr attribute `storage = physical | digital` records the EDF write path:
-[`src/main.cpp`](../../src/main.cpp) writes physical doubles via `edfwrite_physical_samples` (e.g.
-[`src/main.cpp:286`](../../src/main.cpp)), while the ESP32-C6 `logger.cpp` writes digital via
-`edfwrite_digital_samples`. The working store is **regenerable from the raw anchor**, so it can be
+Per-array Zarr attribute `storage = physical | digital` records the EDF write path. The ESP32-C6's
+`logger.cpp` writes **digital** integers via `edfwrite_digital_samples`, so every array ingested
+from a current recording carries `storage=digital`; the attribute is kept general because the
+derived layer also holds calibrated float arrays. The working store is **regenerable from the raw anchor**, so it can be
 deleted and rebuilt at will. It is the only mutable layer and the meeting point of the whole
 architecture. ([Zarr v2 + Blosc/zstd rationale](data-formats.md), [decisions](../state/decisions.md).)
 
@@ -133,8 +133,9 @@ principle:
 **Why these three:**
 
 - **C++ for ingest** — performance and medical-compliance friendliness, and it reuses the existing
-  `edflib`-based firmware ([`src/main.cpp`](../../src/main.cpp)). Writes Zarr via a C++ Zarr library
-  (TensorStore / z5 / xtensor-zarr).
+  `edflib`-based firmware
+  ([`logger.cpp`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)). Writes Zarr via a C++
+  Zarr library (TensorStore / z5 / xtensor-zarr).
 - **Python for processing** — there is a *copious* amount of feature-finding work ("finding salient
   features in the signals"), and Python is the de-facto standard for it. The current processing lives
   in [`src_python/signal_processing.py`](../../src_python/signal_processing.py)
@@ -222,8 +223,8 @@ This is why the spec is pinned (full detail + rationale in [data formats](data-f
   device                C++ ingest          Python processing                 the TS web app
  ┌────────┐  EDF+/FLAC  ┌──────────┐  raw   ┌─────────────────┐               ┌──────────────┐
  │ sensors│ ──────────▶ │ EDF/FLAC │  Zarr  │ baseline · PLM/LM│  derived      │ slicing server│
- │ RPi5 + │  raw anchor │  → raw   │ ─────▶ │ HRV · airflow ·  │  Zarr +       │ /window       │
- │ ESP32  │ (immutable, │  Zarr +  │        │ apnea · snore ·  │  events.json  │ /spectrogram  │
+ │ ESP32- │  raw anchor │  → raw   │ ─────▶ │ HRV · airflow ·  │  Zarr +       │ /window       │
+ │ C6     │ (immutable, │  Zarr +  │        │ apnea · snore ·  │  events.json  │ /spectrogram  │
  └────────┘  hashed)    │  header  │        │ spectrogram      │  meta.json    │ /meta /events │
       │                 │  meta    │        └─────────────────┘     │         └──────┬───────┘
       │  Layer 1        └────┬─────┘  zarr-python (reads + writes)   │  reads only    │ zarrita.js

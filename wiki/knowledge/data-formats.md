@@ -2,8 +2,8 @@
 title: Data Formats
 domain: knowledge
 status: living
-updated: 2026-07-08
-summary: The on-disk formats across the three-layer data model — EDF+/BDF+ and FLAC as the raw anchor, the Zarr v2 working store as the language-neutral boundary, and the JSON sidecars — plus the three-format history and its resolution.
+updated: 2026-08-09
+summary: The on-disk formats across the three-layer data model — EDF+/BDF+ and FLAC as the raw anchor, the Zarr v2 working store as the language-neutral boundary, and the JSON sidecars — plus the three-format history, its resolution, and why the device's live sample stream is not a fourth layer.
 ---
 
 # Data Formats
@@ -42,35 +42,57 @@ the affine map back to physical units. C++ ingest reads/writes it via **edflib**
 C library the devices already use; `pyEDFlib` is the equivalent Python binding).
 
 - **EDF+ = 16-bit** (`digital_min/max = -32768/32767`). Sufficient for RIP belts,
-  flow, HR/RR, and the AD8232 ECG front end.
+  flow, accelerometry, and the AD8232 ECG front end.
 - **BDF+ = 24-bit** is reserved for future high-resolution EEG, where 16 bits is too
   coarse. The format choice is otherwise identical; only the sample width differs.
 
 ### Current acquisition channels
 
-The RPi5 acquisition (`src/main.cpp`) writes a **6-channel EDF+** file
-(`edfopen_file_writeonly(..., EDFLIB_FILETYPE_EDFPLUS, 6)`, `src/main.cpp:126`). The
-`ChannelInfo` table (`src/main.cpp:145-152`) is the ground truth:
+The ESP32-C6 (`ESP32-C6-heart-idf/components/logger/logger.cpp`) writes an **11-channel EDF+**
+file (`edfopen_file_writeonly(..., EDFLIB_FILETYPE_EDFPLUS, NUM_SIGNALS)`, `logger.cpp:461`),
+in **10 s data records** (`logger.cpp:469`). The `SigDef` table (`logger.cpp:473-485`) is the
+ground truth:
 
-| # | Label | Transducer | Rate (Hz) | Phys dim | Phys range |
-|---|---|---|---|---|---|
-| 0 | Thoracic | LDC1612 CH0 (RIP belt) | 50 | Inductance (nH) | ±1 000 000 |
-| 1 | Abdomen | LDC1612 CH1 (RIP belt) | 50 | Inductance (nH) | ±1 000 000 |
-| 2 | HR | Polar H9 via ESP32-C6 | 1 | BPM | 0–250 |
-| 3 | RR | Polar H9 via ESP32-C6 | 5 | ms | 0–2000 |
-| 4 | Flow | Sensirion SDP800-125P | 50 | Pressure | 0–1000 |
-| 5 | HR_Raw | AD8232 ECG | 100 | ADC | 0–4095 |
+| # | Label | Transducer | Rate (Hz) | Phys dim | Phys range | Digital range |
+|---|---|---|---|---|---|---|
+| 0 | Thoracic | LDC1612 CH0 (RIP belt) | 50 | counts | ±1 000 000 | ±32767 |
+| 1 | Abdomen | LDC1612 CH1 (RIP belt) | 50 | counts | ±1 000 000 | ±32767 |
+| 2 | Flow | Sensirion SDP800-125Pa | 50 | mbar | ±100 | ±32767 |
+| 3 | ECG | AD8232 ADC0 | 100 | ADC | 0–4095 | 0–4095 |
+| 4–6 | Accel0X/Y/Z | MMA8451 ch0 | 50 | mg | ±2000 | −8192–8191 |
+| 7–9 | Accel1X/Y/Z | MMA8451 ch1 | 50 | mg | ±2000 | −8192–8191 |
+| 10 | RR | `N/A` — no live source | 2.5 | ms | 0–2000 | 0–2000 |
 
-The ESP32-C6 wrist device (`ESP32-C6-heart-idf/components/logger/logger.cpp`) writes its own
-**11-channel EDF+**: Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z, Accel1X/Y/Z, RR.
+`RR` is declared but **logs zeros** — the device has no R-peak detection, so there is no genuine
+cardiac interval series today. See [hardware](hardware.md) for what wiring it up would take.
 
-> **physical vs digital write path.** `main.cpp` writes **physical** doubles via
-> `edfwrite_physical_samples` (`src/main.cpp:286-291`) — edflib does the
-> physical→digital quantization using the declared min/max. `logger.cpp` writes
-> **digital** integers via `edfwrite_digital_samples`. C++ ingest carries this
-> distinction forward into the working store as a per-array `storage` attribute (see
-> below) so the readers know whether a Zarr array already holds physical units or needs
-> the affine map applied.
+> **The digital write path.** `logger.cpp` writes **digital** integers via
+> `edfwrite_digital_samples` (`logger.cpp:548`), so no edflib requantization happens on the way
+> out — the on-disk digital samples are exactly what the firmware computed. C++ ingest carries
+> this forward into the working store as a per-array `storage` attribute (see below) so readers
+> know whether a Zarr array already holds physical units or needs the affine map applied. Every
+> array ingested from a current recording is `storage=digital`; the `physical` case remains
+> defined for derived arrays and for any future producer that writes calibrated doubles.
+
+> **The RIP header caveat.** Thoracic/Abdomen declare `counts` over ±1,000,000 with the raw
+> LDC1612 counts pre-divided on-device (`THORACIC_DIVISOR`/`ABDOMEN_DIVISOR`, `logger.cpp:194-195`)
+> to use more of the digital range. The declared physical range was not adjusted to match, so
+> applying the header's affine map does **not** yield nanohenries. Treat those two channels'
+> physical units as nominal until open fork **O3** lands — see [hardware](hardware.md) and
+> [decisions](../state/decisions.md).
+
+### The live stream is not a fourth layer
+
+The device can also serve its samples over a WebSocket while recording
+(`protosom.rt/1.0.0` — see [viewer § RT vs batch](viewer.md) and
+[decisions § S12](../state/decisions.md)). It is deliberately **not** a storage
+layer: nothing is written, nothing is hashed, and it has no provenance of its own.
+The frames carry the **same digital integers** `edfwrite_digital_samples` receives —
+the producer calls `logger.cpp`'s own conversion functions rather than re-deriving
+them — with each block tagged by its absolute sample index, so a streamed data point
+is one EDF+ sample at the elapsed position it occupies in the file. The record of the
+night is the EDF+ on the card; the stream is a view of it that stops existing when
+the socket closes.
 
 ## Raw anchor: FLAC audio sidecar
 
@@ -207,7 +229,7 @@ Two biosignal storage formats were on the table. The resolution is settled — s
 
 2. **EDF+ (+ BDF+ for future EEG)** — **the chosen raw anchor.** Self-describing,
    16/24-bit, readable by edflib and by every clinical tool (EDFBrowser), and already
-   what `main.cpp` and `logger.cpp` write. Audio is the FLAC sidecar.
+   what `logger.cpp` writes. Audio is the FLAC sidecar.
 
 **Resolution:** EDF+/BDF+ is the raw anchor for biosignals; FLAC is the audio sidecar;
 the proprietary binary is dropped. Everything downstream of the

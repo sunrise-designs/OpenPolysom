@@ -34,7 +34,18 @@ export default tseslint.config(
     // relaxed on the DOM/ECharts/Zarr I/O edge and tests, where typed-array, DOM and
     // ECharts-option parameters (and a little local mutation in the chart lifecycle)
     // are unavoidable.
-    files: ['src/main.ts', 'src/chart.ts', 'src/shell.ts', 'src/landing.ts', 'src/zarr_loader.ts', 'test/**/*.ts'],
+    //
+    // `signals.ts` is here for the same reason as the rest: it exists to
+    // describe typed arrays, which have no readonly form. `rt_store.ts` and
+    // `rt_client.ts` are the live path's state — a growable sample buffer and a
+    // reconnecting socket are mutation by definition. The judgement they act on
+    // (frame parsing, the EDF affine map, gap arithmetic) is factored out into
+    // `rt_protocol.ts`, which stays under the strict rules.
+    files: [
+      'src/main.ts', 'src/chart.ts', 'src/shell.ts', 'src/landing.ts', 'src/zarr_loader.ts',
+      'src/signals.ts', 'src/rt_store.ts', 'src/rt_client.ts',
+      'test/**/*.ts',
+    ],
     rules: {
       '@typescript-eslint/prefer-readonly-parameter-types': 'off',
       'functional/prefer-readonly-type': 'off',

@@ -2,8 +2,8 @@
 title: Current State
 domain: state
 status: living
-updated: 2026-07-17
-summary: What exists in the repo today (C++ EDF+ writers, Python DSP reading EDF+ directly via edfio, a prototype ECharts/Zarr TS viewer that now carries both accelerometers plus a combined bilateral score and a brush-selected windowed-metrics card, a standalone FastAPI windowed-metrics service, and a multi-study Netlify landing page) versus the planned three-layer pipeline — and where the gaps are.
+updated: 2026-08-09
+summary: What exists in the repo today (C++ EDF+ writers plus an opt-in Wi-Fi live-sample streamer, Python DSP reading EDF+ directly via edfio, an ECharts/zarrita TS viewer with both a batch and a real-time mode, a standalone FastAPI windowed-metrics service, and a multi-study Netlify landing page) versus the planned three-layer pipeline — and where the gaps are.
 ---
 
 # Current State
@@ -28,15 +28,24 @@ See also: [data formats](../knowledge/data-formats.md) ·
 ## What exists today
 
 ### C++ ingest side — EDF+ writers only (no Zarr yet)
-- **RPi5 acquisition** (`src/main.cpp`): the live device path. Writes a 6-channel EDF+
-  via edflib — Thoracic + Abdomen (LDC1612 RIP belts, nH, 50 Hz), HR (BPM, 1 Hz),
-  RR (ms, 5 Hz), Flow (SDP800, 50 Hz), HR_Raw (AD8232 ECG, 100 Hz). Physical samples
-  (`edfwrite_physical_samples`).
-- **ESP32-C6 wrist device** (`ESP32-C6-heart-idf/components/logger/logger.cpp`): 11-channel
-  EDF+ — Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z, Accel1X/Y/Z, RR. Runs offline (no Wi-Fi/BLE),
-  features an SH1106 I2C display and serial time sync.
-- Build: `CMakeLists.txt` at repo root; `./setup_env.sh` + `./run_protosom.sh` on the Pi
-  (README "How to build / How to run").
+- **ESP32-C6** (`ESP32-C6-heart-idf/components/logger/logger.cpp`): the **only** device path.
+  Writes an 11-channel EDF+ via edflib in 10 s data records — Thoracic + Abdomen (LDC1612 RIP
+  belts, 50 Hz), Flow (SDP800, mbar, 50 Hz), ECG (AD8232 ADC, 100 Hz), Accel0X/Y/Z + Accel1X/Y/Z
+  (MMA8451 ×2, mg, 50 Hz), RR (ms, 2.5 Hz — **dead channel, logs zeros**). Digital samples
+  (`edfwrite_digital_samples`). Runs offline (no Wi-Fi/BLE), features an SH1106 I2C display,
+  a DS3231 RTC, and serial time sync. Its RIP baseline survives a mid-study reboot via RTC memory
+  (restored on any non-power-on `esp_reset_reason()`), and the JSON sidecar records the baseline
+  actually used in an `ldc_baseline` block — see [hardware § RIP baseline](../knowledge/hardware.md).
+- **`components/rt_stream`** (new, 2026-08-09) serves those same samples over a Wi-Fi
+  WebSocket for the viewer's RT mode — opt-in per device, radio off by default, and
+  reusing `logger.cpp`'s own digital conversions so a streamed point is the recorded
+  integer. See [hardware § live streaming](../knowledge/hardware.md) and
+  [decisions § S12](decisions.md).
+- Build: ESP-IDF v6.0.1 (`idf.py build`, target `esp32c6`); see
+  `ESP32-C6-heart-idf/.claude/CLAUDE.md` for the explicit-environment invocation this machine needs.
+- **The RPi5 bedside unit is retired.** It wrote a 6-channel EDF+ (adding `HR`/`RR` from a Polar H9
+  over BLE) and polled the C6 over I2C. Its source now sits in `Deprecated/rpi_src` and is not a
+  supported ingest input; the Polar H9 path is gone with it.
 
 These are **the only parts of the C++ ingest that exist**. The C++ stage that converts
 raw EDF+/FLAC into the **raw Zarr** layer — the actual [Zarr boundary](../knowledge/data-formats.md)
@@ -89,18 +98,27 @@ point `read_log.py`:
   event/group tagged `channels: [<zarr array name>]` so the viewer can tell which pane a
   span belongs to.
 
-### TS web app — prototype viewer on the unmaintained zarr.js
-`src_web/` reads the Zarr + sidecar and draws charts — the presentation role is real,
-but the scaffolding is PoC-thin:
-- `src/main.ts` → `loadMeta` + `loadZarr` (`zarr_loader.ts`) → ECharts (`chart.ts`),
-  dark canvas renderer.
-- **Reads Zarr via `zarr` (zarr.js)** — `HTTPStore` + `openArray` (`zarr_loader.ts:1`).
-  This is the **unmaintained** library; the architecture calls for **zarrita.js**.
-- **No `package.json`, no `tsconfig.json`, no lockfile.** The build is a single bare
-  `esbuild` call in `src_web/build.sh`. (Note: the architecture brief's "empty
-  package.json/tsconfig" is generous — they are simply **absent**.)
-- A **prebuilt bundle is committed**: `src_web/dist/chart.js`. The viewer is **browser-direct**
-  at PoC scale — it loads the whole (tiny) recording.
+### TS web app — two modes, batch and RT
+`src_web/` reads the Zarr + sidecar and draws charts, and since 2026-08-09 also plots
+a live stream from the device:
+- `src/main.ts` routes three ways: `?rt=` → live mode, `?meta=` → a stored recording
+  (`loadMeta` + `loadZarr` → ECharts), neither → the landing page.
+- **Reads Zarr via `zarrita`** (`FetchStore` + `zarr.open`/`zarr.get`, `zarr_loader.ts`) —
+  the migration off the unmaintained `zarr.js` has landed. (`zarr` is still in
+  `package.json`'s dependencies but is no longer imported.)
+- **Real project scaffolding exists**: `package.json` (build / lint / typecheck / test),
+  `tsconfig.json` (`strict`), `eslint.config.js` (strictTypeChecked +
+  `eslint-plugin-functional`), `vitest.config.ts`, and a lockfile.
+- **RT mode** (`src/rt_*.ts`, `src/signals.ts`) plots the eleven raw EDF+ channels live
+  from the device's WebSocket, keeping everything since connect in growable interleaved
+  typed arrays. Everything downstream of Python processing is absent rather than faked.
+  `tools/mock_rt_server.mjs` replays a recorded `.edf` over the same protocol so the
+  mode is runnable without hardware. See [viewer § RT vs batch](../knowledge/viewer.md).
+- The bundle `src_web/dist/chart.js` is **built locally, not committed** — `.gitignore:18`
+  excludes `src_web/dist/`. (Earlier notes here and in [packaging](../planning/packaging.md)
+  said it was committed; it is not, so `npm run build` is a prerequisite for
+  `deploy.py` and for `export_zarr.py`'s dev server, both of which read it off disk.)
+  The viewer is **browser-direct** at PoC scale — it loads the whole (tiny) recording.
 
 ### Hosting — a multi-study Netlify site, incrementally deployed
 `src_python/deploy.py` deploys to a shared Netlify site rather than one recording per
@@ -139,11 +157,12 @@ running system.
 
 | Concern | Today (committed) | Planned (settled) |
 |---|---|---|
-| **Raw anchor** | EDF+ written by C++ (RPi5 + ESP32-C6) | EDF+/FLAC, content-hashed, immutable |
+| **Raw anchor** | EDF+ written by C++ (ESP32-C6, 11-channel) | EDF+/FLAC, content-hashed, immutable |
 | **C++ ingest → raw Zarr** | **Does not exist** | C++ (TensorStore/z5) writes raw Zarr + header metadata |
 | **Python processing input** | EDF+ directly, via `edf_reader.py` (`edfio`) — not yet the raw Zarr | Raw Zarr (zarr-python) |
 | **Derived layer** | `export_zarr.py` writes v2, 1 chunk/array, default codec; `meta.json` + `events.json` are schema-compliant | Per-array time-chunked Zarr v2 + Blosc(zstd,shuffle) |
-| **TS reader** | zarr.js (unmaintained), no manifest | zarrita.js, proper TS project |
+| **TS reader** | zarrita.js, `package.json`/`tsconfig`/ESLint/Vitest in place | zarrita.js, proper TS project — **done** |
+| **Live view** | RT mode: device Wi-Fi WebSocket → 11 raw EDF+ channels, browser-direct | n/a — additive to the batch path, see [decisions § S12](decisions.md) |
 | **Serving** | Python `ThreadingHTTPServer` (dev-only) | Browser-direct now; thin **TS slicing server** as data grows |
 | **Clinical export (Zarr→EDF+/BDF+)** | **Does not exist** | Regenerated on demand (likely C++) |
 | **Signals processed** | Accel (both accelerometers, PLM/LM + bilateral combined score) + RR (HRV) | + RIP baseline (QDC+airPLS), airflow, apnea/hypopnea, snore VOTE/MFCC |
@@ -160,7 +179,9 @@ running system.
 4. **Derived Zarr arrays are off-spec.** v2 is right, but no Blosc codec, no
    time-chunking, no `storage=` attrs — `meta.json`/`events.json` content itself is
    already schema-compliant.
-5. **Viewer uses zarr.js, not zarrita.js**, and has no `package.json` / `tsconfig.json`.
+5. ~~Viewer uses zarr.js~~ — **closed.** It reads via zarrita and has a real TS
+   project (package/tsconfig/ESLint/Vitest). The unused `zarr` dependency is still
+   listed in `package.json` and could be dropped.
 6. **No TS slicing server** and **no windowed API** (`/window`, `/spectrogram`, `/meta`,
    `/events`) — a Python `ThreadingHTTPServer` serves the whole recording.
 7. **Most signals unprocessed.** RIP belts, nasal flow, and snore audio are captured (or

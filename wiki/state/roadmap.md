@@ -2,7 +2,7 @@
 title: Build Roadmap
 domain: state
 status: living
-updated: 2026-07-17
+updated: 2026-08-09
 summary: The ordered build plan from the current repo state to the target three-language pipeline, with dependencies, exit criteria, and the open forks that gate it.
 ---
 
@@ -20,9 +20,8 @@ This page is **living** — re-order and tick items as the build moves.
 ## Where we are today (current state)
 
 - **C++ ingest** writes EDF+ at the device only:
-  [`src/main.cpp`](../../src/main.cpp) (RPi5, 6-channel physical samples), and
   [`logger.cpp`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)
-  (ESP32-C6, 11-channel digital samples), all via edflib. There is **no
+  (ESP32-C6, 11-channel digital samples) via edflib. There is **no
   EDF+ → raw-Zarr** ingest step yet — Zarr is currently produced by Python.
 - **Python processing** ([`src_python/signal_processing.py`](../../src_python/signal_processing.py))
   reads the **EDF+ raw anchor directly** via
@@ -38,10 +37,13 @@ This page is **living** — re-order and tick items as the build moves.
   the canonical schema) — the right *layer*, but written from the wrong stage (Python,
   not C++ ingest) and sourced from EDF+ directly rather than from a raw Zarr.
 - **The TS web app** ([`src_web/src/`](../../src_web/src/)) reads the Zarr +
-  sidecar and charts it, but via the **old `zarr` (zarr.js) library**
-  ([`zarr_loader.ts`](../../src_web/src/zarr_loader.ts), `HTTPStore` +
-  `openArray`), and loads the whole recording in-browser. No slicing server, no
-  audio pane, no PDF report.
+  sidecar and charts it via **zarrita** — stage 3's migration has landed — and
+  loads the whole recording in-browser. It also has a second, **RT mode** that
+  plots the eleven raw EDF+ channels live from the device's Wi-Fi WebSocket
+  (`components/rt_stream`), which is additive to the pipeline rather than part
+  of it: nothing is persisted and nothing derived is computed. See
+  [decisions § S12](../state/decisions.md). No slicing server, no audio pane, no
+  PDF report.
 
 So the spine exists end-to-end, but Python reads the EDF+ raw anchor directly
 instead of a raw Zarr and the viewer still uses zarr.js, and the three-layer
@@ -99,14 +101,12 @@ The first real code. Build the **C++ ingest** step that turns the **raw anchor**
 [working store](../knowledge/architecture.md): one Zarr array per dense signal,
 chunked along time, plus extracted EDF+ header metadata into `meta.json`.
 
-- Read EDF+ with edflib (already vendored: [`src/edflib.c`](../../src/edflib.c)).
-  Honour the per-array `storage=physical|digital` attr — `main.cpp` writes
-  **physical** doubles (`edfwrite_physical_samples`), `logger.cpp` writes
-  **digital** (`edfwrite_digital_samples`); see [data formats](../knowledge/data-formats.md).
+- Read EDF+ with edflib. Honour the per-array `storage=physical|digital` attr —
+  `logger.cpp` writes **digital** (`edfwrite_digital_samples`), so ingested arrays
+  are `storage=digital`; see [data formats](../knowledge/data-formats.md).
 - Write Zarr v2 with the chosen C++ lib (stage 0), Blosc(zstd, shuffle), one
-  array per channel (Thoracic, Abdomen, HR, RR, Flow, HR_Raw from the RPi5;
-  Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z,
-  Accel1X/Y/Z, RR from the ESP32-C6), each chunked along time — **not** the
+  array per channel (Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z, Accel1X/Y/Z, RR),
+  each chunked along time — **not** the
   single-chunk shortcut [`export_zarr.py`](../../src_python/export_zarr.py) uses.
 - **Round-trip tests** (this is the IEC-62304 entry point): EDF+ → raw Zarr →
   back to EDF+ must reproduce samples bit-exact for digital channels and within
@@ -151,10 +151,10 @@ and wired into the pre-push hook, and `events.json` (sparse annotations:
 Move [the TS web app](../knowledge/viewer.md) onto the agreed reader and the
 windowed read pattern. It **never writes Zarr**.
 
-- **Migrate `zarr` → `zarrita.js`** in [`zarr_loader.ts`](../../src_web/src/zarr_loader.ts)
-  (today: `HTTPStore` + `openArray` + `NestedArray`). zarrita is the
-  boundary-spec reader (v2 + Blosc); confirm it decodes the C++-written store
-  from stage 1 unchanged — this is the cross-language integration check.
+- ~~**Migrate `zarr` → `zarrita.js`**~~ — **done.** `zarr_loader.ts` uses
+  `FetchStore` + `zarr.open`/`zarr.get`. Still owed: confirming it decodes the
+  **C++-written** store from stage 1 unchanged, which is the actual
+  cross-language integration check and needs stage 1 to exist first.
 - **Read the derived Zarr + `meta.json` + `events.json`** from stage 2 and chart
   them (ECharts canvas + LTTB today; uPlot optional). Render `lm_events` /
   `plm_groups` as overlays.
@@ -167,6 +167,14 @@ windowed read pattern. It **never writes Zarr**.
 **Exit:** the viewer opens a C++-ingested, Python-processed store via zarrita,
 charts every channel for the visible window, and shows PLM/HRV overlays — with
 no Python serving the bytes.
+
+> **Landed alongside, not part of this stage: RT mode.** The viewer now also
+> reads a live WebSocket from the device (`protosom.rt/1.0.0`) and plots the raw
+> EDF+ channels as they are acquired. It does not touch the Zarr boundary and
+> does not advance stages 1–2; it is a monitoring view that exists so a bad
+> montage is caught during the night rather than the morning after. See
+> [viewer § RT vs batch](../knowledge/viewer.md) and
+> [decisions § S12](../state/decisions.md).
 
 **Depends on:** stage 0 (spec); reads output of stages 1–2 but the migration
 itself can start in parallel against a stage-1 fixture.

@@ -2,7 +2,7 @@
 title: ProtoSom Wiki — Index
 domain: knowledge
 status: living
-updated: 2026-06-19
+updated: 2026-07-19
 summary: Root entry point for the ProtoSom LLM wiki — read this first, then open only the pages you need.
 ---
 

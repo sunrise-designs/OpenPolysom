@@ -147,6 +147,10 @@ header.top { display: flex; align-items: center; gap: 18px; padding: 4px 2px 8px
 .sig-grid { display: flex; flex-direction: column; gap: 12px; }
 .sig-card { padding: 8px 6px 6px; }
 .sig-head { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-mut); padding: 2px 2px 4px; }
+/* The per-channel colour dot in a pane header and in the live montage rail. Its
+   colour is set inline from the channel's own token (see chart.ts's CHANNELS);
+   the box it needs was missing, so it had been collapsing to 0x0. */
+.gdot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .sig-plot { width: 100%; height: 300px; }
 @media (max-width: 760px) { .sig-plot { height: 132px; } }
 .viewer-note { display: flex; align-items: center; gap: 9px; padding: 11px 20px; border-top: 1px solid var(--ring); font-size: 12px; color: var(--text-dim); }
@@ -224,3 +228,39 @@ footer.prov .disc b { color: var(--warn); }
 #chart-fs #chart-fs-canvas { position: absolute; inset: 0; }
 #chart-fs .fs-close { position: absolute; top: 12px; right: 12px; z-index: 2; background: var(--surface-2); color: var(--text); border: 1px solid var(--ring); border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
 #chart-fs .fs-rotate-hint { position: absolute; top: 16px; left: 16px; z-index: 2; color: var(--text-dim); font-size: 12px; }
+
+/* right-click / long-press menu on a signal pane (see wireContextMenu in src/main.ts) */
+.ctx-menu { position: fixed; z-index: 1100; display: none; min-width: 172px; padding: 4px; background: var(--surface-2); border: 1px solid var(--ring-2); border-radius: var(--radius-sm); box-shadow: var(--shadow); }
+.ctx-menu.open { display: block; }
+.ctx-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: var(--radius-sm); padding: 8px 11px; font-family: var(--font); font-size: 12.5px; color: var(--text); cursor: pointer; }
+.ctx-item:hover:not(:disabled) { background: var(--ring); }
+.ctx-item:disabled { color: var(--text-dim); cursor: default; }
+
+/* ============================================================
+   RT (live) mode — the stream status strip, the follow toggle, and
+   the "needs processing" rail. See runRealtime()/renderRealtimeShell().
+   ============================================================ */
+.rt-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 10px 14px; margin: 0 0 16px; background: var(--surface); border: 1px solid var(--ring); border-radius: var(--radius); font-size: 12px; }
+.rt-pill { display: inline-flex; align-items: center; gap: 7px; font-weight: 650; padding: 3px 11px; border-radius: 999px; background: rgba(147,160,187,.10); color: var(--text-mut); }
+.rt-pill .rt-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.rt-pill.rt-live { color: var(--good); background: var(--good-soft); }
+/* Only the live dot pulses — a blinking "reconnecting" reads as activity when
+   the point is that nothing is arriving. */
+.rt-pill.rt-live .rt-dot { animation: rt-pulse 1.6s ease-in-out infinite; }
+.rt-pill.rt-connecting, .rt-pill.rt-reconnecting { color: var(--warn); background: rgba(245,185,66,.13); }
+.rt-pill.rt-failed { color: var(--flag); background: rgba(255,122,122,.14); }
+@keyframes rt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .rt-pill.rt-live .rt-dot { animation: none; } }
+.rt-detail { color: var(--warn); }
+.rt-stat { color: var(--text-mut); font-family: var(--mono); font-size: 11.5px; }
+.rt-stat.rt-err { color: var(--flag); font-weight: 650; }
+.rt-stat.rt-warn { color: var(--warn); }
+
+.rt-follow { background: var(--surface-2); color: var(--text-mut); border: 1px solid var(--ring); border-radius: 999px; padding: 4px 13px; font-family: var(--font); font-size: 11.5px; font-weight: 650; cursor: pointer; white-space: nowrap; }
+.rt-follow.on { color: var(--good); border-color: rgba(79,214,163,.4); background: var(--good-soft); }
+
+.rt-later { font-size: 12.5px; color: var(--text-mut); }
+.rt-later p { margin: 8px 0; }
+.rt-later ul { margin: 8px 0; padding-left: 18px; }
+.rt-later li { margin: 3px 0; }
+.rt-later-note { color: var(--text-dim); font-size: 11.5px; border-top: 1px solid var(--ring); padding-top: 10px; }

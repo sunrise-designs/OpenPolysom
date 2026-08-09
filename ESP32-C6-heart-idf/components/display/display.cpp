@@ -29,6 +29,10 @@ static bool s_sleeping = false;
 // the full-framebuffer clear each frame does. Persists until the next reboot.
 static char s_boot_msg[24] = "";
 
+// Frames drawn since boot, so row 7 can alternate the streaming AP name and
+// password without a timer of its own.
+static uint32_t s_frame = 0;
+
 // ── Adafruit 5×7 font — printable ASCII 0x20–0x7E ────────────────────────────
 // Source: glcdfont.c (Adafruit GFX library)
 // 5 bytes per character, each byte = one column, bit0 = top pixel.
@@ -323,6 +327,7 @@ void display_update(const display_data_t *data)
     if (s_sleeping) return;
 
     clear_fb();
+    s_frame++;
     char buf[24];  // 128px / 6px per char = 21 chars max per row
 
     // ── Title + battery ───────────────────────────────────────────────────────
@@ -383,7 +388,25 @@ void display_update(const display_data_t *data)
     }
 
     // ── Row 7: boot message (sticky) if set, else time-sync source ───────────
-    if (s_boot_msg[0] != '\0') {
+    // Streaming outranks the boot message: the access point's name and password
+    // are discoverable nowhere else, and are only needed in the minute someone
+    // is trying to join. The boot message keeps until they have. 21 characters
+    // fit on a row, so the name and the password take turns.
+    if (data->rt_streaming) {
+        if (data->rt_clients > 0) {
+            // Cast + modulo bounds the field's width for the compiler, same as
+            // the clock row above: a plain unsigned long makes
+            // -Wformat-truncation assume up to 20 digits in a 24-byte buffer.
+            snprintf(buf, sizeof(buf), "LIVE  %u viewer%s",
+                     (unsigned)(data->rt_clients % 100u),
+                     data->rt_clients == 1 ? "" : "s");
+        } else if ((s_frame / (DISPLAY_RATE_HZ * 2)) % 2 == 0) {
+            snprintf(buf, sizeof(buf), "AP %s", data->rt_ssid ? data->rt_ssid : "?");
+        } else {
+            snprintf(buf, sizeof(buf), "PW %s", data->rt_password ? data->rt_password : "?");
+        }
+        draw_string(X_OFFSET, Y_ROW7, buf);
+    } else if (s_boot_msg[0] != '\0') {
         draw_string(X_OFFSET, Y_ROW7, s_boot_msg);
     } else {
         const char *src = (data->time_sync_source && data->time_sync_source[0])

@@ -2,7 +2,7 @@
 title: Pipeline Architecture Assessment
 domain: planning
 status: snapshot
-updated: 2026-06-19
+updated: 2026-07-19
 summary: The 2026-06-19 assessment that produced the settled pipeline — verdict, charting/PDF/packaging answers, the four top risks, and how the three-language boundary settled.
 ---
 
@@ -66,9 +66,8 @@ The review's central structural decision was the **three-language split**, with
 a single language-neutral contract between the two sides:
 
 - **C++ ingest** (Dmitry) — device acquisition (already exists:
-  [`src/main.cpp`](../../src/main.cpp) on the RPi5,
   [`logger.cpp`](../../ESP32-C6-heart-idf/components/logger/logger.cpp) on the
-  ESP32-C6, both writing EDF+ via edflib) + converting raw EDF+/FLAC into the
+  ESP32-C6, writing EDF+ via edflib) + converting raw EDF+/FLAC into the
   **raw** Zarr layer + header-metadata extraction. Writes Zarr via a C++ Zarr
   lib (TensorStore / z5 / xtensor-zarr); may own the EDF/BDF clinical export.
 - **Python processing** (Dmitry) — the copious signal processing + ML

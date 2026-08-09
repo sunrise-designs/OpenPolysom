@@ -28,6 +28,12 @@ typedef struct {
 #define FRAME_MAGIC1 0x5A
 #define FRAME_SIZE   sizeof(time_sync_frame_t)
 
+// Second command on the same link: enable/disable real-time streaming. Given
+// its own magic-1 byte rather than a type field inside the time frame, so the
+// existing tools/set_time.py wire format is untouched. See time_sync.h.
+#define RT_CMD_MAGIC1 0x5B
+#define RT_CMD_BODY   2   // enabled byte + checksum
+
 // Once the magic bytes are seen the rest of the 51-byte frame is milliseconds
 // behind them at 115200 baud, so a body that doesn't arrive inside this window
 // is a truncated/garbled frame: abandon it and go back to hunting magic rather
@@ -41,8 +47,9 @@ typedef struct {
 #define LED_BLINK_COUNT     5
 #define LED_BLINK_HALF_MS   250   // 250 ms on + 250 ms off = 2 Hz
 
-static SemaphoreHandle_t s_synced   = NULL;  // given once per accepted frame
-static time_sync_cb_t    s_on_sync  = NULL;
+static SemaphoreHandle_t  s_synced    = NULL;  // given once per accepted frame
+static time_sync_cb_t     s_on_sync   = NULL;
+static time_sync_rt_cb_t  s_on_rt_cmd = NULL;
 
 static void user_led_blink(void)
 {
@@ -170,16 +177,51 @@ static bool read_and_apply_frame(void)
     return true;
 }
 
+// Reads and validates the 2-byte body of a real-time-streaming command.
+// Returns true iff the command was accepted; `*enabled` then holds its value.
+static bool read_rt_cmd(bool *enabled)
+{
+    int64_t deadline_us = esp_timer_get_time() + (int64_t)FRAME_BODY_TIMEOUT_MS * 1000;
+
+    uint8_t body[RT_CMD_BODY];
+    if (!read_exact(body, sizeof(body), deadline_us)) {
+        ESP_LOGW(TAG, "RT-stream frame truncated - ignoring");
+        return false;
+    }
+
+    uint8_t expected = (uint8_t)(FRAME_MAGIC0 + RT_CMD_MAGIC1 + body[0]);
+    if (body[1] != expected) {
+        ESP_LOGW(TAG, "RT-stream checksum mismatch (got 0x%02x, want 0x%02x) - ignoring",
+                 body[1], expected);
+        return false;
+    }
+
+    *enabled = body[0] != 0;
+    ESP_LOGI(TAG, "Real-time streaming command received: %s", *enabled ? "enable" : "disable");
+    return true;
+}
+
 static void time_sync_task(void *arg)
 {
     (void)arg;
 
     for (;;) {
-        // Hunt for the two magic bytes one at a time so stray bytes on the
-        // console (a terminal's own keystrokes, a half-sent frame) don't
-        // desync the parse.
+        // Hunt for the magic bytes one at a time so stray bytes on the console
+        // (a terminal's own keystrokes, a half-sent frame) don't desync the
+        // parse. The second byte selects which command follows.
         if (read_byte() != FRAME_MAGIC0) continue;
-        if (read_byte() != FRAME_MAGIC1) continue;
+
+        uint8_t kind = read_byte();
+
+        if (kind == RT_CMD_MAGIC1) {
+            bool enabled = false;
+            if (!read_rt_cmd(&enabled)) continue;
+            user_led_blink();
+            if (s_on_rt_cmd) s_on_rt_cmd(enabled);
+            continue;
+        }
+
+        if (kind != FRAME_MAGIC1) continue;
 
         if (!read_and_apply_frame()) continue;
 
@@ -187,6 +229,11 @@ static void time_sync_task(void *arg)
         if (s_on_sync) s_on_sync();
         xSemaphoreGive(s_synced);
     }
+}
+
+void time_sync_set_rt_stream_cb(time_sync_rt_cb_t cb)
+{
+    s_on_rt_cmd = cb;
 }
 
 void time_sync_start(time_sync_cb_t on_sync)

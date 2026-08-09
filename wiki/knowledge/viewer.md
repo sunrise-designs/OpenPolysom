@@ -2,8 +2,8 @@
 title: The TS Web App (Viewer)
 domain: knowledge
 status: living
-updated: 2026-07-09
-summary: The TS web app reads the Zarr boundary plus metadata and displays it — synced multi-pane charts (both accelerometers plus the combined bilateral score), channel-filtered event markArea overlays, an audio spectrogram, a brush-selected windowed-metrics card, and a landing page listing every deployed study — never writing Zarr.
+updated: 2026-08-09
+summary: The TS web app has two modes — batch, which reads the Zarr boundary plus metadata and displays it (synced multi-pane charts, channel-filtered event markArea overlays, a brush-selected windowed-metrics card, a landing page listing every deployed study), and RT, which plots the eleven raw EDF+ channels live from the device's WebSocket — never writing Zarr in either.
 ---
 
 # The TS Web App (Viewer)
@@ -45,6 +45,9 @@ The pieces:
 | `src_web/src/zarr_loader.ts` | Fetches `meta.json` and opens each named Zarr array (`t`, `rr`, `accel_x/y/z`, `accel_mag`, `hrv_t`, `hrv_rmssd`), plus `accel1_mag`/`accel_combined_mag` when present — read via `readOptionalArray`, which degrades to an empty array rather than failing the load when a store has only one accelerometer. |
 | `src_web/src/chart.ts` | Builds the ECharts option: synced multi-pane grid, LM/PLM `markArea` overlays, dataZoom, crosshair tooltip, title strip. |
 | `src_web/src/types.ts` | `SidecarMeta` (patient / recording / stats / `lm_events` / `plm_groups` / `git_hash` / `zarr_path`) and `ZarrData`. |
+| `src_web/src/signals.ts` | `SignalSource` — canonical channel name → series. The one data surface `chart.ts` reads, produced by both modes. |
+| `src_web/src/rt_types.ts` · `rt_protocol.ts` | The live stream's types, and its pure half: frame parsing, the EDF+ affine map, gap arithmetic. |
+| `src_web/src/rt_client.ts` · `rt_store.ts` · `rt_config.ts` | The live stream's I/O half: reconnecting WebSocket, growable sample buffers, and the `?rt=` / `PROTOSOM_RT_URL` resolution. |
 
 Concrete behaviours worth noting (PoC realities, not the target spec):
 
@@ -73,6 +76,15 @@ Concrete behaviours worth noting (PoC realities, not the target spec):
   (data-aware, replacing a static list) drives both the `sig-grid` card count and the Montage rail row
   count in `shell.ts`'s `renderShell`, so the two representations never disagree about how many panes
   exist for a given recording.
+- **Pane context menu — "Zoom to window".** Right-click (desktop) or a 500 ms long-press (touch) on
+  any pane opens a small DOM menu (`main.ts`'s `wireContextMenu`, styled `.ctx-menu`) whose
+  "Zoom to window" item zooms **every** connected pane to the band last brush-selected —
+  `chart.ts`'s pure `zoomToRangeAction` builds the `dataZoom` payload in axis values (elapsed
+  seconds), and `echarts.connect` mirrors the single dispatch across the group. Sub-second
+  selections are widened to a 1 s floor rather than collapsing the axis. The brush cursor is armed
+  at init on desktop but **on demand on touch** (the menu's "Select a window" item), because an
+  always-on brush there would turn every vertical page-scroll swipe over a pane into a selection —
+  the same canvas-swallows-the-gesture problem `wireCtrlZoom` documents for the wheel.
 - **Large-line path.** Each series sets `large: true`, `largeThreshold`, and `sampling: 'lttb'` — the
   documented ECharts way to draw long lines on canvas without choking (`chart.ts:123-165`).
 - **Title strip** (`chart.ts:22-40`, `buildTitle`) renders patient / recording / stats and the `git_hash`
@@ -83,6 +95,93 @@ Concrete behaviours worth noting (PoC realities, not the target spec):
 > separable block and the [clinical export](data-formats.md) scrubs the EDF+ header; the committed sample
 > data is anonymous (accel + RR, no identifiers). As the slicing server lands, the title's PII becomes
 > opt-in rather than always-on.
+
+## RT vs batch — the viewer's two modes
+
+The viewer has two ways in, chosen in `main.ts`'s router:
+
+| Entry | Mode | Source |
+| --- | --- | --- |
+| `index.html?meta=…` | **batch** | the [Zarr working store](data-formats.md) + `meta.json` + `events.json` — a finished, processed recording |
+| `index.html?rt=<host or ws URL>` | **RT** | a live WebSocket from the device's `rt_stream` component — samples as they are acquired |
+| neither | landing | `studies.json` |
+
+RT exists because nothing about a night's montage is checkable until the night is
+over: a belt that came unplugged or an electrode that lifted is currently discovered
+the next morning. It is a **second read path, not a second boundary** — nothing is
+persisted, nothing derived is computed, the EDF+ on the SD card is still the raw
+anchor, and the viewer still never writes Zarr. See [decisions § S12](../state/decisions.md).
+
+### What RT has and does not have
+
+Everything downstream of [Python processing](signal-processing.md) is **absent**, not
+faked: no PLMI gauge, no KPI row, no narrative, no LM/PLM `markArea` overlays, no
+windowed-metrics card, no provenance footer. The live shell says so explicitly in an
+"After the night" card rather than rendering empty widgets. The channels are the
+**eleven raw EDF+ channels** — including `ecg` and the `accel1_*` axes, which no
+derived store carries — and none of the derived ones (`accel_mag`, `hrv_rmssd`,
+`accel_combined_mag`), which need baseline removal and beat extraction that stay in
+Python. What RT adds is a live status strip: link state, recording state, battery,
+and the three separate loss counters (device-dropped frames, unparseable frames,
+drawn gaps).
+
+Everything *chart*-shaped is shared: `chart.ts`'s `CHANNELS` table, the option
+builders, `echarts.connect` sync, dataZoom, the brush, the context menu. Both modes
+produce a `SignalSource` (`src_web/src/signals.ts`) — canonical channel name → series —
+so there is no mode branch below `main.ts`. Batch supplies it via
+`zarr_loader.ts`'s `toSignalSource`; RT via `rt_store.ts`.
+
+### The wire protocol (`protosom.rt/1.0.0`)
+
+JSON text frames, ~10 per second. Channel names are the canonical snake_case names
+from [zarr-schema-spec § 3.2](../planning/zarr-schema-spec.md), so the two modes
+cannot disagree about what a channel is.
+
+- **`hello`**, once on connect: device UID, recording start, and a `channels[]` array
+  that is `logger.cpp`'s `SigDef` table verbatim — label, transducer, unit, rate, and
+  the digital/physical min-max pair. The stream is self-describing; the viewer builds
+  its panes and its scaling from this rather than hardcoding eleven channels.
+- **`samples`**, repeated: `{seq, blocks: {<channel>: {n0, v[]}}}`. Values are the
+  **digital integers `edfwrite_digital_samples` receives** — one streamed point per
+  EDF+ sample, bit-identical to what reaches the card, because `rt_stream` calls
+  `logger.cpp`'s own conversion functions rather than re-deriving them. `n0` is the
+  **absolute** sample index since recording start, so sample *i* sits at
+  `(n0 + i) / sample_rate_hz` — the same elapsed second it occupies in the EDF+, and
+  self-anchoring after a dropped frame or a reconnect.
+- **`status`**, ~1 Hz: recording state, elapsed, SD error, dropped frames, clients.
+
+The client applies the EDF+ affine map (`rt_protocol.ts`'s `affineMap`) — the same
+arithmetic `edf_reader.py` performs host-side. A block whose `n0` skips ahead gets a
+single `NaN` point, so ECharts draws a **break** rather than interpolating across
+samples that never arrived. Malformed frames are counted and dropped, never fatal.
+
+### Reading the whole session
+
+RT keeps **everything since connect**, so a night is scrollable end to end. Each
+channel is one growable interleaved `[t, v, …]` `Float64Array` (`rt_store.ts`), handed
+to ECharts as a zero-copy `subarray` — `chart.ts`'s `zip()` would allocate a JS array
+object per point, which is fine for a loaded recording and ruinous for millions of
+streamed samples. `chart.appendData()` is *not* used: it cannot grow a coordinate
+system's extent, and a live axis does nothing but grow. Instead the render tick
+re-sets the buffer, on a period that scales with its size (`main.ts`'s `liveTickMs`):
+10 Hz early on, easing to 0.5 Hz deep into a night, keeping the fraction of time spent
+redrawing roughly flat. `RtStore`'s `maxPoints` option is the escape hatch if a
+session ever needs a memory ceiling instead.
+
+### Running it without hardware
+
+`src_web/tools/mock_rt_server.mjs` replays a recorded `.edf` over the identical
+protocol at wall-clock rate (`--speed`, `--start`, `--drop` for exercising gap
+rendering). It has no dependencies — the ~40 lines of RFC 6455 needed to serve text
+frames are inlined. Because it replays a real recording rather than synthesising
+waveforms, it is also how the round-trip is checked: a sample plotted at elapsed *t*
+must be the sample at index *t*·rate in the file.
+
+`test/rt_firmware_contract.test.ts` closes the loop the other way — it reads
+`logger.cpp`'s `SigDef` and `rt_stream.c`'s `HELLO_CHANNELS` out of the firmware
+sources and asserts all eleven channels agree with each other and with the viewer's
+fixtures. Drift there would silently mis-scale a trace, and nothing at runtime would
+notice.
 
 ## Migrate zarr.js → zarrita.js
 
@@ -198,8 +297,8 @@ When the slicing server exists, the viewer talks to it over a small HTTP windowe
 
 - `GET /window?start&end&channels&res` — decimated samples for the named channels over the visible range, at
   screen resolution. `channels` is a comma list matching the Zarr array names (e.g.
-  `Thoracic,Abdomen,Flow,HR_Raw` for RPi5 data, or `accel0_x,accel0_y,accel0_z,rr` for the ESP32-C6 wrist
-  device). `res` is the target point count; the server never returns more points than the window can show.
+  `thoracic,abdomen,flow,ecg`, or `accel0_x,accel0_y,accel0_z`). `res` is the target point count;
+  the server never returns more points than the window can show.
 - `GET /spectrogram?start&end` — the Python-precomputed spectrogram slice for the audio pane.
 - `GET /meta` — `meta.json` (metadata + provenance), with PII attached only when explicitly requested.
 - `GET /events` — `events.json` sparse annotations for the `markArea` overlays.

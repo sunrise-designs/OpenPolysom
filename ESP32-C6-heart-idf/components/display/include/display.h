@@ -17,6 +17,14 @@ typedef struct {
     uint32_t    recording_seconds;
     const char *time_sync_source;  // "RTC", "Serial", or "none" — see main.cpp
     uint8_t     batt_percent;
+    // Live streaming (components/rt_stream). When the radio is up, row 7 shows
+    // the access point's name and password instead of the time-sync source:
+    // there is no other way for someone to discover them, and they are only
+    // needed while nobody has joined yet.
+    bool        rt_streaming;
+    uint32_t    rt_clients;
+    const char *rt_ssid;
+    const char *rt_password;
 } display_data_t;
 
 // Initialise the shared I2C bus and the SH1106 OLED, and draw static labels.

@@ -5,8 +5,7 @@
 },
   "clangd.arguments": [
     "--background-index",
-    "--query-driver=**",
-    "--compile-commands-dir=${workspaceFolder}/build"
+    "--query-driver=**"
   ],
   "C_Cpp.intelliSenseEngine": "disabled",
   "idf.flashType": "UART",

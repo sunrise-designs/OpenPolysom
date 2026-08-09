@@ -7,6 +7,7 @@ idf_component_register(
         time_sync
         sensors
         logger
+        rt_stream
         display
         battery_gauge
         freertos

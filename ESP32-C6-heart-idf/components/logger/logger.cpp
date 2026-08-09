@@ -292,6 +292,32 @@ static void baseline_restore_from_rtc(void)
              (int)rr, (unsigned long)ldc0_baseline,
              (unsigned long)ldc1_baseline, BASELINE_DELAY_S);
 }
+// ── Digital sample conversions (declared in logger.h) ────────────────────────
+// The three channels whose EDF+ integer is not simply what the sensor reported.
+// logger_record() writes exactly these values, and components/rt_stream sends
+// exactly these values, so a streamed sample is the recorded sample.
+static inline int clamp16(int32_t v)
+{
+    return v < -32767 ? -32767 : v > 32767 ? 32767 : (int)v;
+}
+
+int16_t logger_thoracic_digital(uint32_t ldc0)
+{
+    int32_t d0 = (int32_t)(ldc0 - ldc0_baseline);
+    return (int16_t)clamp16(d0 / THORACIC_DIVISOR);
+}
+
+int16_t logger_abdomen_digital(uint32_t ldc1)
+{
+    int32_t d1 = (int32_t)(ldc1 - ldc1_baseline);
+    return (int16_t)clamp16(d1 / ABDOMEN_DIVISOR);
+}
+
+int16_t logger_flow_digital(float pressure_mbar)
+{
+    return (int16_t)clamp16((int32_t)(pressure_mbar * 32767.0f / 2.0f));
+}
+
 bool     logger_is_active(void)         { return logging_active; }
 bool     logger_had_write_error(void)   { return write_failed; }
 uint32_t logger_get_elapsed_seconds(void)
@@ -602,16 +628,9 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
         }
     }
 
-    int32_t d0 = (int32_t)(ldc0 - ldc0_baseline);
-    int32_t d1 = (int32_t)(ldc1 - ldc1_baseline);
-
-    int clamp = (d0 / THORACIC_DIVISOR < -32767) ? -32767 : (d0 / THORACIC_DIVISOR > 32767) ? 32767 : (int)(d0 / THORACIC_DIVISOR);
-    thoracic_buf[sample_idx] = clamp;
-    clamp = (d1 / ABDOMEN_DIVISOR < -32767) ? -32767 : (d1 / ABDOMEN_DIVISOR > 32767) ? 32767 : (int)(d1 / ABDOMEN_DIVISOR);
-    abdomen_buf[sample_idx]  = clamp;
-
-    int fv = (int)(pressure_mbar * 32767.0f / 2.0f);
-    flow_buf[sample_idx] = fv < -32767 ? -32767 : fv > 32767 ? 32767 : fv;
+    thoracic_buf[sample_idx] = logger_thoracic_digital(ldc0);
+    abdomen_buf[sample_idx]  = logger_abdomen_digital(ldc1);
+    flow_buf[sample_idx]     = logger_flow_digital(pressure_mbar);
 
     a0x_buf[sample_idx] = a0x;
     a0y_buf[sample_idx] = a0y;

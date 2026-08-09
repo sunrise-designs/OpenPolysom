@@ -1,27 +1,30 @@
 import type { EChartsOption } from 'echarts';
-import type { ZarrData, EventsDoc } from './types';
+import type { EventsDoc } from './types';
+import type { Series, SignalSource } from './signals';
+import { seriesLength, sourceTMax } from './signals';
 import { COLORS } from './tokens';
 import { formatElapsed } from './format';
 
-/** One resolved signal channel (descriptor + data). */
+/** One resolved signal channel (descriptor + the data found for it). */
 interface ChannelDef {
   readonly name: string;
   readonly color: string;
-  /** events.json `channels` tag this pane's markArea filters to (overlay channels only). */
-  readonly channelKey?: string;
-  /** Hidden entirely when its backing Zarr array is empty (e.g. Accel1/Combined when only one accelerometer was scored). */
-  readonly optional?: boolean;
-  readonly x: Float64Array;
-  readonly y: ArrayLike<number>;
+  /** Canonical channel name — the `SignalSource` key and the `events.json` `channels` tag. */
+  readonly key: string;
   readonly overlay: boolean;
+  readonly series: Series;
 }
 
 interface ChannelSrc {
   readonly name: string;
   readonly color: string;
-  readonly channelKey?: string;
-  readonly optional?: boolean;
-  readonly pick: (z: ZarrData) => { readonly x: Float64Array; readonly y: ArrayLike<number>; readonly overlay: boolean };
+  /**
+   * Canonical snake_case channel name (wiki/planning/zarr-schema-spec.md §3.2).
+   * Doubles as the `SignalSource` lookup key and, for overlay panes, as the
+   * `events.json` `channels` tag whose spans this pane draws.
+   */
+  readonly key: string;
+  readonly overlay?: boolean;
 }
 
 interface Span {
@@ -35,33 +38,62 @@ const BOTTOM_PCT = 8.5;
 const GAP_PCT = 1.0;
 
 // Single source of truth for the channel order, labels, colours, and data binding.
-// Accel1 mag / Combined LM / Thoracic / Abdomen / Flow are all `optional`: only
-// present (and only rendered) when the recording device captured them — Accel1 when
-// a second accelerometer was scored (see wiki/knowledge/signal-processing.md,
-// bilateral PLM scoring), Thoracic/Abdomen/Flow on the RPi5 6-channel and ESP32-C6
-// 11-channel devices but not the wrist-only logs (see wiki/knowledge/hardware.md).
+//
+// Every row is conditional: a channel renders only when the source actually
+// carries data for its key, so one table serves both viewer modes without a
+// mode branch anywhere below.
+//
+//  - **batch** (`zarr_loader.ts`'s `toSignalSource`) supplies the derived-layer
+//    channels — `accel_mag`/`hrv_rmssd`/`accel1_mag`/`accel_combined_mag` are
+//    Python's scored outputs, and `accel1_mag`/`accel_combined_mag` only exist
+//    when a second accelerometer was scored (wiki/knowledge/signal-processing.md).
+//    `thoracic`/`abdomen`/`flow` are absent from wrist-only logs.
+//  - **RT** (`rt_store.ts`) supplies the raw EDF+ channels the device streams —
+//    including `ecg` and the `accel1_*` axes, which no derived store carries —
+//    and none of the derived ones, which need Python processing to exist.
+//
+// A channel renders when its source has samples for it *or* the source declared
+// it (`Series.declared`) — the source, not this table, decides which channels
+// exist. Batch declares the six the derived layer always writes, so an empty
+// HRV pane still renders exactly as before; RT declares whatever the device
+// listed in `hello`.
+//
+// Order matters: it is the on-screen pane order. `ecg` and the `accel1_*` axes
+// are positioned so that filtering them out (the batch case) leaves the
+// existing batch pane order — and therefore shell.ts's hardcoded montage
+// `data-idx` values — exactly as they were.
 const CHANNELS: readonly ChannelSrc[] = [
-  { name: 'RR · ms', color: COLORS.cardiac, pick: (z) => ({ x: z.rr_t, y: z.rr, overlay: false }) },
-  { name: 'Accel mag', color: COLORS.movement, channelKey: 'accel_mag', pick: (z) => ({ x: z.t, y: z.accel_mag, overlay: true }) },
-  { name: 'HRV · ms', color: COLORS.hrv, pick: (z) => ({ x: z.hrv_t, y: z.hrv_rmssd, overlay: false }) },
-  { name: 'Accel X', color: COLORS.movement, pick: (z) => ({ x: z.t, y: z.accel_x, overlay: false }) },
-  { name: 'Accel Y', color: COLORS.movement2, pick: (z) => ({ x: z.t, y: z.accel_y, overlay: false }) },
-  { name: 'Accel Z', color: COLORS.movement3, pick: (z) => ({ x: z.t, y: z.accel_z, overlay: false }) },
-  { name: 'Thoracic', color: COLORS.respir, optional: true, pick: (z) => ({ x: z.t, y: z.thoracic, overlay: false }) },
-  { name: 'Abdomen', color: COLORS.respir, optional: true, pick: (z) => ({ x: z.t, y: z.abdomen, overlay: false }) },
-  { name: 'Flow', color: COLORS.respir, optional: true, pick: (z) => ({ x: z.t, y: z.flow, overlay: false }) },
-  { name: 'Accel1 mag (leg 2)', color: COLORS.movement2, channelKey: 'accel1_mag', optional: true, pick: (z) => ({ x: z.t, y: z.accel1_mag, overlay: true }) },
-  { name: 'Combined LM (bilateral)', color: COLORS.evtPlm, channelKey: 'accel_combined_mag', optional: true, pick: (z) => ({ x: z.t, y: z.accel_combined_mag, overlay: true }) },
+  { name: 'RR · ms', color: COLORS.cardiac, key: 'rr' },
+  { name: 'ECG · ADC', color: COLORS.cardiac2, key: 'ecg' },
+  { name: 'Accel mag', color: COLORS.movement, key: 'accel_mag', overlay: true },
+  { name: 'HRV · ms', color: COLORS.hrv, key: 'hrv_rmssd' },
+  { name: 'Accel X', color: COLORS.movement, key: 'accel0_x' },
+  { name: 'Accel Y', color: COLORS.movement2, key: 'accel0_y' },
+  { name: 'Accel Z', color: COLORS.movement3, key: 'accel0_z' },
+  { name: 'Accel1 X (leg 2)', color: COLORS.movement, key: 'accel1_x' },
+  { name: 'Accel1 Y (leg 2)', color: COLORS.movement2, key: 'accel1_y' },
+  { name: 'Accel1 Z (leg 2)', color: COLORS.movement3, key: 'accel1_z' },
+  { name: 'Thoracic', color: COLORS.respir, key: 'thoracic' },
+  { name: 'Abdomen', color: COLORS.respir, key: 'abdomen' },
+  { name: 'Flow', color: COLORS.respir, key: 'flow' },
+  { name: 'Accel1 mag (leg 2)', color: COLORS.movement2, key: 'accel1_mag', overlay: true },
+  { name: 'Combined LM (bilateral)', color: COLORS.evtPlm, key: 'accel_combined_mag', overlay: true },
 ];
 
-const channels = (zarr: ZarrData): readonly ChannelDef[] =>
+const channels = (src: SignalSource): readonly ChannelDef[] =>
   CHANNELS
-    .map((c) => ({ name: c.name, color: c.color, channelKey: c.channelKey, optional: c.optional, ...c.pick(zarr) }))
-    .filter((c) => c.optional !== true || c.y.length > 0);
+    .map((c) => ({
+      name: c.name,
+      color: c.color,
+      key: c.key,
+      overlay: c.overlay === true,
+      series: src[c.key] ?? {},
+    }))
+    .filter((c) => seriesLength(c.series) > 0 || c.series.declared === true);
 
-/** Per-recording descriptor (name + colour) for rendering bubble headers — filtered to channels the store actually has data for. */
-export const channelMeta = (zarr: ZarrData): readonly { readonly name: string; readonly color: string }[] =>
-  channels(zarr).map((c) => ({ name: c.name, color: c.color }));
+/** Per-recording descriptor (name + colour) for rendering bubble headers — filtered to channels the source actually has data for. */
+export const channelMeta = (src: SignalSource): readonly { readonly name: string; readonly color: string }[] =>
+  channels(src).map((c) => ({ name: c.name, color: c.color }));
 
 /**
  * A channel's rendered position, by name — the montage rail (shell.ts) uses this
@@ -72,13 +104,39 @@ export const channelMeta = (zarr: ZarrData): readonly { readonly name: string; r
  * present in the same recording (e.g. Accel1 + respiratory, as of this fixture).
  * -1 when the channel isn't present in this recording.
  */
-export const channelIndex = (zarr: ZarrData, name: string): number =>
-  channels(zarr).findIndex((c) => c.name === name);
+export const channelIndex = (src: SignalSource, name: string): number =>
+  channels(src).findIndex((c) => c.name === name);
 
 const zip = (x: Float64Array, y: ArrayLike<number>): readonly (readonly [number, number])[] => {
   const n = Math.min(x.length, y.length);
   return Array.from({ length: n }, (_, i): readonly [number, number] => [x[i] ?? 0, y[i] ?? 0]);
 };
+
+/**
+ * The `series.data` payload for one channel, plus the `dimensions` ECharts
+ * requires alongside it.
+ *
+ * A live channel already holds its points interleaved (`rt_store.ts`), so it is
+ * handed straight over as a typed array. ECharts has a bulk ingest path for
+ * that shape (`fillStorage` in `data/helper/dataProvider.js`) which reads the
+ * buffer directly and computes the axis extent in the same pass — no per-point
+ * JS allocation, which is what makes an unbounded live session affordable.
+ * `dimensions` is mandatory for a typed array: it is the only thing telling
+ * ECharts the buffer is 2 values per point rather than 1.
+ *
+ * A batch channel keeps the `[t, v]` pair array it has always used — the whole
+ * recording is loaded once, so the allocation is paid once.
+ *
+ * Note this is deliberately *not* `chart.appendData()`, the other streaming
+ * API: it cannot grow a coordinate system's extent (see the note at
+ * `echarts/lib/core/echarts.js:982`), and a live x-axis does nothing but grow.
+ * `main.ts`'s render loop instead re-sets the whole buffer on a tick whose
+ * period scales with the buffer size.
+ */
+const seriesData = (s: Series): { readonly data: number[][]; readonly dimensions?: string[] } =>
+  s.points !== undefined
+    ? { data: s.points as unknown as number[][], dimensions: ['t', 'v'] }
+    : { data: zip(s.x ?? new Float64Array(0), s.y ?? []) as unknown as number[][] };
 
 // An event/group with no `channels` tag predates the multi-accelerometer schema
 // (e.g. tools/make_fixture.py's legacy single-accelerometer sample) — treat it as
@@ -118,7 +176,10 @@ const overlayMarkArea = (events: EventsDoc, channelKey: string): unknown[] => {
   return [...lm, ...plm];
 };
 
-const tMaxOf = (zarr: ZarrData): number => (zarr.t.length > 0 ? (zarr.t[zarr.t.length - 1] ?? 0) : 0);
+// Floored at 1 s so a source with no samples yet (a live stream whose panes are
+// built from `hello` before the first frame lands) still gets a non-degenerate
+// x-axis. Real recordings are always longer, so batch is unaffected.
+const tMaxOf = (src: SignalSource): number => Math.max(sourceTMax(src), 1);
 
 // Decimation is now fully native: each series carries the whole recording once, and
 // ECharts' dataZoom (filterMode 'weakFilter') windows it on zoom while `sampling: 'lttb'`
@@ -128,8 +189,8 @@ const tMaxOf = (zarr: ZarrData): number => (zarr.t.length > 0 ? (zarr.t[zarr.t.l
 // (see wiki/knowledge/concepts.md's Decimation entry), computed in ECharts' own typed-array
 // loops rather than rebuilt in JS on every zoom event.
 
-export function channelCount(zarr: ZarrData): number {
-  return channels(zarr).length;
+export function channelCount(src: SignalSource): number {
+  return channels(src).length;
 }
 
 /** Stacked view only: which row a vertical pixel falls in; -1 if outside the rows. */
@@ -194,6 +255,41 @@ export function brushRangeFromEvent(params: unknown): BrushRange | undefined {
   return range === undefined ? undefined : [Math.min(range[0], range[1]), Math.max(range[0], range[1])];
 }
 
+/** Labels of the pane context menu's items (see main.ts's `wireContextMenu`). */
+export const ZOOM_TO_WINDOW_LABEL = 'Zoom to window';
+/** Touch-only: arms the brush so the next drag draws a selection. Desktop has drag-to-select already. */
+export const SELECT_WINDOW_LABEL = 'Select a window';
+
+/**
+ * Floor on the window `zoomToRangeAction` produces, in elapsed seconds. A drag of
+ * a few pixels is a legitimate selection (`brushOption.removeOnClick` only clears
+ * a true zero-movement click), but zooming to it would collapse the axis to a
+ * span ECharts renders as an empty pane with no way back except the slider.
+ */
+const MIN_ZOOM_SPAN_S = 1;
+
+/** The ECharts action that zooms a pane to a brush selection. Pure — main.ts dispatches it. */
+export interface ZoomAction {
+  readonly type: 'dataZoom';
+  readonly startValue: number;
+  readonly endValue: number;
+}
+
+/**
+ * Zoom every connected pane to `range`, the band the user brush-selected.
+ *
+ * Expressed in **axis values** (elapsed seconds) rather than the 0–100 `start`/`end`
+ * percentages `wireCtrlZoom` uses, so it never has to re-derive `tMax` — and stays
+ * correct if a pane's x-axis `max` ever stops being the whole recording. Sub-second
+ * selections are widened about their midpoint rather than rejected, so the menu item
+ * always does something visible.
+ */
+export function zoomToRangeAction(range: BrushRange): ZoomAction {
+  const mid = (range[0] + range[1]) / 2;
+  const half = Math.max(MIN_ZOOM_SPAN_S, range[1] - range[0]) / 2;
+  return { type: 'dataZoom', startValue: mid - half, endValue: mid + half };
+}
+
 const sharedTooltip = (touch: boolean): Record<string, unknown> =>
   touch
     ? { show: false }
@@ -210,16 +306,16 @@ const sharedTooltip = (touch: boolean): Record<string, unknown> =>
  * Pure. On touch the tooltip + inside-zoom are dropped so swipes scroll; charts
  * share a group so echarts.connect() keeps them zoom/cursor-synced.
  */
-export function buildBubbleOption(zarr: ZarrData, events: EventsDoc, index: number, touch = false): EChartsOption {
-  const rows = channels(zarr);
+export function buildBubbleOption(src: SignalSource, events: EventsDoc, index: number, touch = false): EChartsOption {
+  const rows = channels(src);
   const ch = rows[index];
   if (ch === undefined) return {};
-  const tMax = tMaxOf(zarr);
+  const tMax = tMaxOf(src);
 
   const series = {
     name: ch.name,
     type: 'line' as const,
-    data: zip(ch.x, ch.y) as unknown as number[][],
+    ...seriesData(ch.series),
     showSymbol: false,
     animation: false,
     lineStyle: { color: ch.color, width: 1.1 },
@@ -227,7 +323,7 @@ export function buildBubbleOption(zarr: ZarrData, events: EventsDoc, index: numb
     largeThreshold: 2000,
     sampling: 'lttb' as const,
     ...(ch.overlay
-      ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events, ch.channelKey ?? 'accel_mag') as unknown as never } }
+      ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events, ch.key) as unknown as never } }
       : {}),
   };
 
@@ -288,27 +384,79 @@ export function buildBubbleOption(zarr: ZarrData, events: EventsDoc, index: numb
       // range, so the drag tooltip is redundant clutter in a pane this compact.
       xScrollSlider({ bottom: 4, height: 18, showDetail: false, textStyle: { color: COLORS.textDim, fontSize: 9 } }),
     ],
-    // Desktop: drag-to-select an x-range (main.ts activates brush mode on init
-    // and mirrors the selection across every chart). Dropped on touch — a drag
-    // gesture there is a page-scroll swipe, per the dataZoom rule above.
-    ...(touch ? {} : { brush: brushOption, toolbox: hiddenToolboxOption }),
+    // Drag-to-select an x-range; main.ts mirrors the selection across every pane.
+    // Declared on touch too, but *armed* differently: on desktop main.ts turns the
+    // brush cursor on at init, whereas on touch that would make every vertical
+    // page-scroll swipe over a pane draw a band instead of scrolling (the same
+    // canvas-swallows-the-gesture problem the dataZoom rule above describes).
+    // There the brush is armed on demand, from the long-press menu — see
+    // `wireContextMenu` / `armBrush` in main.ts.
+    brush: brushOption,
+    toolbox: hiddenToolboxOption,
     series: [series],
   };
+}
+
+// ── live (RT) updates ────────────────────────────────────────────────────────
+
+/**
+ * An `events.json` with nothing in it, for the live path. RT runs ahead of
+ * Python processing, so there is no scoring to overlay — and none of the three
+ * `overlay` channels above (all derived) exist in a live source anyway, so this
+ * is belt-and-braces rather than load-bearing.
+ */
+export const NO_EVENTS: EventsDoc = {
+  schema: 'protosom.events',
+  schema_version: '1.0.0',
+  recording_id: '',
+  scorings: [],
+};
+
+/** Visible span, in seconds, while a live stream is following the newest samples. */
+export const LIVE_WINDOW_S = 60;
+
+/**
+ * The partial option a live render tick applies to one pane: the channel's
+ * current buffer, and the axis extent grown to cover it. Merged into the
+ * existing option (ECharts merges `series` by index), so everything else the
+ * pane was built with — tooltip, dataZoom, brush, styling — survives untouched.
+ */
+export function liveUpdateOption(src: SignalSource, index: number, tMax: number): EChartsOption {
+  const rows = channels(src);
+  if (index < 0 || index >= rows.length) return {};
+  const ch = rows[index];
+  return {
+    xAxis: { max: tMax },
+    series: [{ type: 'line', ...seriesData(ch.series) }],
+  };
+}
+
+/**
+ * Keeps the visible window pinned to the newest samples.
+ *
+ * Expressed as a `dataZoom` action rather than by clamping `xAxis.min` so the
+ * *whole* session stays on the axis and reachable with the scroll handle — the
+ * user chose to keep everything since connect, and an axis that only spans the
+ * last minute would throw that away. `echarts.connect` mirrors the single
+ * dispatch across every pane, exactly as `zoomToRangeAction` relies on.
+ */
+export function followLiveAction(tMax: number, windowS = LIVE_WINDOW_S): ZoomAction {
+  return { type: 'dataZoom', startValue: Math.max(0, tMax - windowS), endValue: tMax };
 }
 
 /**
  * One channel filling the whole canvas — mobile full-screen (landscape) view.
  */
-export function buildSingleChannelOption(zarr: ZarrData, events: EventsDoc, index: number): EChartsOption {
-  const rows = channels(zarr);
+export function buildSingleChannelOption(src: SignalSource, events: EventsDoc, index: number): EChartsOption {
+  const rows = channels(src);
   const ch = rows[index];
   if (ch === undefined) return {};
-  const tMax = tMaxOf(zarr);
+  const tMax = tMaxOf(src);
 
   const oneSeries = {
     name: ch.name,
     type: 'line' as const,
-    data: zip(ch.x, ch.y) as unknown as number[][],
+    ...seriesData(ch.series),
     showSymbol: false,
     animation: false,
     lineStyle: { color: ch.color, width: 1.2 },
@@ -316,7 +464,7 @@ export function buildSingleChannelOption(zarr: ZarrData, events: EventsDoc, inde
     largeThreshold: 2000,
     sampling: 'lttb' as const,
     ...(ch.overlay
-      ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events, ch.channelKey ?? 'accel_mag') as unknown as never } }
+      ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events, ch.key) as unknown as never } }
       : {}),
   };
 
@@ -366,10 +514,10 @@ export function buildSingleChannelOption(zarr: ZarrData, events: EventsDoc, inde
 /**
  * Legacy stacked multi-grid view (kept for easy revert from the bubble layout).
  */
-export function buildChartOption(zarr: ZarrData, events: EventsDoc, touch = false): EChartsOption {
-  const rows = channels(zarr);
+export function buildChartOption(src: SignalSource, events: EventsDoc, touch = false): EChartsOption {
+  const rows = channels(src);
   const nRows = rows.length;
-  const tMax = tMaxOf(zarr);
+  const tMax = tMaxOf(src);
   const rowH = (100 - TOP_PCT - BOTTOM_PCT - GAP_PCT * (nRows - 1)) / nRows;
 
   const grid = rows.map((_, r) => ({ left: 62, right: 14, top: `${String(TOP_PCT + r * (rowH + GAP_PCT))}%`, height: `${String(rowH)}%` }));
@@ -387,10 +535,10 @@ export function buildChartOption(zarr: ZarrData, events: EventsDoc, touch = fals
   }));
   const series = rows.map((ch, r) => ({
     name: ch.name, type: 'line' as const, xAxisIndex: r, yAxisIndex: r,
-    data: zip(ch.x, ch.y) as unknown as number[][],
+    ...seriesData(ch.series),
     showSymbol: false, animation: false, lineStyle: { color: ch.color, width: 1.1 },
     large: true, largeThreshold: 2000, sampling: 'lttb' as const,
-    ...(ch.overlay ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events, ch.channelKey ?? 'accel_mag') as unknown as never } } : {}),
+    ...(ch.overlay ? { areaStyle: { color: 'rgba(95,208,196,0.10)' }, markArea: { silent: true, data: overlayMarkArea(events, ch.key) as unknown as never } } : {}),
   }));
   const allGridIdx = rows.map((_, i) => i);
 

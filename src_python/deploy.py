@@ -23,7 +23,7 @@ _API            = 'https://api.netlify.com/api/v1'
 # it automatically. metrics-config.js was missed this way when it was added;
 # don't repeat that.
 _STATIC_ASSETS = ('styles.css', 'sw.js', 'manifest.webmanifest', 'metrics-config.js',
-                   'icon.svg', 'icon-192.png', 'icon-512.png')
+                   'rt-config.js', 'icon.svg', 'icon-192.png', 'icon-512.png')
 
 _HEADERS_FILE = (
     '/index.html\n  Content-Type: text/html; charset=utf-8\n'
@@ -32,6 +32,7 @@ _HEADERS_FILE = (
     '/styles.css\n  Content-Type: text/css\n'
     '/manifest.webmanifest\n  Content-Type: application/manifest+json\n'
     '/metrics-config.js\n  Content-Type: application/javascript\n'
+    '/rt-config.js\n  Content-Type: application/javascript\n'
     '/studies.json\n  Content-Type: application/json\n'
     '/studies/*/meta.json\n  Content-Type: application/json\n'
     '/studies/*/events.json\n  Content-Type: application/json\n'

@@ -1,4 +1,7 @@
-import type { Meta, MetricResult, ZarrData } from './types';
+import type { Meta, MetricResult } from './types';
+import type { RtHello, RtLinkState } from './rt_types';
+import type { SignalSource } from './signals';
+import { seriesLength } from './signals';
 import type { Narrative } from './narrative';
 import { formatDuration, formatRecordedAt, shortSha, escHtml as esc } from './format';
 import { PLMI_ABNORMAL_THRESHOLD } from './narrative';
@@ -202,9 +205,9 @@ function kpiCards(meta: Meta, narrative: Narrative): string {
  * 11-channel device), and either group being present shifts everything after it
  * once `channels()` filters out whichever optional panes are absent.
  */
-function movementDetailRows(zarr: ZarrData): string {
-  const accel1Idx = channelIndex(zarr, 'Accel1 mag (leg 2)');
-  const combinedIdx = channelIndex(zarr, 'Combined LM (bilateral)');
+function movementDetailRows(src: SignalSource): string {
+  const accel1Idx = channelIndex(src, 'Accel1 mag (leg 2)');
+  const combinedIdx = channelIndex(src, 'Combined LM (bilateral)');
   if (accel1Idx < 0 || combinedIdx < 0) return '';
   return `
     <div class="mont" data-idx="${String(accel1Idx)}">
@@ -225,8 +228,8 @@ function movementDetailRows(zarr: ZarrData): string {
  * device captured them; otherwise the original static "awaiting device" row.
  * Looked up by name via `channelIndex`, same reasoning as `movementDetailRows`.
  */
-function respiratoryRow(zarr: ZarrData): string {
-  const idxs = [channelIndex(zarr, 'Thoracic'), channelIndex(zarr, 'Abdomen'), channelIndex(zarr, 'Flow')];
+function respiratoryRow(src: SignalSource): string {
+  const idxs = [channelIndex(src, 'Thoracic'), channelIndex(src, 'Abdomen'), channelIndex(src, 'Flow')];
   if (idxs.some((i) => i < 0)) {
     return `
     <div class="mont dev">
@@ -243,7 +246,7 @@ function respiratoryRow(zarr: ZarrData): string {
     </div>`;
 }
 
-function montage(zarr: ZarrData): string {
+export function montage(src: SignalSource): string {
   return `
   <div class="section-title">Montage <span class="st-line"></span></div>
   <div class="mont-list">
@@ -262,8 +265,8 @@ function montage(zarr: ZarrData): string {
       <div><div class="m-name">HRV trend</div><div class="m-sub">RMSSD · live</div></div>
       <div class="m-right"><div class="toggle on"></div></div>
     </div>
-    ${movementDetailRows(zarr)}
-    ${respiratoryRow(zarr)}
+    ${movementDetailRows(src)}
+    ${respiratoryRow(src)}
     <div class="mont dev">
       <div class="m-ico" style="background:rgba(240,120,154,.10)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 14h6l2-6 3 12 2-8 2 4h7" stroke="var(--cardiac)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div><div class="m-name">ECG / HR</div><div class="m-sub">Awaiting device</div></div>
@@ -292,16 +295,161 @@ const SPECTRO = `
     </div>
   </div>`;
 
+// ── RT (live) shell ──────────────────────────────────────────────────────────
+
+/** Everything the live status strip shows. Assembled in main.ts, rendered here. */
+export interface RtStatusView {
+  readonly link: RtLinkState;
+  readonly detail?: string;
+  readonly deviceUid: string;
+  readonly startIso: string;
+  /** Device-reported recording elapsed time, seconds. */
+  readonly elapsedS: number;
+  /** False when the device is streaming but not writing an EDF+ (no SD card, or a write failure). */
+  readonly recording: boolean;
+  readonly sdError: boolean;
+  readonly battPct: number | null;
+  /** Sample frames the *device* dropped under backpressure. */
+  readonly deviceDropped: number;
+  /** Frames the *client* could not parse. */
+  readonly badFrames: number;
+  /** Line breaks drawn for samples that never arrived. */
+  readonly breaks: number;
+  readonly points: number;
+}
+
+const LINK_LABEL: Readonly<Record<RtLinkState, string>> = {
+  connecting: 'Connecting',
+  live: 'Live',
+  reconnecting: 'Reconnecting',
+  failed: 'Disconnected',
+};
+
+/** Live status strip body. Pure — main.ts owns the DOM write, same as the metrics card. */
+export function renderRtStatus(v: RtStatusView): string {
+  const pill = `<span class="rt-pill rt-${v.link}"><span class="rt-dot"></span>${esc(LINK_LABEL[v.link])}</span>`;
+  const detail = v.detail === undefined ? '' : `<span class="rt-detail">${esc(v.detail)}</span>`;
+  // The recording state is the one that matters clinically: a stream is a view,
+  // the EDF+ on the card is the record. Say plainly when the device is showing
+  // signals it is not keeping.
+  const rec = v.sdError
+    ? '<span class="rt-stat rt-err">recording stopped — SD write error</span>'
+    : v.recording
+      ? `<span class="rt-stat">recording · ${esc(formatDuration(v.elapsedS))}</span>`
+      : '<span class="rt-stat rt-err">not recording — stream only</span>';
+  const batt = v.battPct === null ? '' : `<span class="rt-stat">battery ${esc(String(Math.round(v.battPct)))}%</span>`;
+  const loss = v.deviceDropped + v.badFrames + v.breaks > 0
+    ? `<span class="rt-stat rt-warn">${esc(String(v.deviceDropped))} dropped · ${esc(String(v.badFrames))} bad · ${esc(String(v.breaks))} gaps</span>`
+    : '<span class="rt-stat">no loss</span>';
+
+  return `${pill}${detail}${rec}${batt}${loss}
+    <span class="rt-stat">${esc(v.deviceUid)}</span>
+    <span class="rt-stat">${esc(String(v.points))} samples held</span>`;
+}
+
+/**
+ * Montage rail for the live stream: one row per streamed channel, each toggling
+ * its own pane.
+ *
+ * Deliberately not `montage()` above — that rail groups the derived channels
+ * behind hardcoded `data-idx` values ("Movement" = panes 1,3,4,5) which only
+ * hold for the batch channel set. A live source has different channels in a
+ * different order, so it gets a rail built from what actually arrived.
+ */
+function realtimeMontage(src: SignalSource): string {
+  const rows = channelMeta(src).map((m, i) => `
+    <div class="mont" data-idx="${String(i)}">
+      <div class="m-ico" style="background:${esc(m.color)}22"><span class="gdot" style="background:${esc(m.color)}"></span></div>
+      <div><div class="m-name">${esc(m.name)}</div><div class="m-sub">streaming · live</div></div>
+      <div class="m-right"><div class="toggle on"></div></div>
+    </div>`).join('');
+  return `
+  <div class="section-title">Montage <span class="st-line"></span></div>
+  <div class="mont-list">${rows}</div>`;
+}
+
+/** Cards that only exist once Python processing has scored the recording. */
+const RT_AFTER_PROCESSING = `
+  <div class="section-title">After the night <span class="st-line"></span></div>
+  <div class="rt-later">
+    <p>Live view shows the signals as the device records them. These need the
+    recording to finish and be processed before they can be computed:</p>
+    <ul>
+      <li>PLMI, limb-movement and periodic-movement counts</li>
+      <li>Limb-movement / PLM series overlays on the charts</li>
+      <li>HRV (RMSSD) and the movement vector magnitudes</li>
+      <li>Windowed PLMI for a selected range</li>
+      <li>Snore spectrogram</li>
+    </ul>
+    <p class="rt-later-note">The EDF+ recording on the device's SD card is the
+    record of the night; this stream is only a view of it.</p>
+  </div>`;
+
+/**
+ * The live viewer shell. Same `.sig-grid` / `#sig-N` pane markup the batch shell
+ * emits, so `main.ts` initialises ECharts identically in both modes — the
+ * difference is entirely in what surrounds the panes.
+ */
+export function renderRealtimeShell(hello: RtHello, src: SignalSource): string {
+  const chMeta = channelMeta(src);
+  const started = hello.recording_start_iso === '' ? 'unknown' : formatRecordedAt(hello.recording_start_iso);
+
+  return `
+  <div class="wrap">
+    <header class="top">
+      <div class="brand">${LOGO}<div class="wordmark">Proto<b>Som</b></div></div>
+      <div class="spacer"></div>
+      <span class="chip"><span class="dot"></span>Live from <b style="font-weight:600">${esc(hello.device_uid)}</b><small>· no identifiers streamed</small></span>
+    </header>
+    <div class="rec-line">Recording started <b>${esc(started)}</b> · streaming ${esc(String(hello.channels.length))} channels</div>
+
+    <div class="rt-strip" id="rt-status">${renderRtStatus({
+      link: 'connecting', deviceUid: hello.device_uid, startIso: hello.recording_start_iso,
+      elapsedS: 0, recording: hello.recording_active, sdError: false, battPct: null,
+      deviceDropped: 0, badFrames: 0, breaks: 0, points: 0,
+    })}</div>
+
+    <div class="main-cols">
+      <div style="display:flex;flex-direction:column;gap:18px;">
+        <section class="signals">
+          <div class="sig-toolbar">
+            <div class="card-title" style="margin:0;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 12h4l2-7 4 14 3-9 2 4h5" stroke="var(--movement-2)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Live signal viewer <span class="zoom-hint">· drag to select · ctrl+scroll to zoom · scroll back over the whole session</span>
+            </div>
+            <button type="button" class="rt-follow on" id="rt-follow">Following live</button>
+            <div class="sig-range" id="sig-range">${esc(NO_RANGE_TEXT)}</div>
+          </div>
+          <div class="sig-grid">
+            ${chMeta.map((m, i) => `<div class="card sig-card"><div class="sig-head"><span class="gdot" style="background:${esc(m.color)}"></span>${esc(m.name)}</div><div class="sig-plot" id="sig-${String(i)}"></div></div>`).join('')}
+          </div>
+        </section>
+      </div>
+
+      <aside class="right-rail">
+        <div class="card card-pad">${realtimeMontage(src)}</div>
+        <div class="card card-pad">${RT_AFTER_PROCESSING}</div>
+      </aside>
+    </div>
+
+    <footer class="prov">
+      <span class="pv">stream <code>${esc(hello.protocol)}</code></span>
+      <span class="pv">samples are EDF+ digital values, scaled by the header's physical range</span>
+      <span class="disc"><b>Not a medical device.</b> ProtoSom is a proof-of-concept screening aid and does not diagnose. Discuss any concern with a qualified clinician.</span>
+    </footer>
+  </div>`;
+}
+
 /** Build the full Tremor-Illustrated viewer shell. `#chart` is left for ECharts. */
-export function renderShell(meta: Meta, narrative: Narrative, zarr: ZarrData): string {
+export function renderShell(meta: Meta, narrative: Narrative, src: SignalSource): string {
   const s = meta.stats;
   const git = meta.provenance.pipeline.git;
   const anchor = meta.layers.raw.biosignals[0]?.hash;
   const anchorStr = anchor === undefined ? 'n/a' : `${anchor.algorithm} ${anchor.value.substring(0, 8)}…`;
   const hrv = s.hrv_rmssd_overall;
   const periodic = s.total_plms > 0 ? `${esc(String(s.total_plms))} periodic` : 'none periodic';
-  const chMeta = channelMeta(zarr);
-  const awaitingDevice = zarr.thoracic.length > 0
+  const chMeta = channelMeta(src);
+  const awaitingDevice = seriesLength(src.thoracic) > 0
     ? ['ECG/HR', 'EEG']
     : ['Thoracic', 'Abdomen', 'Flow', 'ECG/HR', 'EEG'];
 
@@ -344,7 +492,7 @@ export function renderShell(meta: Meta, narrative: Narrative, zarr: ZarrData): s
           <div class="sig-toolbar">
             <div class="card-title" style="margin:0;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 12h4l2-7 4 14 3-9 2 4h5" stroke="var(--movement-2)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Signal viewer <span class="fs-hint">· tap a chart to expand ⤢</span><span class="zoom-hint">· drag to select · ctrl+scroll to zoom</span>
+              Signal viewer <span class="fs-hint">· tap a chart to expand ⤢ · press &amp; hold for the menu</span><span class="zoom-hint">· drag to select · ctrl+scroll to zoom · right-click for the menu</span>
             </div>
             <div class="legend">
               <span class="leg"><span class="sw" style="background:var(--good-soft);border:1px solid var(--good)"></span>Limb movement</span>
@@ -368,7 +516,7 @@ export function renderShell(meta: Meta, narrative: Narrative, zarr: ZarrData): s
       </div>
 
       <aside class="right-rail">
-        <div class="card card-pad">${montage(zarr)}</div>
+        <div class="card card-pad">${montage(src)}</div>
         <div class="card card-pad" id="window-metrics-card">${windowMetricsCard()}</div>
         <div class="card card-pad">${SPECTRO}</div>
       </aside>

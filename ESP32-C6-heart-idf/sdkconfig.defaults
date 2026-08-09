@@ -27,7 +27,16 @@ CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
 CONFIG_ESPTOOLPY_MONITOR_BAUD=115200
 
-# Bluetooth (BLE) — this board does not use BLE or Wi-Fi to reduce power
-# consumption (see ../wiki/knowledge/hardware.md); keep the whole BT stack
-# (NimBLE host + controller) out of the build.
+# Bluetooth (BLE) — unused; keep the whole BT stack (NimBLE host + controller)
+# out of the build.
 # CONFIG_BT_ENABLED is not set
+
+# Wi-Fi — compiled in for components/rt_stream (live sample streaming), but the
+# radio stays OFF unless streaming has been explicitly enabled for the device
+# (RT_STREAM_ENABLED_DEFAULT / tools/set_rt_stream.py), so an ordinary
+# unattended night recording keeps the low-power profile this board was built
+# for. Wireless rather than the USB link because the AD8232 puts electrodes on
+# the patient and a mains-powered tether is a leakage path — see
+# ../wiki/state/decisions.md § S12 and ../wiki/knowledge/hardware.md.
+CONFIG_ESP_WIFI_ENABLED=y
+CONFIG_HTTPD_WS_SUPPORT=y
