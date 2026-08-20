@@ -2,7 +2,7 @@
 title: Current State
 domain: state
 status: living
-updated: 2026-08-09
+updated: 2026-08-20
 summary: What exists in the repo today (C++ EDF+ writers plus an opt-in Wi-Fi live-sample streamer, Python DSP reading EDF+ directly via edfio, an ECharts/zarrita TS viewer with both a batch and a real-time mode, a standalone FastAPI windowed-metrics service, and a multi-study Netlify landing page) versus the planned three-layer pipeline — and where the gaps are.
 ---
 
@@ -43,10 +43,6 @@ See also: [data formats](../knowledge/data-formats.md) ·
   [decisions § S12](decisions.md).
 - Build: ESP-IDF v6.0.1 (`idf.py build`, target `esp32c6`); see
   `ESP32-C6-heart-idf/.claude/CLAUDE.md` for the explicit-environment invocation this machine needs.
-- **The RPi5 bedside unit is retired.** It wrote a 6-channel EDF+ (adding `HR`/`RR` from a Polar H9
-  over BLE) and polled the C6 over I2C. Its source now sits in `Deprecated/rpi_src` and is not a
-  supported ingest input; the Polar H9 path is gone with it.
-
 These are **the only parts of the C++ ingest that exist**. The C++ stage that converts
 raw EDF+/FLAC into the **raw Zarr** layer — the actual [Zarr boundary](../knowledge/data-formats.md)
 write — **does not exist**. Neither does the C++ **clinical export** (Zarr→EDF+/BDF+).

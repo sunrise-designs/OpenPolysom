@@ -90,7 +90,7 @@ Concrete behaviours worth noting (PoC realities, not the target spec):
 - **Title strip** (`chart.ts:22-40`, `buildTitle`) renders patient / recording / stats and the `git_hash`
   provenance stamp.
 
-> PII note: `types.ts` still carries a `patient` block (name / DOB / NHS), and `buildTitle` renders it
+> PII (Personally Identifiable Information) note: `types.ts` still carries a `patient` block (name / DOB / NHS), and `buildTitle` renders it
 > inline (`chart.ts:24-25`). Per the PII decision in [decisions](../state/decisions.md), PII stays in a
 > separable block and the [clinical export](data-formats.md) scrubs the EDF+ header; the committed sample
 > data is anonymous (accel + RR, no identifiers). As the slicing server lands, the title's PII becomes

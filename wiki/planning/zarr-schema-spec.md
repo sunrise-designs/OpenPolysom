@@ -2,13 +2,13 @@
 title: PSG-on-Zarr Schema Specification
 domain: planning
 status: snapshot
-updated: 2026-07-19
+updated: 2026-08-20
 summary: The concrete Zarr working-store + events + metadata schema and the EDF round-trip, rewritten 2026-07-19 against the single-device ESP32-C6 hardware.
 ---
 
 > Note: the language split has since settled to **C++ ingest / Python processing / TS web app** (see [decisions](../state/decisions.md)). The Zarr schema, events, metadata, and round-trip below stand; treat any in-text language attributions as the design-time snapshot.
 >
-> **Revised 2026-07-19 for single-device hardware.** This spec was originally written against a two-device rig (RPi5 bedside unit + ESP32-C6). The RPi5 is retired; **the ESP32-C6's 11-channel EDF+ is the sole raw anchor**, and the tables below have been rewritten against `logger.cpp`'s actual `SigDef`. Three structural simplifications follow and are reflected throughout: there is now **one clock** (the cross-device offset/skew model in §6.4 collapses), **one `signals/` group** (the `signals_esp/` split is gone), and **every array is `storage="digital"`** (the firmware writes `edfwrite_digital_samples` exclusively, so the physical-vs-digital asymmetry that drove §3.2 no longer exists at capture — the attribute is retained for derived arrays and future producers).
+> **Single-device hardware.** The **ESP32-C6's 11-channel EDF+ is the sole raw anchor**, and the tables below are written against `logger.cpp`'s actual `SigDef`. Three structural consequences hold throughout: there is **one clock** (§6.4 carries no cross-device offset/skew model), **one `signals/` group**, and **every captured array is `storage="digital"`** (the firmware writes `edfwrite_digital_samples` exclusively — the attribute is retained for derived arrays and future producers).
 
 # ProtoSom — PSG-on-Zarr Schema Specification (v0.1)
 
@@ -80,16 +80,14 @@ working.zarr/                       # .zgroup {"zarr_format": 2}; root .zattrs i
     └─ ecg/        1/ 2/ ...
 ```
 
-A single `signals/` group, not the old `signals/` + `signals_esp/` split: with one acquisition
-device there is no second clock to segregate. All three accel magnitude traces are **derived**
+A single `signals/` group: with one acquisition device there is no second clock to segregate. All three accel magnitude traces are **derived**
 (they are computed by [Python processing](../knowledge/signal-processing.md) from the six raw
 axes), which is why the bilateral combined channel lives under `derived/` alongside the per-leg
 ones — see [signal processing § 3](../knowledge/signal-processing.md).
 
 ### 3.2 Storage policy — the single normative table
 
-The physical-vs-digital asymmetry the original reviewers caught was an artefact of two firmwares
-disagreeing. With the RPi5 retired it is **gone**: `logger.cpp` writes **every** channel via
+There is no physical-vs-digital asymmetry at capture: `logger.cpp` writes **every** channel via
 `edfwrite_digital_samples` (line 548), so the on-disk digital samples are exactly what the firmware
 computed — no edflib requantization anywhere in the capture path. The per-array **`storage`**
 attribute is retained regardless, because the *derived* layer holds calibrated float arrays and a
@@ -111,9 +109,8 @@ Values are exact from the `SigDef` table at `logger.cpp:473–485`.
 | **Future** `signals/spo2` | pulse-ox | 1 | digital | uint8 | 0 / 100 | 0 / 100 | % | mask array |
 | **Future** `signals/body_position` | position | 1 | digital | uint8 | 0 / 5 | 0 / 5 | code | `categories` attr |
 
-- **`storage="digital"`** (lossless int) is now the case for **every captured channel**: the
-  integer is stored exactly and EDF↔Zarr↔EDF is bit-identical throughout. This is a strictly
-  stronger round-trip guarantee than the original two-device design could offer.
+- **`storage="digital"`** (lossless int) is the case for **every captured channel**: the
+  integer is stored exactly and EDF↔Zarr↔EDF is bit-identical throughout.
 - **`storage="physical"`** (float32 calibrated) survives only in `derived/`, where Python
   processing writes real units (mg magnitudes, ms RMSSD). Ingest never emits it today.
 - **`signals/rr` carries no information.** The channel is declared with transducer `"N/A"` and the
@@ -122,9 +119,8 @@ Values are exact from the `SigDef` table at `logger.cpp:473–485`.
   `no_source: true` attr so `compute_hrv` cannot be fed zeros and report a confident RMSSD. See
   [hardware](../knowledge/hardware.md).
 - **`accel0_*`/`accel1_*` are int16 in mg, not uint16 ADC counts.** The MMA8451 reports signed
-  physical acceleration, `digital_min/max = −8192/8191` against `±2000 mg`. Any note claiming
-  12-bit `0–4095` counts at `0–3300 mV` describes the retired ADXL335-on-RPi path and is wrong for
-  this hardware — see the §8 DSP-domain note.
+  physical acceleration, `digital_min/max = −8192/8191` against `±2000 mg` — see the §8 DSP-domain
+  note.
 - **24-bit EEG → int32** (sign-extended), with `bit_depth: 24` and `digital_min/max: −8388608/8388607` (the 24-bit range, **not** the int32 range — the C++ BDF exporter needs this to pack 3-byte two's-complement little-endian words). Never store raw 3-byte packed samples.
 - **Dtype subset is the portable intersection only:** `{int16, int32, uint8, uint16, float32, float64}`. No `object`, structured/record, string, or `datetime64` dtypes anywhere (Python-only traps).
 
@@ -177,13 +173,13 @@ Attributes live in the array's `.zattrs` (plain JSON only — cast every numpy s
 
 - **One shared origin per recording**, `t0_iso` (root `.zattrs`), stored ISO-8601 with explicit offset. **It is the whole-second EDF header start.** `logger.cpp:502` sets only whole-second `edf_set_startdatetime`, so any subsecond fraction is *not* in the raw header. For the PoC, `t0_iso` is whole-second; any subsecond origin is tracked separately and emitted as the `+0.X` first time-keeping TAL on export (edflib supports this once firmware passes a fractional start — it does not today, so the raw subsecond origin is already lost; flag to Dmitry). The device's own JSON sidecar carries `recording_start_time` plus an explicit `timezone`, which is the better source for the ISO offset than inferring one.
 - **No global time axis, no per-sample timestamp arrays** for uniform signals. Sample `i` → `t0 + t0_offset_s + i / sample_rate_hz`. Time is `int64` Unix-ns / ISO in attrs; never a `datetime64` dtype. **Irregular series (HRV) carry a `float64` `*_t` companion** in seconds-from-t0 (float64, not float32 — at 28800 s a float32 step is ~0.004 s, too coarse for beat timing).
-- **One device, one clock — cross-device alignment is no longer a problem.** With the RPi5 retired, every channel in a recording comes off the same ESP32-C6 timebase (serial time sync + a DS3231 RTC), so an event scored on one channel may freely reference any other. `source_device` and `t0_offset_s` are retained in the schema for forward-compatibility, but today `source_device` is uniformly `"esp32c6"` and `t0_offset_s` is uniformly `0.0`. The `offset_s + skew_ppm` model in §6.4 becomes a **single** device-to-UTC statement rather than a device-to-device reconciliation. If a second acquisition device is ever reintroduced, the drift caveat comes back with it and must be re-derived — a constant offset cannot correct skew over a night.
+- **One device, one clock — there is no cross-device alignment problem.** Every channel in a recording comes off the same ESP32-C6 timebase (serial time sync + a DS3231 RTC), so an event scored on one channel may freely reference any other. `source_device` and `t0_offset_s` are retained in the schema for forward-compatibility, but today `source_device` is uniformly `"esp32c6"` and `t0_offset_s` is uniformly `0.0`. The `offset_s + skew_ppm` model in §6.4 is a **single** device-to-UTC statement, not a device-to-device reconciliation. If a second acquisition device is ever added, the drift caveat comes with it and must be derived — a constant offset cannot correct skew over a night.
 
 ### 3.5 Gap / missing-data model
 
 The signal-arrays slice's "fill_value = digital_min" scheme is broken against the actual firmware and is **dropped**. The firmware writes **0** on source failure, and `0` is a legal physiological/ADC value — so a real dropout is indistinguishable from a valid zero, and `digital_min` is in fact never written. The convention:
 
-- **Every captured array is `storage="digital"` (int)**, so the gap mechanism is uniformly a companion **`uint8` mask array** (`<name>_mask`, `0`=valid, `1`=gap) — no in-band int sentinel is safe. Mask arrays carry `protosom_role: "mask"`. This is simpler than the original two-mechanism design, which needed masks for ints and NaN for floats depending on which firmware wrote the channel.
+- **Every captured array is `storage="digital"` (int)**, so the gap mechanism is uniformly a companion **`uint8` mask array** (`<name>_mask`, `0`=valid, `1`=gap) — no in-band int sentinel is safe. Mask arrays carry `protosom_role: "mask"`.
 - **`storage="physical"` (float32) arrays** exist only in `derived/`. There the gap sentinel is **`NaN`** (JSON string `"NaN"` in `.zattrs` fill_value — never a bare token; a C++ writer must emit the literal string).
 - **`signals/rr` is a whole-array gap.** It is not "sometimes missing" — it has no source at all and is zeros end to end. Its mask should be all-1 from ingest, so downstream code that respects masks cannot mistake it for a flat-but-valid series.
 - The `events.json` `gap` annotation (§5) is an optional human-readable index, never the sole record of a gap.
@@ -554,7 +550,7 @@ A single semver format everywhere (`0.1.0`, not `0.1`). Readers check the major 
 
 3. **`input_preparation` and `on_device_transforms` are recorded.** `--skip` (default 700 = first 70 s dropped) and the on-device RIP baseline subtraction both mutate the signal upstream of any current provenance and were captured nowhere.
 
-`git.sha` is the **full 40-char SHA + explicit `dirty` flag** for the *pipeline*. **Firmware provenance is currently absent, not merely degraded.** The retired RPi5 firmware at least baked a short hash into the EDF equipment string; the ESP32-C6 firmware sets **no equipment string at all** and compiles in **no git hash** — there is no `edf_set_equipment` call and no `GIT_COMMIT_HASH` anywhere in `ESP32-C6-heart-idf`. Every EDF+ this hardware produces is therefore **not audit-grade** by this spec's own standard, and that is a regression against the previous device, not an improvement. The fix is the same as before: emit full SHA + dirty flag as a compile definition and write it at recording start (the 80-char equipment field is tight, so an annotation TAL is the likelier carrier). Until then, `provenance.firmware` must be explicitly `null` with a note — never silently omitted, which would read as "not applicable" rather than "missing".
+`git.sha` is the **full 40-char SHA + explicit `dirty` flag** for the *pipeline*. **Firmware provenance is absent.** The ESP32-C6 firmware sets **no equipment string at all** and compiles in **no git hash** — there is no `edf_set_equipment` call and no `GIT_COMMIT_HASH` anywhere in `ESP32-C6-heart-idf`. Every EDF+ this hardware produces is therefore **not audit-grade** by this spec's own standard. The fix: emit full SHA + dirty flag as a compile definition and write it at recording start (the 80-char equipment field is tight, so an annotation TAL is the likelier carrier). Until then, `provenance.firmware` must be explicitly `null` with a note — never silently omitted, which would read as "not applicable" rather than "missing".
 
 ---
 
@@ -573,7 +569,7 @@ EDF calibration: `physical = (digital − dmin)·(pmax − pmin)/(dmax − dmin)
 | RR | 2.5 | digital | `signals/rr` int16 | EDF+ | **bit-exact** (of zeros — the channel has no source) |
 | EEG ×N (future) | 256 | digital | `signals/eeg` int32 (bit_depth 24) | **BDF+** | bit-exact, 3-byte two's-complement LE packing |
 
-**What is lossless, precisely:** `digital(EDF_in) == digital(EDF_out)` sample-for-sample for **every** channel — and on this hardware that is now exact **by construction for all eleven**, since the firmware writes digital samples and ingest stores the integer unchanged. The old caveat about `storage="physical"` channels round-tripping only within half an EDF quantum no longer applies to any captured channel; it survives only for hypothetical future producers that write physical doubles.
+**What is lossless, precisely:** `digital(EDF_in) == digital(EDF_out)` sample-for-sample for **every** channel — exact **by construction for all eleven**, since the firmware writes digital samples and ingest stores the integer unchanged. The half-an-EDF-quantum caveat applies only to `storage="physical"` arrays, i.e. hypothetical future producers that write physical doubles.
 
 **What is still lost, and it is upstream of everything here:** the RIP channels' on-device count division (`÷15`, `÷11`) is applied *before* the EDF write, so the pre-division raw LDC1612 counts are gone from the raw anchor permanently. The round-trip faithfully reproduces the divided values; it cannot recover what was divided away. Recording the divisors in provenance (§6.5) is what makes the transform *auditable*, not reversible.
 
@@ -604,8 +600,6 @@ EDF calibration: `physical = (digital − dmin)·(pmax − pmin)/(dmax − dmin)
 
 The safer refactor is to **apply the affine map on read** and keep the DSP entirely in mg, since every tuned constant (`threshold=8`, `max_threshold=500`, `tilt_threshold_deg=10`, `MIN_GRAVITY_MG=100`) is expressed in mg or degrees and none has been validated against a corpus (open fork **O12**). Changing the units *and* the thresholds in one step would make a detection regression indistinguishable from a units bug.
 
-*(An earlier revision of this note described these arrays as `uint16` 12-bit ADC counts at 0–3300 mV. That was the retired ADXL335-on-RPi5 path; the MMA8451 reports signed mg. Any code written against the old description is wrong.)*
-
 ---
 
 ## 9. Property / round-trip tests (the IEC-62304 assertions)
@@ -631,8 +625,8 @@ Each is a mechanically-checkable pass/fail; the **equality criterion is defined 
 2. **Fix the RIP physical range, or bless the divisor workaround?** The firmware now recovers effective resolution by dividing raw counts (`÷15`, `÷11`) while leaving the declared ±1e6 nH range untouched — so the header lies about units. Three options: (a) tighten `physical_min/max` to match the divided scale and keep the divisors; (b) drop the divisors and tighten the range instead, which is the honest fix; (c) keep both and document the offset permanently. The divisors were tuned on **one night** with ~2× headroom and can still clip on deeper breathing, which argues against leaning on them. This remains the biggest data-quality lever in the pipeline. See open fork **O3**.
 3. **PII anchor policy — largely resolved by the hardware change.** The C6 firmware writes **no** patient name or DOB into the EDF+ header (no `edf_set_patientname`/`edf_set_birthdate` calls exist), so the raw anchor is PII-free by construction and the old conflict — "the immutable hashed anchor embeds a name and cannot be scrubbed without changing its hash" — is **gone**. What remains to decide is narrower: whether `meta.json`'s `subject.pii` block ships alongside a shared working store or is stripped at share time, and whether `.gitignore` needs a `!meta.json` exception so a de-identified `meta.json` can be committed. See [privacy](../standards/privacy.md) and open fork **O9**.
 4. **Refactor the DSP to read Zarr?** Confirm the EDF+→Zarr contract is go-forward (the DSP currently reads the EDF+ raw anchor directly), and `threshold=8` is recalibrated from mg-space to uint16 12-bit counts (otherwise PLM detection drifts silently).
-5. ~~**One Zarr group multi-device, or one per device?**~~ **Resolved by the hardware change.** With the RPi5 retired there is one device and one clock, so every channel shares a timebase and any event may reference any channel. One group, no cross-device sync primitive needed. *(If a second device ever returns, this question returns with it — do not treat the resolution as a general principle.)*
-6. **Firmware provenance upgrade — now more urgent, not less.** The C6 firmware emits **no** git hash and **no** equipment string, so it is strictly worse than the RPi5's short-hash-in-equipment. Change the build to emit full SHA + dirty flag + describe as a compile definition and have `logger.cpp` write it (the equipment field is 80-char-limited → likely a recording-start annotation TAL). Until then **every** recording from this hardware is non-audit-grade, not just those from dirty builds — is that acceptable for v0.1?
+5. ~~**One Zarr group multi-device, or one per device?**~~ **Not a question on this hardware.** There is one device and one clock, so every channel shares a timebase and any event may reference any channel. One group, no cross-device sync primitive needed. *(If a second device is ever added, this question comes back with it — do not treat the resolution as a general principle.)*
+6. **Firmware provenance upgrade.** The C6 firmware emits **no** git hash and **no** equipment string. Change the build to emit full SHA + dirty flag + describe as a compile definition and have `logger.cpp` write it (the equipment field is 80-char-limited → likely a recording-start annotation TAL). Until then **every** recording from this hardware is non-audit-grade, not just those from dirty builds — is that acceptable for v0.1?
 7. **Subsecond / whole-second time origin.** Firmware sets only whole-second start; accept whole-second alignment for v0.1, or have firmware pass a fractional start so the `+0.X` time-keeping TAL preserves it?
 8. **Pinned environment.** `requirements.txt` is unpinned and the `requirements.lock` + `lockfile_hash` the spec references do not exist yet — generate a real lock (uv/pip-compile) and pin numpy/scipy/arch before the reproducibility block is non-fictional?
 9. **Event id scope & hypnodensity.** Event ids are unique within a scoring (groups reference within-scoring ids). If the viewer needs human-confirms-algorithm cross-linking, switch to composite `(scoring_id, event_id)` keys? And if epoch granularity ever drops to per-second hypnodensity, the hypnogram becomes dense → moves to a Zarr probability matrix (deferred until on the roadmap).
@@ -641,6 +635,6 @@ Each is a mechanically-checkable pass/fail; the **equality criterion is defined 
 
 **Key cross-slice reconciliations made (where reviewers found real breakage, the spec now reflects the fix, not the debate):** Zarr **v2** (single decision; z5/xtensor-zarr are v2-only per the [registry](https://zarr.dev/implementations/)); per-array **`storage` attr** as the one storage contract — now uniformly `digital` at capture, since `logger.cpp` writes `edfwrite_digital_samples` for all eleven channels, with `physical` surviving only in `derived/`; **mask-array** gap model (firmware writes 0, never digital_min), simplified to one mechanism now that no captured array is float; **interleaved min/max `(n,2)`** pyramid with gap-aware build and a real depth/spectrogram budget; single **canonical snake_case channel registry** in `meta.json.device.channels`; **`source_constants` vs `params`** split + `window_sec`/`--skip`/on-device-baseline capture; **`store_hash` (integrity) vs `value_digests` (re-derivation)** separated; per-storage-mode **equality tolerances** wired into the tests.
 
-**Revised 2026-07-19 for single-device hardware:** the RPi5 is retired and the ESP32-C6 is the sole raw anchor. This *simplified* three things (one clock, one `signals/` group, one storage mode → strictly stronger bit-exactness guarantees) and *worsened* two: firmware provenance went from degraded to **absent**, and the RIP unit story got murkier with the on-device count divisors. Accel moved to 6 axes at 50 Hz in signed mg — a 10× volume increase and a units change that invalidates any code written against the old `uint16` 12-bit description.
+**Single-device hardware:** the ESP32-C6 is the sole raw anchor — one clock, one `signals/` group, one storage mode, hence the bit-exactness guarantees above. Two costs come with it: firmware provenance is **absent**, and the RIP unit story is muddied by the on-device count divisors. Accelerometry is 6 axes at 50 Hz in signed mg.
 
 Sources: [Zarr implementations registry](https://zarr.dev/implementations/), [TensorStore zarr3 driver](https://google.github.io/tensorstore/driver/zarr3/index.html), [xtensor-zarr](https://github.com/xtensor-stack/xtensor-zarr), [z5](https://github.com/constantinpape/z5), [EDF+ spec](https://www.edfplus.info/specs/edfplus.html), [BDF+ description](https://www.teuniz.net/edfbrowser/bdfplus%20format%20description.html), [EDFlib](https://www.teuniz.net/edflib/), [zarr-python 3.0 migration](https://zarr.readthedocs.io/en/stable/user-guide/v3_migration/), [JSON Schema 2020-12](https://json-schema.org/draft/2020-12/schema). Repo facts grounded in `ESP32-C6-heart-idf/components/logger/logger.cpp`, `src_python/signal_processing.py`, `src_python/read_log.py`, `src_python/export_zarr.py`, `.gitignore`.

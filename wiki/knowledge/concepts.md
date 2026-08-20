@@ -2,7 +2,7 @@
 title: PSG & Pipeline Concepts (Glossary)
 domain: knowledge
 status: living
-updated: 2026-07-19
+updated: 2026-08-20
 summary: A concise glossary of the polysomnography, sleep-disorder, signal and data-tech terms used across the ProtoSom wiki and codebase.
 ---
 
@@ -91,10 +91,9 @@ surface from the captured signals. Plain-language sketches per `README.md:51-60`
 
 ### Cardiac
 
-- **Heart rate (HR)** — beats per minute. **No longer a captured channel**: the
-  Polar H9 chest strap that fed it is retired along with the RPi5 unit, and the
-  ESP32-C6 has no `HR` channel at all. Heart rate is now something to *derive*
-  from the ECG trace, not a signal read off a sensor.
+- **Heart rate (HR)** — beats per minute. **Not a captured channel**: the
+  ESP32-C6 has no `HR` channel. Heart rate is something to *derive* from the ECG
+  trace, not a signal read off a sensor.
 - **RR interval** — the time (ms) between successive R-peaks of consecutive
   heartbeats; the beat-to-beat timing series. A 2.5 Hz channel on the ESP32-C6,
   but currently a **dead channel logging zeros** — the device has no R-peak

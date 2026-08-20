@@ -75,8 +75,8 @@ def main():
     raw = ([float(v) for v in a0x], [float(v) for v in a0y], [float(v) for v in a0z])
     raw1 = ([float(v) for v in a1x], [float(v) for v in a1y], [float(v) for v in a1z])
 
-    # Respiratory (Thoracic/Abdomen/Flow) — present on the RPi5 6-channel and
-    # ESP32-C6 11-channel devices, absent on wrist-only logs.
+    # Respiratory (Thoracic/Abdomen/Flow) — present on the ESP32-C6 11-channel
+    # device, absent on wrist-only logs.
     # No DSP yet (RIP baseline removal / airflow filtering is future work, see
     # wiki/knowledge/signal-processing.md); pass the physical-unit trace
     # straight through so the viewer can at least display it.

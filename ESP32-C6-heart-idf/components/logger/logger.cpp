@@ -219,11 +219,9 @@ static int ecg_idx    = 0;
 // ── LDC baseline ──────────────────────────────────────────────────────────────
 // Baseline is captured 20 minutes into the recording (BASELINE_DELAY_S), once
 // belt-donning/posture-finding "gross inductance change" has settled, then
-// averaged over 1 s (BASELINE_AVG_SAMPLES) to smooth sensor noise — mirroring
-// the RPi5 main.cpp pattern (10-minute mark, 1 s average). Until then,
+// averaged over 1 s (BASELINE_AVG_SAMPLES) to smooth sensor noise. Until then,
 // thoracic/abdomen samples are written against a zero baseline (raw counts,
-// effectively clipped/uncalibrated) — accepted drift-over-no-data tradeoff,
-// same as main.cpp.
+// effectively clipped/uncalibrated) — accepted drift-over-no-data tradeoff.
 //
 // That tradeoff is only acceptable once per study. A reboot mid-night (panic,
 // WDT, brownout recovery) would otherwise restart the 20-minute clock and leave

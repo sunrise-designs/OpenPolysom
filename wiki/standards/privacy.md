@@ -2,7 +2,7 @@
 title: Privacy & PII Handling
 domain: standards
 status: living
-updated: 2026-08-09
+updated: 2026-08-20
 summary: How patient-identifying data is kept out of the public repo, scrubbed from shareable exports, and kept off the air when the device streams live.
 ---
 
@@ -16,11 +16,11 @@ ProtoSom is a **public** repo. Patient-identifying data must never be committed,
 
 ## Where PII appears in the design
 
-- The device **EDF+ header no longer carries PII.** The retired RPi5 firmware called
-  `edf_set_patientname` / `edf_set_birthdate`; the ESP32-C6 firmware calls **neither** — there is
-  no such call anywhere in `ESP32-C6-heart-idf`. The raw anchor is therefore **PII-free by
-  construction**, which dissolves the old conflict between "the audit anchor is immutable and
-  hashed" and "the anchor embeds a patient's name". Nothing in the capture path needs scrubbing.
+- The device **EDF+ header carries no PII.** The ESP32-C6 firmware calls neither
+  `edf_set_patientname` nor `edf_set_birthdate` — there is no such call anywhere in
+  `ESP32-C6-heart-idf`. The raw anchor is therefore **PII-free by construction**, so there is no
+  conflict between "the audit anchor is immutable and hashed" and "the anchor embeds a patient's
+  name". Nothing in the capture path needs scrubbing.
 - `meta.json` may hold a patient block (name / DOB / NHS number / email) — this is now the **only**
   place PII enters the pipeline, and it is added host-side, not by the device.
 - `src_python/patient.json` — a local, gitignored file (`name`/`dob`/`nhs_number`/`email`) read by `_load_patient()` in `export_zarr.py`, `plotting_html.py`, and `plotting_pdf.py`, and merged into `meta.json`'s `subject.pii` block and the HTML/PDF report headers.

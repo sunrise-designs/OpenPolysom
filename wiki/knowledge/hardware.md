@@ -2,7 +2,7 @@
 title: Hardware & C++ Ingest
 domain: knowledge
 status: living
-updated: 2026-08-09
+updated: 2026-08-20
 summary: The acquisition device (the ESP32-C6 unit), its sensors, the exact 11-channel EDF+ layout, the I2C data paths that feed the C++ ingest side, and the opt-in Wi-Fi rt_stream component that serves those same samples live.
 ---
 
@@ -16,10 +16,8 @@ then converts it into the **raw Zarr** of the **working store**. Everything on t
 C++ ingest side of the [three-language boundary](../state/decisions.md) (C++ ingests, Python
 processes, the TS web app presents; they meet at the **Zarr boundary**).
 
-> **The hardware now runs entirely on the ESP32-C6.** An earlier Raspberry Pi 5 bedside unit
-> wrote a 6-channel EDF+ and polled the C6 over I2C; it has been retired and its source moved to
-> `Deprecated/rpi_src`. The ESP32-C6's 11-channel EDF+ is the **only** raw anchor the pipeline
-> targets. Recordings made by the RPi5 are not a supported ingest input.
+> **The hardware runs entirely on the ESP32-C6.** Its 11-channel EDF+ is the **only** raw anchor
+> the pipeline targets.
 
 ---
 
@@ -75,8 +73,7 @@ recording is computed from zeros. Wiring RR up means either detecting R-peaks on
 ECG channel, or deriving them host-side in [Python processing](../knowledge/signal-processing.md)
 from the 100 Hz `ECG` array — the latter fits the language boundary better and is the likelier path.
 
-*(The earlier RPi5 unit sourced `HR` (BPM) and `RR` (ms) from a **Polar H9** chest strap over BLE.
-Both that unit and the Polar H9 path are retired; there is no `HR` channel on the ESP32-C6 at all.)*
+There is no `HR` channel on the ESP32-C6 at all — heart rate is a derived quantity, not a captured one.
 
 ### Sensors on the I2C bus
 
@@ -133,7 +130,7 @@ block above. This is **device-level** provenance and is distinct from the `meta.
 [Python processing](../knowledge/signal-processing.md) writes into the working store; C++ ingest
 should fold it into the latter.
 
-> **No EDF+ header provenance, and no PII.** Unlike the retired RPi5 firmware, the C6 sets
+> **No EDF+ header provenance, and no PII.** The C6 firmware sets
 > **no equipment string, no patient name, and no birthdate** — there is no `edf_set_equipment` /
 > `edf_set_patientname` / `edf_set_birthdate` call anywhere in the firmware, and no git hash is
 > compiled in. Two consequences, pulling opposite ways: the raw anchor is **PII-free by
@@ -155,10 +152,8 @@ physical/digital scaling correctly. From there Python reads raw Zarr → writes 
 + `events.json` + `meta.json`; the [TS web app](../knowledge/viewer.md) only **reads** Zarr. See
 [architecture](../knowledge/architecture.md) and [data formats](../knowledge/data-formats.md).
 
-With a single acquisition device there is now **one clock**, which retires a whole class of
-alignment problem: the previous two-device design needed a cross-device offset + skew model before
-an event scored on one device could reference the other's channels. Every channel in the recording
-now shares one time origin.
+With a single acquisition device there is **one clock**, so every channel in the recording shares
+one time origin and no cross-device offset + skew model is needed.
 
 ---
 
