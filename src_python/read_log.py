@@ -5,7 +5,7 @@ from pathlib import Path
 from edf_reader import load_edf
 from signal_processing import count_plm, compute_hrv, accel_magnitude, combine_bilateral_vm
 from plotting import save_plotly_html, plot
-from export_zarr import save_zarr_json
+from export_zarr import DEFAULT_OUT_DIR, save_zarr_json
 
 
 def load_recording_meta(edf_path):
@@ -43,6 +43,9 @@ def main():
     parser.add_argument('--ignore_last', type=float, default=0.0, help='Seconds to trim from the end of each channel (default: 0)')
     parser.add_argument('--chart', choices=['echarts', 'plotly'], default='echarts',
                         help='HTML chart library for the output report (default: echarts)')
+    parser.add_argument('--out-dir', '--out_dir', dest='out_dir', default=str(DEFAULT_OUT_DIR),
+                        help=f'Directory for the generated .zarr store and its JSON sidecars '
+                             f'(default: {DEFAULT_OUT_DIR}, gitignored)')
     parser.add_argument('--plotlyjs', choices=['cdn', 'embed', 'omit'], default='cdn',
                         help='How to include Plotly.js in the HTML: cdn (default), embed (self-contained), omit (fragment only)')
     args = parser.parse_args()
@@ -126,7 +129,7 @@ def main():
 
         if args.chart == 'echarts':
             zarr_path, meta_path = save_zarr_json(
-                src_path.stem,
+                Path(args.out_dir) / src_path.stem,
                 t, list(rr), raw, result['vm'],
                 hrv_t=result['hrv_t'], hrv_rmssd=result['hrv_rmssd'],
                 stats=result,
@@ -149,11 +152,13 @@ def main():
                 recording_meta=recording_meta,
                 raw_channels=raw,
                 include_plotlyjs=_plotlyjs,
+                out_dir=args.out_dir,
             )
         return
 
     mag = accel_magnitude(a0x, a0y, a0z, window_sec=args.window, fs=fs_accel)
-    plot(t, list(rr), mag, recording_meta=recording_meta, raw_channels=raw, include_plotlyjs=_plotlyjs)
+    plot(t, list(rr), mag, recording_meta=recording_meta, raw_channels=raw,
+         include_plotlyjs=_plotlyjs, out_dir=args.out_dir)
 
 
 if __name__ == '__main__':

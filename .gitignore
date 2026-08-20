@@ -8,23 +8,30 @@ patient.cfg
 
 # Directories
 .venv/
+# also holds the Quartz wiki build (web/build.sh -> build/quartz, build/site)
 build/
 *.bin
 !biometric_filtered.bin
 *.html
 *.pyc
+__pycache__/
+.pytest_cache/
 *.zarr/
-src_web/node_modules/
+node_modules/
 src_web/dist/
 
-# Quartz wiki build artifacts (web/build.sh) — never committed
-/.quartz/
-/public/
+# Pipeline outputs. read_log.py writes the .zarr working store and its
+# meta.json/events.json sidecars here (export_zarr.DEFAULT_OUT_DIR); meta.json may
+# carry a subject.pii block, so the patterns below are deliberately by SHAPE, not by
+# exact filename — a timestamped biometric_<date>_meta.json used to slip past the
+# exact-name rules and get committed. Never narrow these back to literal names.
+/data_scratchpad/
+*_meta.json
+/events.json
+
 src_python/netlify.json
 src_python/patient.json
 src_python/biometric_filtered.json
-biometric_filtered_meta.json
-biometric_meta.json
 .vscode/c_cpp_properties.json
 .github/workflows/clean-machine-test.yml
 ESP32-C6-heart-idf/reference/ESP32-C6-LCD-1.47-Test/
@@ -34,8 +41,6 @@ src_rust/polysom_rtdi/target
 # menuconfig) — sdkconfig.defaults is the source of truth, so this is untracked.
 ESP32-C6-heart-idf/sdkconfig
 
-node_modules/.vite/
-src_web/dist/chart.js
 src_web/dist/chart.js
 ESP32-C6-heart-idf/.cache/clangd
 

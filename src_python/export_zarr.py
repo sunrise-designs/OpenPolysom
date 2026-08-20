@@ -14,6 +14,34 @@ import zarr
 
 SCHEMA_VERSIONS = {'meta': '0.1.0', 'events': '1.0.0', 'zarr_arrays': '0.1.0'}
 
+# Pipeline outputs (the .zarr working store + its meta.json/events.json sidecars) are
+# generated per recording and may carry subject PII, so they never belong in the repo
+# root next to source. Every producer/consumer resolves them here by default; the
+# directory is gitignored. Relative, so it lands under whatever cwd the tool is run
+# from (the repo root, per "how to use.md").
+DEFAULT_OUT_DIR = Path('data_scratchpad')
+
+
+def find_meta(explicit=None, stem=None):
+    """Resolve a recording's `_meta.json`, preferring DEFAULT_OUT_DIR over the cwd.
+
+    Shared by serve.py and deploy.py so both agree on where outputs live. The cwd
+    fallback keeps recordings produced before the data_scratchpad/ move resolvable.
+
+    explicit : path to a specific _meta.json (returned as-is, existence unchecked)
+    stem     : base name shared by the .zarr dir and _meta.json (e.g. 'biometric_filtered')
+    Returns the newest *_meta.json across both locations when neither is given, or
+    None if nothing matches.
+    """
+    if explicit:
+        return Path(explicit)
+    roots = [DEFAULT_OUT_DIR, Path.cwd()]
+    if stem:
+        return next((c for r in roots if (c := r / f'{stem}_meta.json').exists()),
+                    DEFAULT_OUT_DIR / f'{stem}_meta.json')
+    candidates = [p for r in roots if r.is_dir() for p in r.glob('*_meta.json')]
+    return max(candidates, key=lambda p: p.stat().st_mtime, default=None)
+
 
 def _git_provenance():
     def run(*a):
@@ -153,6 +181,7 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
                   raw physical-unit trace, for display only.
     """
     stem = Path(stem)
+    stem.parent.mkdir(parents=True, exist_ok=True)
     zarr_path = stem.with_suffix('.zarr')
     meta_path = Path(str(stem) + '_meta.json')
     events_path = meta_path.parent / 'events.json'

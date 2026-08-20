@@ -186,6 +186,11 @@ running system.
 ---
 
 ## PII status (as committed)
-`.gitignore` excludes `patient.cfg`, `*.json`, `*.edf`, `*.csv`. No real PII is or was
-committed. The planned clinical export will scrub the EDF+ header name/DOB; see
+Pipeline outputs (the `.zarr` working store plus its `_meta.json` / `events.json`
+sidecars, where a `subject.pii` block can appear) are written to the gitignored
+`data_scratchpad/`, and the ignore rules are pattern-based — `/data_scratchpad/`,
+`*_meta.json`, `/events.json` — rather than exact filenames, so a timestamped sidecar
+cannot slip through. `patient.cfg`, `src_python/patient.json` and
+`src_python/netlify.json` remain excluded by name. The planned clinical export will scrub
+the EDF+ header name/DOB; see [privacy](../standards/privacy.md) and
 [data formats](../knowledge/data-formats.md).

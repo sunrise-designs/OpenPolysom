@@ -1,3 +1,7 @@
+# Build from the REPO ROOT (the context must include src_python/, src_web/, …):
+#   docker build -f docker/Dockerfile -t protosom .
+# .dockerignore stays at the repo root because it is resolved against the context,
+# not against this file.
 FROM python:3.11-bookworm
 
 # Install Node.js 20.x, gcc, git, and build tools
@@ -43,4 +47,4 @@ RUN cd src_web && npm run build
 ENV MPLBACKEND=Agg \
     PYTHONUNBUFFERED=1
 
-CMD ["/bin/bash", "/app/docker_run.sh"]
+CMD ["/bin/bash", "/app/docker/docker_run.sh"]

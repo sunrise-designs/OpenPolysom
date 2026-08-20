@@ -72,7 +72,7 @@ def _build_title(stats, recording_meta):
 
 def save_html(t, rr, accel_mag,
               lm_events=None, plm_groups=None, stats=None, recording_meta=None,
-              raw_channels=None, include_plotlyjs=True):
+              raw_channels=None, include_plotlyjs=True, out_dir=None):
     title = _build_title(stats, recording_meta)
 
     base  = datetime(1970, 1, 1)
@@ -142,5 +142,7 @@ def save_html(t, rr, accel_mag,
         '<style>* { user-select: text !important; -webkit-user-select: text !important; }</style></head>',
         1,
     )
-    Path(PLOTLY_HTML_OUT).write_text(html, encoding='utf-8')
-    print(f"Saved interactive chart to {PLOTLY_HTML_OUT}")
+    out_path = Path(out_dir or '.') / PLOTLY_HTML_OUT
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(html, encoding='utf-8')
+    print(f"Saved interactive chart to {out_path}")

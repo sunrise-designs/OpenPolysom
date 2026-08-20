@@ -5,8 +5,18 @@ import os
 import sys
 from unittest.mock import MagicMock, patch
 
-# Repo root must be CWD so deploy.py resolves zarr/meta paths via Path.cwd()
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+# Runnable from anywhere (`python tools/mock_deploy_run.py`): everything below is
+# resolved against the repo root, one level up from this file.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Repo root must be CWD so deploy.py's data_scratchpad/-then-cwd lookup resolves the
+# same way it does for a real run from the root.
+os.chdir(_ROOT)
+
+# runpy executes deploy.py without putting its directory on sys.path, unlike
+# `python src_python/deploy.py`. src_python/ modules import each other by bare name
+# (the repo's flat-script convention), so add it explicitly.
+sys.path.insert(0, os.path.join(_ROOT, "src_python"))
 
 MOCK_SITE_URL = "https://mock-deploy.netlify.app"
 
@@ -57,7 +67,10 @@ def _mock_put(url, headers=None, data=None, timeout=None, **_kwargs):
     return resp
 
 
-sys.argv = ["deploy.py", "--stem", "biometric_filtered"]
+# No --stem: exercise deploy.py's real default, auto-discovering the newest
+# *_meta.json in data_scratchpad/. The old hardcoded "biometric_filtered" stem
+# named a recording that no longer has a sidecar on disk.
+sys.argv = ["deploy.py"]
 
 print("[MOCK] requests.get/post/put are intercepted — no network upload will occur\n")
 
@@ -66,7 +79,7 @@ with patch("requests.get", side_effect=_mock_get), \
      patch("requests.put", side_effect=_mock_put) as mock_put:
     import runpy
     try:
-        runpy.run_path("src_python/deploy.py", run_name="__main__")
+        runpy.run_path(os.path.join(_ROOT, "src_python", "deploy.py"), run_name="__main__")
     except SystemExit as exc:
         if exc.code not in (0, None):
             print(f"[ERROR] deploy.py exited with code {exc.code}", file=sys.stderr)

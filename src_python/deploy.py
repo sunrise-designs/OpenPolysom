@@ -7,6 +7,8 @@ from pathlib import Path
 
 import requests
 
+from export_zarr import DEFAULT_OUT_DIR, find_meta
+
 _DIR            = Path(__file__).parent
 _SRC_WEB        = _DIR.parent / 'src_web'
 _NETLIFY_CONFIG = _DIR / 'netlify.json'
@@ -192,33 +194,35 @@ def deploy_to_netlify(zarr_path, meta_path):
 
 
 def _resolve_paths(stem=None, zarr=None, meta=None):
-    """Derive zarr/meta paths from a stem, explicit args, or auto-discovery in cwd."""
-    cwd = Path.cwd()
-    if stem:
-        return cwd / f'{stem}.zarr', cwd / f'{stem}_meta.json'
+    """Derive zarr/meta paths from a stem, explicit args, or auto-discovery.
+
+    Discovery goes through `find_meta`, so it looks in `data_scratchpad/` (where the
+    pipeline writes) before the cwd — the same rule serve.py follows.
+    """
     if zarr and meta:
         return Path(zarr), Path(meta)
-    # Auto-discover: pick the most recently modified *_meta.json in cwd.
-    candidates = sorted(cwd.glob('*_meta.json'), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not candidates:
-        print('Error: no *_meta.json found in cwd. Use --stem or --zarr/--meta.', file=sys.stderr)
+    meta_path = find_meta(stem=stem)
+    if meta_path is None or not meta_path.exists():
+        print(f'Error: no *_meta.json found in {DEFAULT_OUT_DIR}/ or cwd. '
+              'Use --stem or --zarr/--meta.', file=sys.stderr)
         sys.exit(1)
-    meta_path = candidates[0]
+    if stem:
+        return meta_path.parent / f'{stem}.zarr', meta_path
     meta_data = json.loads(meta_path.read_text())
     zarr_name = meta_data.get('layers', {}).get('working', {}).get('path')
     if not zarr_name:
         print(f'Error: no layers.working.path key in {meta_path}', file=sys.stderr)
         sys.exit(1)
-    return cwd / zarr_name, meta_path
+    return meta_path.parent / zarr_name, meta_path
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Deploy a study to the shared Netlify site (adds it to the landing page; does not replace other studies).',
-        epilog='Run from the repo root. Examples:\n'
+        epilog='Run from the repo root; outputs resolve from data_scratchpad/ first. Examples:\n'
                '  python src_python/deploy.py                              # auto-detect newest *_meta.json\n'
                '  python src_python/deploy.py --stem biometric_filtered    # explicit stem\n'
-               '  python src_python/deploy.py --zarr biometric_filtered.zarr --meta biometric_filtered_meta.json',
+               '  python src_python/deploy.py --zarr data_scratchpad/biometric_filtered.zarr --meta data_scratchpad/biometric_filtered_meta.json',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument('--stem', help='Base name shared by the .zarr dir and _meta.json (e.g. biometric_filtered)')

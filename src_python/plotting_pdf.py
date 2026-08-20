@@ -85,7 +85,9 @@ def _ax_title_with_link(ax, plain, link_text, link_url):
 
 def save_pdf(t, rr, accel_mag,
              lm_events=None, plm_groups=None, stats=None, recording_meta=None,
-             raw_channels=None):
+             raw_channels=None, out_dir=None):
+    out_path = Path(out_dir or '.') / PLOTLY_PDF_OUT
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     base  = datetime(1970, 1, 1)
     t_dt  = [base + timedelta(seconds=s) for s in t]
     to_dt = lambda s: base + timedelta(seconds=s)
@@ -146,7 +148,7 @@ def save_pdf(t, rr, accel_mag,
     axes[-1].set_xlabel('Time', fontsize=8)
     fig.autofmt_xdate(rotation=0, ha='center')
 
-    with PdfPages(PLOTLY_PDF_OUT) as pdf:
+    with PdfPages(out_path) as pdf:
         pdf.savefig(fig, bbox_inches='tight')
 
         if raw_channels is not None:
@@ -174,4 +176,4 @@ def save_pdf(t, rr, accel_mag,
             plt.close(fig2)
 
     plt.close(fig)
-    print(f"Saved PDF to {PLOTLY_PDF_OUT}")
+    print(f"Saved PDF to {out_path}")

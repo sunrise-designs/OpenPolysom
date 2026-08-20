@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 #
-# Build the Quartz read-site for the ProtoSom wiki into ./public.
+# Build the Quartz read-site for the ProtoSom wiki into ./build/site.
 #
 # Quartz v5 is not an npm package; it is used by cloning its repo. This script
-# clones Quartz (pinned to a commit) into ./.quartz (gitignored, never committed),
+# clones Quartz (pinned to a commit) into ./build/quartz (gitignored, never committed),
 # installs the community plugins pinned by Quartz's quartz.lock.json, overlays our
 # committed web/quartz.config.yaml, mirrors the wiki/ folder into the clone's
 # content/ folder (renaming INDEX.md to index.md so it becomes the site root), and
-# builds the static site into ./public.
+# builds the static site into ./build/site.
 #
 # Unlike a dedicated wiki repo, ProtoSom is a CODE repo: the wiki lives in the
 # wiki/ subfolder, so ONLY wiki/ is mirrored into content/ (the src/, src_python/,
 # src_web/, doc/, plans/ trees are never published).
 #
-# This script writes ONLY to .quartz/ and public/ (both gitignored); it never
+# This script writes ONLY inside build/ (gitignored); it never
 # mutates tracked source files. Local dev and CI run this identical path. No
 # secrets are involved in the build; deployment is handled by deploy-pages.yml.
 #
 # Usage:
-#   bash web/build.sh                   # clone/refresh Quartz, build to ./public
+#   bash web/build.sh                   # clone/refresh Quartz, build to ./build/site
 #   QUARTZ_REF=<sha> bash web/build.sh  # build against a different Quartz commit
-#   python3 -m http.server -d public 8080   # preview the built site locally
+#   python3 -m http.server -d build/site 8080   # preview the built site locally
 #
 # Requires: git, rsync, Node >= 22 and npm >= 10.9.2, and network access at build
 # time to clone the pinned community plugins from GitHub.
@@ -34,10 +34,11 @@ QUARTZ_REF="${QUARTZ_REF:-c5bbc92b74f67441fbfc0b1f5ae7ad15ba8e61af}"
 QUARTZ_URL="https://github.com/jackyzha0/quartz.git"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-QUARTZ_DIR="$ROOT/.quartz"
+QUARTZ_DIR="$ROOT/build/quartz"
 REF_MARKER="$QUARTZ_DIR/.protosom-build-ref"
 
 # 1. Clone Quartz at the pinned commit, or refresh an existing clone to it.
+mkdir -p "$(dirname "$QUARTZ_DIR")"
 if [ ! -d "$QUARTZ_DIR/.git" ]; then
   echo "==> Cloning Quartz @ ${QUARTZ_REF}"
   git init -q "$QUARTZ_DIR"
@@ -96,11 +97,11 @@ if [ -f "$QUARTZ_DIR/content/INDEX.md" ]; then
   mv "$QUARTZ_DIR/content/INDEX.md" "$QUARTZ_DIR/content/index.md"
 fi
 
-# 6. Build the static site into ./public (gitignored).
+# 6. Build the static site into ./build/site (gitignored).
 echo "==> Building site"
-( cd "$QUARTZ_DIR" && npx quartz build -o "$ROOT/public" )
+( cd "$QUARTZ_DIR" && npx quartz build -o "$ROOT/build/site" )
 
 echo
-echo "==> Built to $ROOT/public"
-echo "    Preview locally:  python3 -m http.server -d \"$ROOT/public\" 8080"
+echo "==> Built to $ROOT/build/site"
+echo "    Preview locally:  python3 -m http.server -d \"$ROOT/build/site\" 8080"
 echo "    (then open http://localhost:8080)"

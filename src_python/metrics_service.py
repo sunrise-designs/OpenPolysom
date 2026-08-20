@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
-from export_zarr import _git_provenance
+from export_zarr import DEFAULT_OUT_DIR, _git_provenance
 from metrics_registry import METRICS, compute_windowed_metric, is_window_too_short
 from metrics_windowing import pad_window
 from metrics_zarr_reader import (
@@ -32,7 +32,7 @@ from metrics_zarr_reader import (
     sample_rate,
 )
 
-RECORDINGS_ROOT = Path(os.environ.get('PROTOSOM_RECORDINGS_ROOT', '.'))
+RECORDINGS_ROOT = Path(os.environ.get('PROTOSOM_RECORDINGS_ROOT', DEFAULT_OUT_DIR))
 
 app = FastAPI(title='ProtoSom windowed metrics service', version='0.1.0')
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])

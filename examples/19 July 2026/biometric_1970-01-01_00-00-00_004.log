@@ -1,0 +1,31 @@
+I (318) main: Polysom ESP-IDF starting
+I (418) display: Display ready
+I (518) main: Reset reason: POWER-ON, boot count 1
+I (568) sensors: MMA8451 #0 detected
+I (568) sensors: MMA8451 #1 detected
+I (578) sensors: LDC1612 detected
+I (578) SDP800: product 0x03020201, serial 0x000000008A9CC6E6 - confirmed SDP810-125Pa
+I (598) sensors: SDP800 detected
+I (598) battery_gauge: Calibration initialized successfully
+I (638) sdspi_transaction: cmd=5, R1 response: command not supported
+I (788) logger: SD mounted: SC16G 15194 MB
+W (828) logger: Recording paths for this timestamp exist; using suffix _004
+I (1168) logger: Sidecar written: /sdcard/biometric_1970-01-01_00-00-00_004.json
+I (1168) logger: EDF recording started: /sdcard/biometric_1970-01-01_00-00-00_004.edf
+I (1178) main: All tasks started
+I (1178) main_task: Returned from app_main()
+I (101238) logger: EDF: 10 records (1.7 min)
+I (201238) logger: EDF: 20 records (3.3 min)
+I (301238) logger: EDF: 30 records (5.0 min)
+I (401238) logger: EDF: 40 records (6.7 min)
+I (501238) logger: EDF: 50 records (8.3 min)
+I (601238) logger: EDF: 60 records (10.0 min)
+I (701248) logger: EDF: 70 records (11.7 min)
+I (801248) logger: EDF: 80 records (13.3 min)
+I (901248) logger: EDF: 90 records (15.0 min)
+I (1001238) logger: EDF: 100 records (16.7 min)
+I (1101238) logger: EDF: 110 records (18.3 min)
+I (1200378) display: Display asleep
+I (1201238) logger: EDF: 120 records (20.0 min)
+I (1301238) logger: EDF: 130 records (21.7 min)
+I (1401238) logger: EDF: 140 records (23.3 min)

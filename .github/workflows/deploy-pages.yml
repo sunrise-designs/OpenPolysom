@@ -45,7 +45,7 @@ jobs:
       - name: Cache Quartz clone and plugins
         uses: actions/cache@v4
         with:
-          path: .quartz
+          path: build/quartz
           key: quartz-${{ runner.os }}-${{ hashFiles('web/build.sh', 'web/quartz.config.yaml') }}
 
       - name: Build Quartz site
@@ -55,7 +55,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: public
+          path: build/site
 
   deploy:
     needs: build

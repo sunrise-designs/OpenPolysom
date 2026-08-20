@@ -10,9 +10,26 @@ summary: How patient-identifying data is kept out of the public repo, scrubbed f
 
 ProtoSom is a **public** repo. Patient-identifying data must never be committed, and must be kept **separable** so it can be scrubbed from anything shared.
 
-## Current state (good)
+## Current state
 
-`.gitignore` already excludes `patient.cfg`, `*.edf`, and specific PII-bearing filenames (`src_python/patient.json`, `biometric_filtered_meta.json`, `biometric_meta.json`, `src_python/netlify.json`) — not a blanket `*.json`/`*.csv` glob. **No real PII is, or ever was, committed.**
+Two mechanisms keep generated PII out of the tree:
+
+1. **Pipeline outputs are written outside the repo tree.** `read_log.py` writes the
+   `.zarr` working store and its `_meta.json` / `events.json` sidecars into
+   **`data_scratchpad/`** (`export_zarr.DEFAULT_OUT_DIR`, overridable with `--out-dir`),
+   which is gitignored whole. `serve.py`, `deploy.py` and `serve_metrics.py` resolve
+   recordings from there via `export_zarr.find_meta`. A tool that needs a new output must
+   take an `out_dir` rather than defaulting to the cwd — the repo root is where
+   [`how to use.md`](../../how%20to%20use.md) tells the user to run everything from.
+2. **The gitignore rules match shapes, not exact filenames.** `/data_scratchpad/`,
+   `*_meta.json` and `/events.json`, alongside the existing `patient.cfg`,
+   `src_python/patient.json` and `src_python/netlify.json` exclusions. **Never narrow
+   these back to literal filenames** — an exact-name rule does not cover a *timestamped*
+   `biometric_<date>_meta.json`.
+
+Note that `*.edf` is **not** gitignored and the recordings under `examples/` are tracked
+deliberately. That is acceptable only because the device's EDF+ header is PII-free by
+construction (below) — it is not a general licence to commit recordings.
 
 ## Where PII appears in the design
 
@@ -53,6 +70,7 @@ device and the one machine watching it, rather than transiting a home LAN.
 
 1. **Keep PII in a separable block** — a single `patient { … }` object in `meta.json`, never inlined into signal arrays or the [working store](../knowledge/data-formats.md). This lets the working store and exports be shared without it.
 2. **The clinical export scrubs it.** The Zarr → EDF/BDF [clinical export](../knowledge/data-formats.md) blanks the EDF+ header patient name/DOB to produce a de-identified, shareable `clinical.edf`. Since the device no longer writes PII into the header, the export's job is to avoid *introducing* PII from `meta.json` — not to remove PII inherited from the capture. Keep the scrubbing anyway: it costs nothing and guards against a future producer that does populate the header.
-3. **Never relax the gitignore** for `patient.cfg`, `src_python/patient.json`, or any `meta.json` that contains PII. `src_python/patient.example.json` is deliberately a different filename so it's untouched by that rule and commits normally — it must never hold anything but mock data.
+3. **Pipeline outputs stay in `data_scratchpad/`.** Anything a processing run generates — the working store, `meta.json`, `events.json`, the HTML/PDF reports — is written there and never into the repo tree. A tool that needs a new output must take an `out_dir`, not default to the cwd.
+4. **Never relax the gitignore** for `patient.cfg`, `src_python/patient.json`, `/data_scratchpad/`, `*_meta.json`, or any `meta.json` that contains PII. `src_python/patient.example.json` is deliberately a different filename so it's untouched by those rules and commits normally — it must never hold anything but mock data.
 
 See [decisions](../state/decisions.md) — settled item S8 (export scrubbing) and open fork O9 (the de-identification policy still to finalise with Leon/Dmitry).
