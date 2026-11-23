@@ -4,6 +4,7 @@ import math
 import shutil
 import socket
 import subprocess
+import sys
 import webbrowser
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -221,8 +222,11 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
     for name, data in arrays.items():
         # Single chunk per array: zarr 3.x has async overhead per chunk, so
         # writing the whole array as one chunk keeps write time O(1) in calls.
-        arr = root.create_array(name, shape=data.shape or (0,), dtype=data.dtype,
-                                chunks=data.shape or (1,))
+        # Empty arrays (e.g. no HRV) have shape (0,), which is truthy, so clamp
+        # each chunk dimension to >= 1 — zarr rejects zero-sized chunks.
+        shape = data.shape or (0,)
+        arr = root.create_array(name, shape=shape, dtype=data.dtype,
+                                chunks=tuple(max(1, s) for s in shape))
         if data.size > 0:
             arr[...] = data
 
@@ -321,6 +325,16 @@ def serve_and_open(output_dir, meta_filename, src_web_dir=None):
 
     index_src    = src_web_dir / 'index.html'
     chart_js_src = src_web_dir / 'dist' / 'chart.js'
+
+    if not chart_js_src.is_file():
+        print(f"Error: web viewer bundle not found: {chart_js_src}\n"
+              f"Build it once with:\n"
+              f"    cd {src_web_dir}\n"
+              f"    npm install\n"
+              f"    npm run build\n"
+              f"(or re-run src_python/install.bat / install.sh, which does this for you).",
+              file=sys.stderr)
+        sys.exit(1)
 
     class DualDirHandler(SimpleHTTPRequestHandler):
         def translate_path(self, path):

@@ -113,7 +113,9 @@ a live stream from the device:
 - The bundle `src_web/dist/chart.js` is **built locally, not committed** — `.gitignore:18`
   excludes `src_web/dist/`. (Earlier notes here and in [packaging](../planning/packaging.md)
   said it was committed; it is not, so `npm run build` is a prerequisite for
-  `deploy.py` and for `export_zarr.py`'s dev server, both of which read it off disk.)
+  `deploy.py` and for `export_zarr.py`'s dev server, both of which read it off disk.
+  `src_python/install.bat` / `install.sh` install Node.js if missing and run the build;
+  the dev server exits with a build hint if the bundle is absent.)
   The viewer is **browser-direct** at PoC scale — it loads the whole (tiny) recording.
 
 ### Hosting — a multi-study Netlify site, incrementally deployed
