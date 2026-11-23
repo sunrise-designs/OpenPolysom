@@ -78,8 +78,8 @@ def main():
     raw = ([float(v) for v in a0x], [float(v) for v in a0y], [float(v) for v in a0z])
     raw1 = ([float(v) for v in a1x], [float(v) for v in a1y], [float(v) for v in a1z])
 
-    # Respiratory (Thoracic/Abdomen/Flow) — present on the ESP32-C6 11-channel
-    # device, absent on wrist-only logs.
+    # Respiratory (Thoracic/Abdomen/Flow) — present on the ESP32-C6 device,
+    # absent on wrist-only logs.
     # No DSP yet (RIP baseline removal / airflow filtering is future work, see
     # wiki/knowledge/signal-processing.md); pass the physical-unit trace
     # straight through so the viewer can at least display it.
@@ -90,6 +90,20 @@ def main():
             [float(v) for v in trimmed('Abdomen')],
             [float(v) for v in trimmed('Flow')],
         )
+
+    # Temperature (TMP117 ×2, degC, 1 Hz) — absent from recordings made before
+    # the sensors were fitted. Display only; dropouts are already NaN
+    # (edf_reader.NO_READING_DIGITAL). Each channel keeps its own name, and both
+    # share one 1 Hz time axis since the firmware samples them on the same tick.
+    temperature = {
+        name: [float(v) for v in trimmed(label)]
+        for name, label in (('temp0', 'Temp0'), ('temp1', 'Temp1'))
+        if label in recording.signals
+    }
+    temp_t = None
+    if temperature:
+        fs_temp = recording.rate('Temp0' if 'Temp0' in recording.signals else 'Temp1')
+        temp_t = [i / fs_temp for i in range(max(len(v) for v in temperature.values()))]
 
     if args.count:
         # 0 means "off" on the CLI; the DSP spells that None, since 0 as a
@@ -141,6 +155,8 @@ def main():
                 leg_stats={'accel0': result0, 'accel1': result1},
                 accel1_raw=raw1,
                 respiratory_raw=respiratory,
+                temperature=temperature or None,
+                temp_t=temp_t,
             )
             print(f"To view: python src_python/serve.py --meta {meta_path}")
         else:

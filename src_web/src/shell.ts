@@ -202,7 +202,7 @@ function kpiCards(meta: Meta, narrative: Narrative): string {
  * chart.ts kept those two panes (i.e. a second accelerometer was scored). Looked
  * up by name (`channelIndex`), not a fixed trailing position — a recording can
  * carry both this and the respiratory montage below at once (e.g. the ESP32-C6
- * 11-channel device), and either group being present shifts everything after it
+ * 13-channel device), and either group being present shifts everything after it
  * once `channels()` filters out whichever optional panes are absent.
  */
 function movementDetailRows(src: SignalSource): string {
@@ -246,6 +246,23 @@ function respiratoryRow(src: SignalSource): string {
     </div>`;
 }
 
+/**
+ * Temperature row: one switch for both TMP117 panes, present only when the
+ * recording carries them. Looked up by name via `channelIndex`, same reasoning
+ * as `movementDetailRows`. Absent entirely (rather than an "awaiting device"
+ * row) on older recordings, since those predate the sensors rather than lack them.
+ */
+function temperatureRow(src: SignalSource): string {
+  const idxs = [channelIndex(src, 'Temp0 · °C'), channelIndex(src, 'Temp1 · °C')].filter((i) => i >= 0);
+  if (idxs.length === 0) return '';
+  return `
+    <div class="mont" data-idx="${idxs.join(',')}">
+      <div class="m-ico" style="background:rgba(255,143,107,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M10 4a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z" stroke="var(--temp)" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="17" r="1.6" fill="var(--temp)"/></svg></div>
+      <div><div class="m-name">Temperature</div><div class="m-sub">TMP117 ×2 · °C · live</div></div>
+      <div class="m-right"><div class="toggle on"></div></div>
+    </div>`;
+}
+
 export function montage(src: SignalSource): string {
   return `
   <div class="section-title">Montage <span class="st-line"></span></div>
@@ -267,6 +284,7 @@ export function montage(src: SignalSource): string {
     </div>
     ${movementDetailRows(src)}
     ${respiratoryRow(src)}
+    ${temperatureRow(src)}
     <div class="mont dev">
       <div class="m-ico" style="background:rgba(240,120,154,.10)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 14h6l2-6 3 12 2-8 2 4h7" stroke="var(--cardiac)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div><div class="m-name">ECG / HR</div><div class="m-sub">Awaiting device</div></div>

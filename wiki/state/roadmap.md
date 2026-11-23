@@ -2,7 +2,7 @@
 title: Build Roadmap
 domain: state
 status: living
-updated: 2026-08-09
+updated: 2026-11-23
 summary: The ordered build plan from the current repo state to the target three-language pipeline, with dependencies, exit criteria, and the open forks that gate it.
 ---
 
@@ -21,7 +21,7 @@ This page is **living** — re-order and tick items as the build moves.
 
 - **C++ ingest** writes EDF+ at the device only:
   [`logger.cpp`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)
-  (ESP32-C6, 11-channel digital samples) via edflib. There is **no
+  (ESP32-C6, 13-channel digital samples) via edflib. There is **no
   EDF+ → raw-Zarr** ingest step yet — Zarr is currently produced by Python.
 - **Python processing** ([`src_python/signal_processing.py`](../../src_python/signal_processing.py))
   reads the **EDF+ raw anchor directly** via
@@ -39,7 +39,7 @@ This page is **living** — re-order and tick items as the build moves.
 - **The TS web app** ([`src_web/src/`](../../src_web/src/)) reads the Zarr +
   sidecar and charts it via **zarrita** — stage 3's migration has landed — and
   loads the whole recording in-browser. It also has a second, **RT mode** that
-  plots the eleven raw EDF+ channels live from the device's Wi-Fi WebSocket
+  plots the thirteen raw EDF+ channels live from the device's Wi-Fi WebSocket
   (`components/rt_stream`), which is additive to the pipeline rather than part
   of it: nothing is persisted and nothing derived is computed. See
   [decisions § S12](../state/decisions.md). No slicing server, no audio pane, no
@@ -105,7 +105,7 @@ chunked along time, plus extracted EDF+ header metadata into `meta.json`.
   `logger.cpp` writes **digital** (`edfwrite_digital_samples`), so ingested arrays
   are `storage=digital`; see [data formats](../knowledge/data-formats.md).
 - Write Zarr v2 with the chosen C++ lib (stage 0), Blosc(zstd, shuffle), one
-  array per channel (Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z, Accel1X/Y/Z, RR),
+  array per channel (Thoracic, Abdomen, Flow, ECG, Accel0X/Y/Z, Accel1X/Y/Z, RR, Temp0/Temp1),
   each chunked along time — **not** the
   single-chunk shortcut [`export_zarr.py`](../../src_python/export_zarr.py) uses.
 - **Round-trip tests** (this is the IEC-62304 entry point): EDF+ → raw Zarr →

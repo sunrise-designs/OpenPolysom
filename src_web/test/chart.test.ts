@@ -34,7 +34,7 @@ const dualStore: ZarrData = {
   accel_combined_mag: f32(10, 2),
 };
 
-/** The ESP32-C6 11-channel case: dual accelerometer AND Thoracic/Abdomen/Flow both present at once. */
+/** The ESP32-C6 case: dual accelerometer AND Thoracic/Abdomen/Flow both present at once. */
 const fullStore: ZarrData = {
   ...dualStore,
   thoracic: f32(10, 3),
@@ -142,7 +142,7 @@ describe('chart channel filtering (Respiratory: Thoracic/Abdomen/Flow)', () => {
   it(
     'resolves every optional group to its real rendered index by name, not a fixed trailing ' +
       'position — the bug: Accel1/Combined and Thoracic/Abdomen/Flow can both be present at ' +
-      'once (e.g. the ESP32-C6 11-channel device), so neither group is reliably "the last N" ' +
+      'once (e.g. the ESP32-C6 device), so neither group is reliably "the last N" ' +
       'channels, which is exactly why the Respiratory montage switch never turned on before',
     () => {
       const idx = (name: string): number => channelIndex(fullZarr, name);
@@ -181,8 +181,9 @@ describe('chart channel binding in RT (live) mode', () => {
       'Accel X', 'Accel Y', 'Accel Z',
       'Accel1 X (leg 2)', 'Accel1 Y (leg 2)', 'Accel1 Z (leg 2)',
       'Thoracic', 'Abdomen', 'Flow',
+      'Temp0 · °C', 'Temp1 · °C',
     ]);
-    expect(channelCount(liveSource())).toBe(11);
+    expect(channelCount(liveSource())).toBe(13);
   });
 
   it('shows no derived panes — vector magnitude, HRV and the bilateral score need Python processing', () => {
@@ -233,7 +234,7 @@ describe('chart channel binding in RT (live) mode', () => {
     // built from `hello` before any frame at all. An empty pane is correct; a
     // missing one would appear later and reshuffle every index after it.
     const store = new RtStore(EDF_CHANNELS);
-    expect(channelCount(store.source())).toBe(11);
+    expect(channelCount(store.source())).toBe(13);
   });
 
   it('follows the newest samples with a window that ends at the live edge', () => {

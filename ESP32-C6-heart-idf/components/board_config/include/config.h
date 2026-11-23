@@ -19,6 +19,11 @@
 // ── SDP800 differential pressure sensor ──────────────────────────────────────
 #define SDP800_ADDR   0x25
 
+// ── TMP117 temperature sensors (×2) ───────────────────────────────────────────
+// Address set by each sensor's ADD0 strap: GND → 0x48, V+ → 0x49.
+#define TMP117_ADDR_0 0x48
+#define TMP117_ADDR_1 0x49
+
 // ── DS3231 real-time clock ────────────────────────────────────────────────────
 #define DS3231_ADDR           0x68
 #define RTC_SYNC_INTERVAL_MS  600000

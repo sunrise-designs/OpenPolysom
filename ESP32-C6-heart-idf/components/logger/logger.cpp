@@ -183,7 +183,9 @@ static void log_close_file(void)
 #define SIG_A1Y      8
 #define SIG_A1Z      9
 #define SIG_RR      10
-#define NUM_SIGNALS 11
+#define SIG_TEMP0   11
+#define SIG_TEMP1   12
+#define NUM_SIGNALS 13
 
 // Raw-LDC1612-count-to-digital-sample divisors for the Thoracic/Abdomen RIP
 // belts, chosen per-channel so each channel's breathing swing uses more of
@@ -211,9 +213,11 @@ static int ecg_buf[SAMPLES_100HZ];
 static int a0x_buf[SAMPLES_50HZ], a0y_buf[SAMPLES_50HZ], a0z_buf[SAMPLES_50HZ];
 static int a1x_buf[SAMPLES_50HZ], a1y_buf[SAMPLES_50HZ], a1z_buf[SAMPLES_50HZ];
 static int rr_buf[SAMPLES_RR_HZ];
+static int temp0_buf[SAMPLES_TEMP_HZ], temp1_buf[SAMPLES_TEMP_HZ];
 
 static int sample_idx = 0;
 static int rr_idx     = 0;
+static int temp_idx   = 0;
 static int ecg_idx    = 0;
 
 // ── LDC baseline ──────────────────────────────────────────────────────────────
@@ -291,7 +295,7 @@ static void baseline_restore_from_rtc(void)
              (unsigned long)ldc1_baseline, BASELINE_DELAY_S);
 }
 // ── Digital sample conversions (declared in logger.h) ────────────────────────
-// The three channels whose EDF+ integer is not simply what the sensor reported.
+// The channels whose EDF+ integer is not simply what the sensor reported.
 // logger_record() writes exactly these values, and components/rt_stream sends
 // exactly these values, so a streamed sample is the recorded sample.
 static inline int clamp16(int32_t v)
@@ -314,6 +318,17 @@ int16_t logger_abdomen_digital(uint32_t ldc1)
 int16_t logger_flow_digital(float pressure_mbar)
 {
     return (int16_t)clamp16((int32_t)(pressure_mbar * 32767.0f / 2.0f));
+}
+
+int16_t logger_temp_digital(float temp_c)
+{
+    if (isnan(temp_c)) return (int16_t)TEMP_DIGITAL_NO_READING;
+    int32_t d = (int32_t)lroundf(temp_c * 128.0f);
+    // Clamp into the declared range, stopping one step short of the minimum,
+    // so a real (if absurd) reading can never collide with the no-reading marker.
+    if (d > TEMP_DIGITAL_MAX)                d = TEMP_DIGITAL_MAX;
+    if (d < TEMP_DIGITAL_NO_READING + 1)     d = TEMP_DIGITAL_NO_READING + 1;
+    return (int16_t)d;
 }
 
 bool     logger_is_active(void)         { return logging_active; }
@@ -395,6 +410,8 @@ static void write_json_sidecar(const struct tm *start_t, const struct tm *end_t)
         {"MMA8451 accel1",             g_mma1_present,      50.0},
         {"LDC1612 (thoracic/abdomen)", g_ldc_present,       50.0},
         {"SDP800 flow",                g_sdp_present,       50.0},
+        {"TMP117 temp0 (0x48)",        g_tmp0_present,       1.0},
+        {"TMP117 temp1 (0x49)",        g_tmp1_present,       1.0},
         {"AD8232 ECG",                 true,               100.0},
         {"DS3231 RTC",                 g_rtc_present,        0.0},
     };
@@ -506,6 +523,9 @@ static bool open_edf(void)
         {"Accel1Y", "MMA8451 ch1",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
         {"Accel1Z", "MMA8451 ch1",  "mg",    50,  8191, -8192, 2000.0,-2000.0},
         {"RR",      "N/A",         "ms",   2.5,  2000,     0, 2000.0, 0.0},
+        // ±25600 ↔ ±200 degC: exactly 1/128 degC per step, see logger.h.
+        {"Temp0",   "TMP117 0x48", "degC",   1, 25600,-25600,  200.0,-200.0},
+        {"Temp1",   "TMP117 0x49", "degC",   1, 25600,-25600,  200.0,-200.0},
     };
 
     for (int i = 0; i < NUM_SIGNALS; i++) {
@@ -531,6 +551,7 @@ static bool open_edf(void)
 
     sample_idx    = 0;
     rr_idx        = 0;
+    temp_idx      = 0;
     ecg_idx       = 0;
     record_count  = 0;
     write_failed  = false;
@@ -566,6 +587,7 @@ static bool write_record_locked(void)
         a0x_buf, a0y_buf, a0z_buf,
         a1x_buf, a1y_buf, a1z_buf,
         rr_buf,
+        temp0_buf, temp1_buf,
     };
 
     for (int i = 0; i < NUM_SIGNALS; i++) {
@@ -595,7 +617,8 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
                    int16_t  a1x, int16_t  a1y, int16_t  a1z,
                    uint32_t ldc0, uint32_t ldc1,
                    float    pressure_mbar,
-                   uint16_t rr_ms)
+                   uint16_t rr_ms,
+                   float    temp0_c, float temp1_c)
 {
     if (edf_mutex) xSemaphoreTake(edf_mutex, portMAX_DELAY);
     if (!logging_active || edf_handle < 0) {
@@ -641,6 +664,13 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
     if (sample_idx % 20 == 19 && rr_idx < SAMPLES_RR_HZ)
         rr_buf[rr_idx++] = (int)rr_ms;
 
+    // Captured every 50th 50 Hz tick = 1 s = 1 Hz, matching sigs[SIG_TEMP0/1].rate.
+    if (sample_idx % 50 == 49 && temp_idx < SAMPLES_TEMP_HZ) {
+        temp0_buf[temp_idx] = logger_temp_digital(temp0_c);
+        temp1_buf[temp_idx] = logger_temp_digital(temp1_c);
+        temp_idx++;
+    }
+
     sample_idx++;
 
     if (sample_idx >= SAMPLES_50HZ) {
@@ -648,6 +678,7 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
 
         sample_idx = 0;
         rr_idx     = 0;
+        temp_idx   = 0;
         ecg_idx    = 0;
 
         if (!ok) {

@@ -23,6 +23,8 @@ export const EDF_CHANNELS: readonly RtChannelDef[] = [
   { name: 'accel1_y', edf_label: 'Accel1Y', transducer: 'MMA8451 ch1', unit: 'mg', sample_rate_hz: 50, digital_min: -8192, digital_max: 8191, physical_min: -2000, physical_max: 2000 },
   { name: 'accel1_z', edf_label: 'Accel1Z', transducer: 'MMA8451 ch1', unit: 'mg', sample_rate_hz: 50, digital_min: -8192, digital_max: 8191, physical_min: -2000, physical_max: 2000 },
   { name: 'rr', edf_label: 'RR', transducer: 'N/A', unit: 'ms', sample_rate_hz: 2.5, digital_min: 0, digital_max: 2000, physical_min: 0, physical_max: 2000 },
+  { name: 'temp0', edf_label: 'Temp0', transducer: 'TMP117 0x48', unit: 'degC', sample_rate_hz: 1, digital_min: -25600, digital_max: 25600, physical_min: -200, physical_max: 200, no_reading_digital: -25600 },
+  { name: 'temp1', edf_label: 'Temp1', transducer: 'TMP117 0x49', unit: 'degC', sample_rate_hz: 1, digital_min: -25600, digital_max: 25600, physical_min: -200, physical_max: 200, no_reading_digital: -25600 },
 ];
 
 export const helloFixture = (over: Partial<RtHello> = {}): RtHello => ({

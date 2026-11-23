@@ -55,7 +55,7 @@ async function readOptionalArray(root: zarr.Location<zarr.Readable>, name: strin
  */
 export async function loadZarr(store: zarr.Readable): Promise<ZarrData> {
   const root = zarr.root(store);
-  const [t, accelX, accelY, accelZ, accelMag, accel1Mag, accelCombinedMag, thoracic, abdomen, flow, rr, rrT, hrvT, hrvRmssd] = await Promise.all([
+  const [t, accelX, accelY, accelZ, accelMag, accel1Mag, accelCombinedMag, thoracic, abdomen, flow, temp0, temp1, tempT, rr, rrT, hrvT, hrvRmssd] = await Promise.all([
     readArray(root, 't'),
     readArray(root, 'accel_x'),
     readArray(root, 'accel_y'),
@@ -66,6 +66,9 @@ export async function loadZarr(store: zarr.Readable): Promise<ZarrData> {
     readOptionalArray(root, 'thoracic'),
     readOptionalArray(root, 'abdomen'),
     readOptionalArray(root, 'flow'),
+    readOptionalArray(root, 'temp0'),
+    readOptionalArray(root, 'temp1'),
+    readOptionalArray(root, 'temp_t'),
     readArray(root, 'rr'),
     readArray(root, 'rr_t'),
     readOptionalArray(root, 'hrv_t'),
@@ -82,6 +85,9 @@ export async function loadZarr(store: zarr.Readable): Promise<ZarrData> {
     thoracic: thoracic as Float32Array,
     abdomen: abdomen as Float32Array,
     flow: flow as Float32Array,
+    temp0: temp0 as Float32Array,
+    temp1: temp1 as Float32Array,
+    temp_t: tempT as Float64Array,
     rr: rr as Float32Array,
     rr_t: rrT as Float64Array,
     hrv_t: hrvT as Float64Array,
@@ -122,5 +128,9 @@ export function toSignalSource(z: ZarrData): SignalSource {
     flow: { x: z.t, y: z.flow },
     accel1_mag: { x: z.t, y: z.accel1_mag },
     accel_combined_mag: { x: z.t, y: z.accel_combined_mag },
+    // 1 Hz, on their own `temp_t` axis (like RR on `rr_t`). Absent from
+    // recordings made before the TMP117s were fitted, so not declared.
+    temp0: { x: z.temp_t, y: z.temp0 },
+    temp1: { x: z.temp_t, y: z.temp1 },
   };
 }

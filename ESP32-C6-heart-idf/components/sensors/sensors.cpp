@@ -2,6 +2,7 @@
 #include "MMA8451.h"
 #include "LDC1612.h"
 #include "SDP800.h"
+#include "TMP117.h"
 #include "DS3231.h"
 #include "config.h"
 #include "driver/i2c_master.h"
@@ -9,6 +10,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <math.h>
 #include <stdlib.h>
 #include <time.h>
 #include <sys/time.h>
@@ -21,16 +23,26 @@ volatile int16_t  g_accel1_x, g_accel1_y, g_accel1_z;
 volatile uint32_t g_ldc0, g_ldc1;
 volatile float    g_pressure_mbar;
 volatile uint16_t g_ecg_raw;
+volatile float    g_temp0_c = NAN, g_temp1_c = NAN;
 volatile bool     g_rtc_present;
 volatile bool     g_mma0_present;
 volatile bool     g_mma1_present;
 volatile bool     g_ldc_present;
 volatile bool     g_sdp_present;
+volatile bool     g_tmp0_present;
+volatile bool     g_tmp1_present;
 
 // ── I2C handles ───────────────────────────────────────────────────────────────
 static i2c_master_bus_handle_t   s_i2c_bus;
 static i2c_master_dev_handle_t   s_mma0, s_mma1, s_ldc, s_sdp, s_ds3231;
 static adc_oneshot_unit_handle_t s_adc;
+static tmp117_t                  s_tmp0, s_tmp1;
+
+// sensors_read() runs at SENSOR_RATE_HZ, but a TMP117 only produces a new
+// result once per second (see TMP117_CONFIG_VALUE), so polling it every tick
+// would just re-read the same value — 100 extra I2C transactions a second on a
+// bus the 50 Hz sensors already keep busy. Read once per second instead.
+#define TEMP_READ_EVERY_N_TICKS SENSOR_RATE_HZ
 
 adc_oneshot_unit_handle_t sensors_get_adc_unit(void)
 {
@@ -94,6 +106,27 @@ bool sensors_init(i2c_master_bus_handle_t bus)
     }
 
 
+    // Both TMP117s share one driver; each gets its own tmp117_t so their
+    // failure logging stays independent (see TMP117.h).
+    g_tmp0_present = (add_dev(TMP117_ADDR_0, &s_tmp0.dev) == ESP_OK) &&
+                     tmp117_init(&s_tmp0, s_tmp0.dev, TMP117_ADDR_0);
+    if (!g_tmp0_present) {
+        ESP_LOGW(TAG, "TMP117 #0 not found on 0x%02X", TMP117_ADDR_0);
+        ok = false;
+    }
+    else {
+        ESP_LOGI(TAG, "TMP117 #0 detected");
+    }
+    g_tmp1_present = (add_dev(TMP117_ADDR_1, &s_tmp1.dev) == ESP_OK) &&
+                     tmp117_init(&s_tmp1, s_tmp1.dev, TMP117_ADDR_1);
+    if (!g_tmp1_present) {
+        ESP_LOGW(TAG, "TMP117 #1 not found on 0x%02X", TMP117_ADDR_1);
+        ok = false;
+    }
+    else {
+        ESP_LOGI(TAG, "TMP117 #1 detected");
+    }
+
     // The RTC is optional (not fitted on every board), so its absence does
     // not fail sensors_init() the way the other sensors do.
     g_rtc_present = (add_dev(DS3231_ADDR, &s_ds3231) == ESP_OK);
@@ -134,6 +167,14 @@ void sensors_read(void)
     // when init failed, rather than polling a sensor that was never told to
     // start continuous measurement.
     g_pressure_mbar = g_sdp_present ? sdp800_read(s_sdp) : 0.0f;
+
+    static int s_temp_tick = TEMP_READ_EVERY_N_TICKS - 1;  // read on the first call
+    if (++s_temp_tick >= TEMP_READ_EVERY_N_TICKS) {
+        s_temp_tick = 0;
+        float c = NAN;
+        g_temp0_c = (g_tmp0_present && tmp117_read(&s_tmp0, &c)) ? c : NAN;
+        g_temp1_c = (g_tmp1_present && tmp117_read(&s_tmp1, &c)) ? c : NAN;
+    }
 }
 
 void sensors_read_ecg(void)

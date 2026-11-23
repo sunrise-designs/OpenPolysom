@@ -47,7 +47,8 @@ const GAP_PCT = 1.0;
 //    channels — `accel_mag`/`hrv_rmssd`/`accel1_mag`/`accel_combined_mag` are
 //    Python's scored outputs, and `accel1_mag`/`accel_combined_mag` only exist
 //    when a second accelerometer was scored (wiki/knowledge/signal-processing.md).
-//    `thoracic`/`abdomen`/`flow` are absent from wrist-only logs.
+//    `thoracic`/`abdomen`/`flow` are absent from wrist-only logs, and
+//    `temp0`/`temp1` from recordings made before the TMP117s were fitted.
 //  - **RT** (`rt_store.ts`) supplies the raw EDF+ channels the device streams —
 //    including `ecg` and the `accel1_*` axes, which no derived store carries —
 //    and none of the derived ones, which need Python processing to exist.
@@ -78,6 +79,10 @@ const CHANNELS: readonly ChannelSrc[] = [
   { name: 'Flow', color: COLORS.respir, key: 'flow' },
   { name: 'Accel1 mag (leg 2)', color: COLORS.movement2, key: 'accel1_mag', overlay: true },
   { name: 'Combined LM (bilateral)', color: COLORS.evtPlm, key: 'accel_combined_mag', overlay: true },
+  // Last, so their presence never shifts the index of any pane above — in
+  // either mode — and the montage's fixed batch `data-idx` values stay valid.
+  { name: 'Temp0 · °C', color: COLORS.temp, key: 'temp0' },
+  { name: 'Temp1 · °C', color: COLORS.temp2, key: 'temp1' },
 ];
 
 const channels = (src: SignalSource): readonly ChannelDef[] =>

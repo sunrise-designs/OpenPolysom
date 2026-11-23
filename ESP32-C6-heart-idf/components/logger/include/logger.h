@@ -10,6 +10,7 @@ extern "C" {
 #define SAMPLES_50HZ      500
 #define SAMPLES_RR_HZ      25  // RR channel rate: 2.5 Hz x 10 s record
 #define SAMPLES_100HZ    1000  // ECG channel rate: 100 Hz x 10 s record
+#define SAMPLES_TEMP_HZ    10  // Temp0/Temp1 channel rate: 1 Hz x 10 s record
 
 // Capture ESP_LOG output to a buffered SD file. Call once, first thing in
 // app_main, before any other init, so early boot logs aren't missed.
@@ -28,23 +29,43 @@ void logger_record(int16_t  a0x, int16_t  a0y, int16_t  a0z,
                    int16_t  a1x, int16_t  a1y, int16_t  a1z,
                    uint32_t ldc0, uint32_t ldc1,
                    float    pressure_mbar,
-                   uint16_t rr_ms);
+                   uint16_t rr_ms,
+                   float    temp0_c, float temp1_c);
 
 // Append one 100 Hz ECG sample (AD8232, ADC channel 0, raw counts). Call
 // every 10 ms tick, independently of logger_record()'s 50 Hz cadence.
 void logger_record_ecg(uint16_t ecg_raw);
 
 // ── The digital sample conversions, shared with components/rt_stream ─────────
-// Three channels are not written to the EDF+ as the sensor reported them:
+// Several channels are not written to the EDF+ as the sensor reported them:
 // thoracic/abdomen are baseline-subtracted and divided by their per-channel
-// constants, and flow is scaled from mbar. logger_record() calls these, and the
-// real-time stream calls them too, so a streamed data point is the *same
+// constants, flow is scaled from mbar, and the temperatures are quantised from
+// degrees C (with NAN mapped to TEMP_DIGITAL_NO_READING). logger_record() calls
+// these, and the real-time stream calls them too, so a streamed data point is the *same
 // integer* that reaches the card rather than a second derivation of it that
 // could drift out of step. Pure functions of their input plus the current
 // baseline; no side effects, safe to call from anywhere.
 int16_t logger_thoracic_digital(uint32_t ldc0);
 int16_t logger_abdomen_digital(uint32_t ldc1);
 int16_t logger_flow_digital(float pressure_mbar);
+int16_t logger_temp_digital(float temp_c);
+
+// Temp0/Temp1 digital encoding. One digital step is exactly 1/128 degC — the
+// TMP117's own resolution — so the recorded integer is the sensor's register
+// value: the declared range ±25600 digital ↔ ±200.0 degC keeps the EDF+ affine
+// map exact (gain 400/51200 = 1/128) with plain integer header fields, and
+// covers the TMP117's -55..150 degC operating range.
+//
+// A missing reading (sensor absent, read failed) is written as the declared
+// digital minimum, -25600 = -200 degC — far below the TMP117's -55 degC floor,
+// so no real reading can produce it; real readings clamp one step above it.
+// 0 cannot be the marker: 0 degC is a real temperature. (An out-of-range value
+// such as the TMP117's own -32768 would not survive either: edflib clamps every
+// sample into the declared digital range.) Readers turn the marker back into a
+// gap: src_python/edf_reader.py keys it off the EDF label, and the live stream
+// declares it per channel as `no_reading_digital` in `hello`.
+#define TEMP_DIGITAL_MAX         25600
+#define TEMP_DIGITAL_NO_READING (-TEMP_DIGITAL_MAX)
 
 // Format the SD card as FAT32. Closes any open EDF file first.
 // Mounts the card if not already mounted. Does NOT reopen the EDF file.

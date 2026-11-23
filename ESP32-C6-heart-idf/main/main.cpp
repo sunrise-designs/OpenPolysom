@@ -142,7 +142,8 @@ static void sensor_task(void *arg)
                 g_accel1_x, g_accel1_y, g_accel1_z,
                 g_ldc0, g_ldc1,
                 g_pressure_mbar,
-                0);
+                0,
+                g_temp0_c, g_temp1_c);
 
             // Live stream tap. No-op unless streaming was enabled for this
             // device, and never blocks: a frame it cannot queue is dropped
@@ -152,7 +153,8 @@ static void sensor_task(void *arg)
                 g_accel1_x, g_accel1_y, g_accel1_z,
                 g_ldc0, g_ldc1,
                 g_pressure_mbar,
-                0);
+                0,
+                g_temp0_c, g_temp1_c);
 
             // 5 Hz: display
             if (++tick_disp >= 10) {

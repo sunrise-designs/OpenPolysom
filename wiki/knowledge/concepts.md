@@ -2,7 +2,7 @@
 title: PSG & Pipeline Concepts (Glossary)
 domain: knowledge
 status: living
-updated: 2026-08-20
+updated: 2026-11-23
 summary: A concise glossary of the polysomnography, sleep-disorder, signal and data-tech terms used across the ProtoSom wiki and codebase.
 ---
 
@@ -124,6 +124,13 @@ surface from the captured signals. Plain-language sketches per `README.md:51-60`
   **baseline-removed** (zero-centred) axes: the three accel axes collapsed into one
   activity signal for limb-movement detection. (The `−128` centring seen in older
   notes belonged to the retired uint8 byte-log format, not to the current mg scale.)
+
+### Temperature
+
+- **Temperature (Temp0 / Temp1)** — two TI **TMP117** digital sensors (I2C `0x48`/`0x49`)
+  recorded in °C at 1 Hz, with 1/128 °C resolution. They are logged and displayed only; no
+  processing uses them yet. A missing reading is a gap (NaN), never a fake value — see
+  [hardware § Temperature](hardware.md).
 
 ### Acoustic (snoring)
 

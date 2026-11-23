@@ -2,8 +2,8 @@
 title: Hardware & C++ Ingest
 domain: knowledge
 status: living
-updated: 2026-08-20
-summary: The acquisition device (the ESP32-C6 unit), its sensors, the exact 11-channel EDF+ layout, the I2C data paths that feed the C++ ingest side, and the opt-in Wi-Fi rt_stream component that serves those same samples live.
+updated: 2026-11-23
+summary: The acquisition device (the ESP32-C6 unit), its sensors, the exact 13-channel EDF+ layout, the I2C data paths that feed the C++ ingest side, and the opt-in Wi-Fi rt_stream component that serves those same samples live.
 ---
 
 # Hardware & C++ Ingest
@@ -16,12 +16,12 @@ then converts it into the **raw Zarr** of the **working store**. Everything on t
 C++ ingest side of the [three-language boundary](../state/decisions.md) (C++ ingests, Python
 processes, the TS web app presents; they meet at the **Zarr boundary**).
 
-> **The hardware runs entirely on the ESP32-C6.** Its 11-channel EDF+ is the **only** raw anchor
+> **The hardware runs entirely on the ESP32-C6.** Its 13-channel EDF+ is the **only** raw anchor
 > the pipeline targets.
 
 ---
 
-## 1. The ESP32-C6 unit — 11-channel EDF+
+## 1. The ESP32-C6 unit — 13-channel EDF+
 
 A [Seeed Studio XIAO ESP32-C6](https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/) on a
 bespoke breadboard (a KiCad PCB is in progress — see the `Hardware/` folder). The firmware
@@ -37,13 +37,13 @@ below, and [decisions § S12](../state/decisions.md)):
   SD card. Live *streaming* is a different feature and does not offload files.
 
 Samples are written **digitally** (`edfwrite_digital_samples`,
-[`logger.cpp:548`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)), so the raw Zarr arrays
+[`logger.cpp:594`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)), so the raw Zarr arrays
 produced from this file carry the attr `storage=digital`. Data records are **10 s**
 (`RECORD_DURATION_S`, [`logger.h:9`](../../ESP32-C6-heart-idf/components/logger/include/logger.h)),
-set via `edf_set_datarecord_duration` at [`logger.cpp:469`](../../ESP32-C6-heart-idf/components/logger/logger.cpp).
+set via `edf_set_datarecord_duration` at [`logger.cpp:510`](../../ESP32-C6-heart-idf/components/logger/logger.cpp).
 
 Channel table (exact, from the `SigDef` table at
-[`logger.cpp:473–485`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)):
+[`logger.cpp:514–529`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)):
 
 | # | Label | Transducer | Rate | Phys. dim | Digital min/max | Phys. min/max |
 |---|-------|-----------|------|-----------|-----------------|---------------|
@@ -54,9 +54,15 @@ Channel table (exact, from the `SigDef` table at
 | 4–6 | `Accel0X/Y/Z` | MMA8451 ch0 | 50 Hz | `mg` | −8192 / 8191 | −2000 / 2000 |
 | 7–9 | `Accel1X/Y/Z` | MMA8451 ch1 | 50 Hz | `mg` | −8192 / 8191 | −2000 / 2000 |
 | 10 | `RR`      | `N/A` — **no live source** | 2.5 Hz | `ms` | 0 / 2000 | 0 / 2000 |
+| 11 | `Temp0`   | TMP117 at I2C `0x48` (ADD0 → GND) | 1 Hz | `degC` | −25600 / 25600 | −200 / 200 |
+| 12 | `Temp1`   | TMP117 at I2C `0x49` (ADD0 → V+)  | 1 Hz | `degC` | −25600 / 25600 | −200 / 200 |
+
+Signals 0–10 are the original layout and keep their indices; `Temp0`/`Temp1` were appended
+(2026-11-23), so a recording made before then is the same file minus the last two signals.
+`src_python/edf_reader.py` reads them as optional for exactly that reason.
 
 > `edf_set_samplefrequency()` takes **samples per data record**, not Hz — the effective rate is
-> `samplefrequency / record duration`. `logger.cpp:494` computes it as
+> `samplefrequency / record duration`. `logger.cpp:538` computes it as
 > `lround(rate * RECORD_DURATION_S)`; the `lround` guards `RR`'s fractional **2.5 Hz**
 > (25 samples/record) against float truncation landing on 24.
 
@@ -75,11 +81,47 @@ from the 100 Hz `ECG` array — the latter fits the language boundary better and
 
 There is no `HR` channel on the ESP32-C6 at all — heart rate is a derived quantity, not a captured one.
 
+### Temperature: `Temp0` / `Temp1` (TMP117 ×2)
+
+Two TI **TMP117** digital temperature sensors on the shared I2C bus, told apart by their ADD0 strap
+(`TMP117_ADDR_0 0x48`, `TMP117_ADDR_1 0x49` in `config.h`). The driver
+([`components/sensors/TMP117.cpp`](../../ESP32-C6-heart-idf/components/sensors/TMP117.cpp)) checks
+the device ID (`0x117`) at boot and runs each sensor in continuous mode, 8-sample averaging, one
+result per second. The 1 s cycle is deliberate: it keeps the sensor from warming itself, which
+matters for a body or skin temperature. The firmware reads each sensor once a second, not at the
+50 Hz sensor rate, because polling faster would only return the same value again. The EDF+ channel
+is 1 Hz to match (10 samples per 10 s record).
+
+**Encoding — exact, and why it looks odd.** One digital step is exactly **1/128 °C**, the TMP117's
+own resolution, so the recorded integer *is* the sensor's temperature register. The declared
+±25600 digital ↔ ±200 °C range is what makes the EDF+ affine map exact with plain integer
+header fields (gain 400/51200 = 1/128). ±200 °C comfortably covers the sensor's −55…150 °C range.
+
+**Missing readings.** A sensor that is absent or fails a read is written as the **declared digital
+minimum, −25600 (−200 °C)**. No real reading can produce it, because the TMP117 bottoms out at
+−55 °C and real values are clamped one step above it. Two simpler-looking choices don't work:
+
+- **0** is a real temperature, so it can't mean "missing".
+- An out-of-range value (e.g. the TMP117's own `0x8000` "not ready" code) never reaches the file,
+  because edflib clamps every sample into the declared digital range.
+
+The marker is `TEMP_DIGITAL_NO_READING` in [`logger.h`](../../ESP32-C6-heart-idf/components/logger/include/logger.h).
+It is **per channel, not a general rule**: ECG's and RR's digital minimum is a legitimate 0. Readers
+turn it back into a gap — `edf_reader.py` keys it off the EDF label (`NO_READING_DIGITAL`), and
+`rt_stream` declares it in `hello` as the channel's `no_reading_digital`. EDFBrowser, which knows
+neither, will show a dropout as a dip to −200 °C.
+
+The sensors' presence is recorded in the JSON sidecar's `sensors[]` list (`TMP117 temp0 (0x48)`,
+`TMP117 temp1 (0x49)`). Like the other mandatory sensors, a missing one makes `sensors_init()`
+report failure, which `main.cpp` logs and continues past.
+
 ### Sensors on the I2C bus
 
 - **LDC1612** (Seeed) — dual-channel inductance-to-digital converter; drives the two **RIP**
   (respiratory inductance plethysmography) belts on CH0/CH1.
 - **SDP800-125Pa** (Sensirion) — differential pressure sensor for nasal/oral **airflow**, ±125 Pa.
+- **TMP117 ×2** (Texas Instruments) — digital temperature sensors at `0x48` and `0x49`, ±0.1 °C
+  class accuracy, 1/128 °C resolution, recorded as `Temp0`/`Temp1` at 1 Hz (see above).
 - **MMA8451 ×2** (NXP) — two 3-axis accelerometers at different I2C addresses, reported in **mg**
   at 50 Hz, giving the bilateral (two-leg) limb-movement channels the AASM PLM scoring needs.
 - **DS3231** — battery-backed RTC, so the recording start datetime survives a power cycle.
@@ -92,7 +134,7 @@ There is no `HR` channel on the ESP32-C6 at all — heart rate is a derived quan
 > (65,536 levels), so the LSB is ~30 nH and almost all 16 bits are headroom that never fills.
 > The firmware works around this **on the digital side** rather than by fixing the header: raw
 > LDC1612 counts are divided by a per-channel constant (`THORACIC_DIVISOR 15`,
-> `ABDOMEN_DIVISOR 11`, [`logger.cpp:194–195`](../../ESP32-C6-heart-idf/components/logger/logger.cpp))
+> `ABDOMEN_DIVISOR 11`, [`logger.cpp:196–197`](../../ESP32-C6-heart-idf/components/logger/logger.cpp))
 > so each channel's breathing swing occupies more of the digital range. Those divisors were derived
 > from **one night's** peak non-clipped swing with ~2× headroom — deeper breathing on a different
 > patient or night could still saturate, and needs re-tuning. The declared physical range is
@@ -102,7 +144,7 @@ There is no `HR` channel on the ESP32-C6 at all — heart rate is a derived quan
 ### RIP baseline capture and its reboot behaviour
 
 `logger.cpp` writes Thoracic/Abdomen as `raw − baseline`, capturing the baseline **20 minutes**
-into the recording (`BASELINE_DELAY_S = 1200`, [`logger.cpp:243`](../../ESP32-C6-heart-idf/components/logger/logger.cpp))
+into the recording (`BASELINE_DELAY_S = 1200`, [`logger.cpp:245`](../../ESP32-C6-heart-idf/components/logger/logger.cpp))
 averaged over 1 s (`BASELINE_AVG_SAMPLES = 50` @ 50 Hz), once belt-donning settles. Before that
 point samples are written against a zero baseline — raw counts, effectively uncalibrated.
 
@@ -123,7 +165,7 @@ the recording's own start time.
 
 ### The JSON sidecar the device writes
 
-Alongside the `.edf`, `write_json_sidecar` ([`logger.cpp:351`](../../ESP32-C6-heart-idf/components/logger/logger.cpp))
+Alongside the `.edf`, `write_json_sidecar` ([`logger.cpp:390`](../../ESP32-C6-heart-idf/components/logger/logger.cpp))
 emits a `.json` carrying `device_uid` (derived from the MAC), `recording_start_time` /
 `recording_end_time`, `timezone`, a `sensors[]` presence + sample-rate list, and the `ldc_baseline`
 block above. This is **device-level** provenance and is distinct from the `meta.json` that
@@ -187,8 +229,13 @@ the no-Wi-Fi choice rather than riding the existing serial command channel — s
 - **Streamed values are the recorded values.** Thoracic/abdomen/flow are not what the sensor
   reported — they are baseline-subtracted, divided and scaled on the way to the EDF+. Rather than
   re-derive them, `rt_stream` calls `logger_thoracic_digital()` / `logger_abdomen_digital()` /
-  `logger_flow_digital()`, which `logger_record()` itself uses. One implementation, so a streamed
-  data point is the same integer that reaches the card.
+  `logger_flow_digital()` / `logger_temp_digital()`, which `logger_record()` itself uses. One
+  implementation, so a streamed data point is the same integer that reaches the card.
+- **`hello` has its own 4 KB buffer** (`HELLO_BUF_SIZE`). It carries the whole channel table
+  (~200 B per channel) and had outgrown the 2 KB sample-frame buffer at 11 channels (~2.2 KB). Every
+  connect then failed with "hello frame did not fit", so live mode never got past the handshake on
+  real hardware; the mock server was unaffected because it builds its own `hello`. Fixed
+  2026-11-23 alongside the temperature channels, which bring it to ~2.6 KB.
 - **Build cost:** the Wi-Fi + HTTP stack takes the binary from ~373 KB to ~1.15 MB, still 63% free
   in the 3 MB `factory` partition. No partition changes were needed.
 

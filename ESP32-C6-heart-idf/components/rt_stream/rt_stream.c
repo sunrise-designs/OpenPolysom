@@ -20,15 +20,23 @@ static const char *TAG = "rt_stream";
 
 // ── Frame geometry ───────────────────────────────────────────────────────────
 // One frame is RT_STREAM_FRAME_MS of every channel. The 50 Hz count drives the
-// frame boundary; ECG (100 Hz) fills at twice the rate, and RR (2.5 Hz) lands in
-// roughly one frame in four.
+// frame boundary; ECG (100 Hz) fills at twice the rate, RR (2.5 Hz) lands in
+// roughly one frame in four, and the temperatures (1 Hz) in one frame in ten.
 #define FRAME_50HZ   (RT_STREAM_FRAME_MS * SENSOR_RATE_HZ / 1000)   // 5
 #define FRAME_ECG    (RT_STREAM_FRAME_MS * ECG_RATE_HZ    / 1000)   // 10
 #define FRAME_RR_MAX 2
+#define FRAME_TEMP_MAX 1
 
-// JSON for one frame: 9 fifty-hertz blocks (~55 B each), ECG (~90 B), RR, and
-// the envelope. 2 KB leaves better than 2x headroom over the worst case.
+// JSON for one frame: 9 fifty-hertz blocks (~55 B each), ECG (~90 B), RR, the
+// two temperatures, and the envelope. 2 KB leaves better than 2x headroom over
+// the worst case.
 #define JSON_BUF_SIZE 2048
+
+// The `hello` frame is not a sample frame: it carries the whole channel table
+// (~200 B per channel), so it gets its own buffer. It outgrew JSON_BUF_SIZE at
+// 11 channels (~2.2 KB) — every connect failed with "hello frame did not fit" —
+// and is ~2.6 KB at 13. 4 KB is one static buffer, sent once per connect.
+#define HELLO_BUF_SIZE 4096
 
 // ── The sample frame handed from the sensor task to the streaming task ───────
 // Plain values, no pointers: the queue copies by value, so a frame in flight is
@@ -38,7 +46,8 @@ typedef struct {
     uint32_t n0_50;                    // absolute index of the first 50 Hz sample
     uint32_t n0_ecg;
     uint32_t n0_rr;
-    uint8_t  n50, necg, nrr;
+    uint32_t n0_temp;
+    uint8_t  n50, necg, nrr, ntemp;
     int16_t  thoracic[FRAME_50HZ];
     int16_t  abdomen [FRAME_50HZ];
     int16_t  flow    [FRAME_50HZ];
@@ -46,6 +55,7 @@ typedef struct {
     int16_t  a1x[FRAME_50HZ], a1y[FRAME_50HZ], a1z[FRAME_50HZ];
     int16_t  ecg[FRAME_ECG];
     int16_t  rr [FRAME_RR_MAX];
+    int16_t  temp0[FRAME_TEMP_MAX], temp1[FRAME_TEMP_MAX];
 } rt_frame_t;
 
 static bool             s_enabled   = false;
@@ -62,6 +72,7 @@ static uint32_t   s_seq        = 0;
 static uint32_t   s_count_50   = 0;   // absolute sample counters since streaming began
 static uint32_t   s_count_ecg  = 0;
 static uint32_t   s_count_rr   = 0;
+static uint32_t   s_count_temp = 0;
 static bool       s_fill_open  = false;
 
 static char s_ssid[32];
@@ -114,10 +125,11 @@ const char *rt_stream_password(void)  { return s_password; }
 
 static void frame_reset(void)
 {
-    s_fill.n50 = s_fill.necg = s_fill.nrr = 0;
+    s_fill.n50 = s_fill.necg = s_fill.nrr = s_fill.ntemp = 0;
     s_fill.n0_50  = s_count_50;
     s_fill.n0_ecg = s_count_ecg;
     s_fill.n0_rr  = s_count_rr;
+    s_fill.n0_temp = s_count_temp;
     s_fill_open   = true;
 }
 
@@ -134,7 +146,8 @@ void rt_stream_push_50hz(int16_t  a0x, int16_t  a0y, int16_t  a0z,
                          int16_t  a1x, int16_t  a1y, int16_t  a1z,
                          uint32_t ldc0, uint32_t ldc1,
                          float    pressure_mbar,
-                         uint16_t rr_ms)
+                         uint16_t rr_ms,
+                         float    temp0_c, float temp1_c)
 {
     if (!s_up || s_queue == NULL) return;
     if (!s_fill_open) frame_reset();
@@ -156,6 +169,15 @@ void rt_stream_push_50hz(int16_t  a0x, int16_t  a0y, int16_t  a0z,
     if ((s_count_50 % 20) == 19 && s_fill.nrr < FRAME_RR_MAX) {
         s_fill.rr[s_fill.nrr++] = (int16_t)rr_ms;
         s_count_rr++;
+    }
+
+    // Temperatures every 50th tick (1 Hz), the same cadence and the same
+    // conversion logger_record() uses, so streamed indices match the EDF+'s.
+    if ((s_count_50 % 50) == 49 && s_fill.ntemp < FRAME_TEMP_MAX) {
+        s_fill.temp0[s_fill.ntemp] = logger_temp_digital(temp0_c);
+        s_fill.temp1[s_fill.ntemp] = logger_temp_digital(temp1_c);
+        s_fill.ntemp++;
+        s_count_temp++;
     }
     s_count_50++;
 
@@ -213,12 +235,16 @@ static int encode_frame(char *buf, int cap, const rt_frame_t *f)
     at = append_block(buf, cap, at, &first, "accel1_y", f->n0_50,  f->a1y,      f->n50);
     at = append_block(buf, cap, at, &first, "accel1_z", f->n0_50,  f->a1z,      f->n50);
     at = append_block(buf, cap, at, &first, "rr",       f->n0_rr,  f->rr,       f->nrr);
+    at = append_block(buf, cap, at, &first, "temp0",    f->n0_temp, f->temp0,   f->ntemp);
+    at = append_block(buf, cap, at, &first, "temp1",    f->n0_temp, f->temp1,   f->ntemp);
     return append(buf, cap, at, "}}");
 }
 
 // One row per EDF+ signal, mirroring logger.cpp's SigDef table verbatim. The
 // viewer builds its panes and its digital->physical scaling from this, so the
 // two tables must stay in step — see wiki/knowledge/data-formats.md.
+// `no_reading_digital` (temperatures only) is the digital value that means "no
+// reading" rather than a temperature; see TEMP_DIGITAL_NO_READING in logger.h.
 static const char *HELLO_CHANNELS =
     "["
     "{\"name\":\"thoracic\",\"edf_label\":\"Thoracic\",\"transducer\":\"LDC1612 CH0\",\"unit\":\"counts\",\"sample_rate_hz\":50,\"digital_min\":-32767,\"digital_max\":32767,\"physical_min\":-1000000,\"physical_max\":1000000},"
@@ -231,7 +257,9 @@ static const char *HELLO_CHANNELS =
     "{\"name\":\"accel1_x\",\"edf_label\":\"Accel1X\",\"transducer\":\"MMA8451 ch1\",\"unit\":\"mg\",\"sample_rate_hz\":50,\"digital_min\":-8192,\"digital_max\":8191,\"physical_min\":-2000,\"physical_max\":2000},"
     "{\"name\":\"accel1_y\",\"edf_label\":\"Accel1Y\",\"transducer\":\"MMA8451 ch1\",\"unit\":\"mg\",\"sample_rate_hz\":50,\"digital_min\":-8192,\"digital_max\":8191,\"physical_min\":-2000,\"physical_max\":2000},"
     "{\"name\":\"accel1_z\",\"edf_label\":\"Accel1Z\",\"transducer\":\"MMA8451 ch1\",\"unit\":\"mg\",\"sample_rate_hz\":50,\"digital_min\":-8192,\"digital_max\":8191,\"physical_min\":-2000,\"physical_max\":2000},"
-    "{\"name\":\"rr\",\"edf_label\":\"RR\",\"transducer\":\"N/A\",\"unit\":\"ms\",\"sample_rate_hz\":2.5,\"digital_min\":0,\"digital_max\":2000,\"physical_min\":0,\"physical_max\":2000}"
+    "{\"name\":\"rr\",\"edf_label\":\"RR\",\"transducer\":\"N/A\",\"unit\":\"ms\",\"sample_rate_hz\":2.5,\"digital_min\":0,\"digital_max\":2000,\"physical_min\":0,\"physical_max\":2000},"
+    "{\"name\":\"temp0\",\"edf_label\":\"Temp0\",\"transducer\":\"TMP117 0x48\",\"unit\":\"degC\",\"sample_rate_hz\":1,\"digital_min\":-25600,\"digital_max\":25600,\"physical_min\":-200,\"physical_max\":200,\"no_reading_digital\":-25600},"
+    "{\"name\":\"temp1\",\"edf_label\":\"Temp1\",\"transducer\":\"TMP117 0x49\",\"unit\":\"degC\",\"sample_rate_hz\":1,\"digital_min\":-25600,\"digital_max\":25600,\"physical_min\":-200,\"physical_max\":200,\"no_reading_digital\":-25600}"
     "]";
 
 static int encode_hello(char *buf, int cap)
@@ -279,7 +307,7 @@ static esp_err_t ws_handler(httpd_req_t *req)
         // The handshake itself; esp_http_server has already completed it.
         // Reply with `hello` so the client can build its panes immediately,
         // before the first sample frame arrives.
-        static char hello[JSON_BUF_SIZE];
+        static char hello[HELLO_BUF_SIZE];
         int n = encode_hello(hello, sizeof(hello));
         if (n <= 0 || n >= (int)sizeof(hello)) {
             ESP_LOGE(TAG, "hello frame did not fit in %d bytes", (int)sizeof(hello));

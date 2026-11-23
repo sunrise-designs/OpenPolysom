@@ -2,7 +2,7 @@
 title: Current State
 domain: state
 status: living
-updated: 2026-08-20
+updated: 2026-11-23
 summary: What exists in the repo today (C++ EDF+ writers plus an opt-in Wi-Fi live-sample streamer, Python DSP reading EDF+ directly via edfio, an ECharts/zarrita TS viewer with both a batch and a real-time mode, a standalone FastAPI windowed-metrics service, and a multi-study Netlify landing page) versus the planned three-layer pipeline — and where the gaps are.
 ---
 
@@ -29,9 +29,10 @@ See also: [data formats](../knowledge/data-formats.md) ·
 
 ### C++ ingest side — EDF+ writers only (no Zarr yet)
 - **ESP32-C6** (`ESP32-C6-heart-idf/components/logger/logger.cpp`): the **only** device path.
-  Writes an 11-channel EDF+ via edflib in 10 s data records — Thoracic + Abdomen (LDC1612 RIP
+  Writes a 13-channel EDF+ via edflib in 10 s data records — Thoracic + Abdomen (LDC1612 RIP
   belts, 50 Hz), Flow (SDP800, mbar, 50 Hz), ECG (AD8232 ADC, 100 Hz), Accel0X/Y/Z + Accel1X/Y/Z
-  (MMA8451 ×2, mg, 50 Hz), RR (ms, 2.5 Hz — **dead channel, logs zeros**). Digital samples
+  (MMA8451 ×2, mg, 50 Hz), RR (ms, 2.5 Hz — **dead channel, logs zeros**), Temp0/Temp1 (TMP117
+  ×2 at 0x48/0x49, °C, 1 Hz — added 2026-11-23). Digital samples
   (`edfwrite_digital_samples`). Runs offline (no Wi-Fi/BLE), features an SH1106 I2C display,
   a DS3231 RTC, and serial time sync. Its RIP baseline survives a mid-study reboot via RTC memory
   (restored on any non-power-on `esp_reset_reason()`), and the JSON sidecar records the baseline
@@ -78,7 +79,9 @@ point `read_log.py`:
   `accel_mag` (Accel0's vector magnitude), `hrv_t`, `hrv_rmssd`
   (`export_zarr.py:58-67`), plus `accel1_mag` and `accel_combined_mag` (Accel1's own
   and the bilateral-combined vector magnitude) whenever `read_log.py` scored a second
-  accelerometer.
+  accelerometer, and `temp0`/`temp1` (°C, NaN = no reading) on their own 1 Hz `temp_t` axis
+  whenever the recording has the temperature channels. The temperatures are passed through for
+  display only; no processing uses them.
 - **Single chunk per array** and the **default codec** — i.e. **no Blosc(zstd, shuffle)
   yet**, no time-chunking, no `storage=physical|digital` attrs. The v2 choice is correct
   per [decisions](decisions.md); the codec + chunking are **not yet** to the
@@ -105,7 +108,7 @@ a live stream from the device:
 - **Real project scaffolding exists**: `package.json` (build / lint / typecheck / test),
   `tsconfig.json` (`strict`), `eslint.config.js` (strictTypeChecked +
   `eslint-plugin-functional`), `vitest.config.ts`, and a lockfile.
-- **RT mode** (`src/rt_*.ts`, `src/signals.ts`) plots the eleven raw EDF+ channels live
+- **RT mode** (`src/rt_*.ts`, `src/signals.ts`) plots the thirteen raw EDF+ channels live
   from the device's WebSocket, keeping everything since connect in growable interleaved
   typed arrays. Everything downstream of Python processing is absent rather than faked.
   `tools/mock_rt_server.mjs` replays a recorded `.edf` over the same protocol so the
@@ -155,12 +158,12 @@ running system.
 
 | Concern | Today (committed) | Planned (settled) |
 |---|---|---|
-| **Raw anchor** | EDF+ written by C++ (ESP32-C6, 11-channel) | EDF+/FLAC, content-hashed, immutable |
+| **Raw anchor** | EDF+ written by C++ (ESP32-C6, 13-channel) | EDF+/FLAC, content-hashed, immutable |
 | **C++ ingest → raw Zarr** | **Does not exist** | C++ (TensorStore/z5) writes raw Zarr + header metadata |
 | **Python processing input** | EDF+ directly, via `edf_reader.py` (`edfio`) — not yet the raw Zarr | Raw Zarr (zarr-python) |
 | **Derived layer** | `export_zarr.py` writes v2, 1 chunk/array, default codec; `meta.json` + `events.json` are schema-compliant | Per-array time-chunked Zarr v2 + Blosc(zstd,shuffle) |
 | **TS reader** | zarrita.js, `package.json`/`tsconfig`/ESLint/Vitest in place | zarrita.js, proper TS project — **done** |
-| **Live view** | RT mode: device Wi-Fi WebSocket → 11 raw EDF+ channels, browser-direct | n/a — additive to the batch path, see [decisions § S12](decisions.md) |
+| **Live view** | RT mode: device Wi-Fi WebSocket → 13 raw EDF+ channels, browser-direct | n/a — additive to the batch path, see [decisions § S12](decisions.md) |
 | **Serving** | Python `ThreadingHTTPServer` (dev-only) | Browser-direct now; thin **TS slicing server** as data grows |
 | **Clinical export (Zarr→EDF+/BDF+)** | **Does not exist** | Regenerated on demand (likely C++) |
 | **Signals processed** | Accel (both accelerometers, PLM/LM + bilateral combined score) + RR (HRV) | + RIP baseline (QDC+airPLS), airflow, apnea/hypopnea, snore VOTE/MFCC |

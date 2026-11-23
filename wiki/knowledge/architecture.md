@@ -2,7 +2,7 @@
 title: Component-2 Architecture
 domain: knowledge
 status: living
-updated: 2026-07-19
+updated: 2026-11-23
 summary: The canonical reference for ProtoSom's data pipeline after data leaves the device — the four-stage pipeline, the three-layer data model, and the C++ ingest / Python processing / TS web-app language boundary that meets at the Zarr store plus metadata.
 ---
 
@@ -59,12 +59,12 @@ for future 24-bit EEG), **FLAC** for audio, time-anchored to the biosignal timel
 **immutable and content-hashed** — the provenance anchor that every derived product is stamped
 against. It is **never modified** by any stage of component 2.
 
-The concrete raw anchor is the **11-channel EDF+** written by the ESP32-C6
+The concrete raw anchor is the **13-channel EDF+** written by the ESP32-C6
 ([`logger.cpp`](../../ESP32-C6-heart-idf/components/logger/logger.cpp)) — Thoracic + Abdomen
 (LDC1612 RIP belts, 50 Hz), Flow (SDP800, mbar, 50 Hz), ECG (AD8232 ADC, 100 Hz),
-Accel0X/Y/Z + Accel1X/Y/Z (MMA8451 ×2, mg, 50 Hz), and RR (ms, 2.5 Hz — currently a dead channel
-with no live source); see the `SigDef` table at
-[`logger.cpp:473`](../../ESP32-C6-heart-idf/components/logger/logger.cpp) and
+Accel0X/Y/Z + Accel1X/Y/Z (MMA8451 ×2, mg, 50 Hz), RR (ms, 2.5 Hz — currently a dead channel
+with no live source), and Temp0/Temp1 (TMP117 ×2, °C, 1 Hz); see the `SigDef` table at
+[`logger.cpp:514`](../../ESP32-C6-heart-idf/components/logger/logger.cpp) and
 [hardware](hardware.md) for the full layout.
 
 ### Layer 2 — Working store

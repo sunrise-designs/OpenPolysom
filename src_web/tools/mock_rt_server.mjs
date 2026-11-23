@@ -142,8 +142,16 @@ const CANONICAL = {
   Thoracic: 'thoracic', Abdomen: 'abdomen', Flow: 'flow', ECG: 'ecg',
   Accel0X: 'accel0_x', Accel0Y: 'accel0_y', Accel0Z: 'accel0_z',
   Accel1X: 'accel1_x', Accel1Y: 'accel1_y', Accel1Z: 'accel1_z',
-  RR: 'rr',
+  RR: 'rr', Temp0: 'temp0', Temp1: 'temp1',
 };
+
+/**
+ * EDF label → the digital value that means "no reading" on that channel
+ * (`no_reading_digital` in `hello`). The EDF+ header has no field for it, so
+ * the replay restores what the device's own `rt_stream` announces — see
+ * TEMP_DIGITAL_NO_READING in logger.h.
+ */
+const NO_READING_DIGITAL = { Temp0: -25600, Temp1: -25600 };
 
 // ── minimal RFC 6455 server frames ───────────────────────────────────────────
 
@@ -176,6 +184,7 @@ const channels = signalIdx.map((i) => ({
   digital_max: edf.digMax[i],
   physical_min: edf.physMin[i],
   physical_max: edf.physMax[i],
+  ...(NO_READING_DIGITAL[edf.labels[i]] !== undefined ? { no_reading_digital: NO_READING_DIGITAL[edf.labels[i]] } : {}),
 }));
 
 console.log(`[mock-rt] ${edfPath}`);

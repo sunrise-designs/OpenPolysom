@@ -2,7 +2,7 @@
 title: Coding Standards
 domain: standards
 status: living
-updated: 2026-07-19
+updated: 2026-11-23
 summary: How code is written per language across the three-language boundary — C++ ingest, Python processing, the TS web app — plus the round-trip and reproducibility tests that hold them honest.
 ---
 
@@ -39,22 +39,26 @@ choice and the Python→C++ long-term watch-item are recorded in
 
 ## C++ — the C++ ingest (Dmitry)
 
-The acquisition side already exists: `ESP32-C6-heart-idf/components/logger/logger.cpp` writes an
-11-channel EDF+ via **edflib**. C++ also converts that raw device data into the **raw anchor** Zarr
+The acquisition side already exists: `ESP32-C6-heart-idf/components/logger/logger.cpp` writes a
+13-channel EDF+ via **edflib**. C++ also converts that raw device data into the **raw anchor** Zarr
 and may own the EDF/BDF **clinical export**. C++ is chosen for performance and medical-compliance
 friendliness.
 
 - **Reuse edflib, don't reinvent it.** All EDF+/BDF+ read and write goes through edflib; do not
   hand-roll the header. The same library backs the clinical export.
 - **Deterministic and explicit.** Channel layout is a static table, not runtime magic — the
-  `SigDef` table at `logger.cpp:473-485` declares each channel's label, transducer, sample rate,
-  and digital/physical ranges literally, and the loop at `logger.cpp:487-500` applies it. New
-  channels are added to that table; nothing is inferred. Record the storage choice per array as a
+  `SigDef` table at `logger.cpp:514-529` declares each channel's label, transducer, sample rate,
+  and digital/physical ranges literally, and the loop at `logger.cpp:531-544` applies it. New
+  channels are added to that table; nothing is inferred. A new channel is **appended** (existing
+  signal indices never move), and must land in the same change in `rt_stream.c`'s `HELLO_CHANNELS`,
+  `src_web/test/helpers/rtFixtures.ts` and `src_python/edf_reader.py` (as optional, since older
+  recordings lack it). `src_web/test/rt_firmware_contract.test.ts` fails if the first three
+  disagree. Record the storage choice per array as a
   Zarr attr `storage=physical|digital`: `logger.cpp` writes **digital** ints via
-  `edfwrite_digital_samples` (`logger.cpp:548`), so ingested arrays are `storage=digital`. Keep the
+  `edfwrite_digital_samples` (`logger.cpp:594`), so ingested arrays are `storage=digital`. Keep the
   attr and the writer in lockstep.
 - **Know what the API actually takes.** `edf_set_samplefrequency()` takes **samples per data
-  record**, not Hz (`logger.cpp:490-494`). With 10 s records the effective rate is
+  record**, not Hz (`logger.cpp:534-538`). With 10 s records the effective rate is
   `samplefrequency / record duration`, and fractional rates need `lround` — the `RR` channel's
   2.5 Hz is 25 samples/record and float truncation would silently land on 24.
 - **Provenance at the source — currently a gap.** The C6 firmware sets **no** equipment string,
@@ -64,7 +68,7 @@ friendliness.
   [hardware](../knowledge/hardware.md) and the
   [zarr schema spec](../planning/zarr-schema-spec.md). Device-level provenance that *is* written
   lives in the firmware's JSON sidecar (`device_uid`, timezone, sensor presence, `ldc_baseline`).
-- **Performance is why C++ owns ingest.** Fixed-size static sample buffers (`logger.cpp:207-213`),
+- **Performance is why C++ owns ingest.** Fixed-size static sample buffers (`logger.cpp:209-216`),
   one buffered write per 10 s data record, a mutex around the EDF handle rather than allocation in
   the sample path. Keep allocation out of the hot path.
 - **The Zarr writer.** raw anchor → raw Zarr is written by C++ using a C++ Zarr library —

@@ -133,9 +133,19 @@ describe('RtStore — buffers', () => {
   it('declares every channel the device announced, so its pane exists before any sample lands', () => {
     const store = new RtStore(EDF_CHANNELS);
     const src = store.source();
-    expect(Object.keys(src)).toHaveLength(11);
+    expect(Object.keys(src)).toHaveLength(13);
     expect(src.rr?.declared).toBe(true);
     expect(seriesLength(src.rr)).toBe(0);
+  });
+
+  it('stores a temperature dropout as a gap (NaN) at its 1 Hz time, not as -200 °C', () => {
+    const store = new RtStore([channel('temp0')]);
+    store.append(samples({ temp0: { n0: 0, v: [4736, -25600, 4737] } }));
+    const got = pairs(store, 'temp0');
+    expect(got.map((p) => p[0])).toEqual([0, 1, 2]);
+    expect(got[0]?.[1]).toBe(37);
+    expect(got[1]?.[1]).toBeNaN();
+    expect(got[2]?.[1]).toBe(4737 / 128);
   });
 
   it('ignores a block naming a channel the device never declared', () => {

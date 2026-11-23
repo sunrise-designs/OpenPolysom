@@ -43,7 +43,8 @@ void rt_stream_push_50hz(int16_t  a0x, int16_t  a0y, int16_t  a0z,
                          int16_t  a1x, int16_t  a1y, int16_t  a1z,
                          uint32_t ldc0, uint32_t ldc1,
                          float    pressure_mbar,
-                         uint16_t rr_ms);
+                         uint16_t rr_ms,
+                         float    temp0_c, float temp1_c);
 
 // Feed one 100 Hz ECG sample — same call site as logger_record_ecg().
 // Never blocks, same as above.

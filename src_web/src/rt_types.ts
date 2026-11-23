@@ -39,6 +39,15 @@ export interface RtChannelDef {
   readonly digital_max: number;
   readonly physical_min: number;
   readonly physical_max: number;
+  /**
+   * Digital value that means "no reading" rather than a measurement, when the
+   * channel has one — the temperatures do (`TEMP_DIGITAL_NO_READING` in
+   * logger.h: a TMP117 that is absent or failed a read), because their every
+   * other value, 0 included, is a real temperature. Such samples decode to NaN,
+   * so a dropout draws as a gap instead of a plunge to -200 °C. Optional and
+   * additive to `protosom.rt/1.0.0`: an older device simply never sends it.
+   */
+  readonly no_reading_digital?: number;
 }
 
 /** Sent once on connect: everything needed to build the panes and decode the samples. */

@@ -2,8 +2,8 @@
 title: The TS Web App (Viewer)
 domain: knowledge
 status: living
-updated: 2026-08-09
-summary: The TS web app has two modes — batch, which reads the Zarr boundary plus metadata and displays it (synced multi-pane charts, channel-filtered event markArea overlays, a brush-selected windowed-metrics card, a landing page listing every deployed study), and RT, which plots the eleven raw EDF+ channels live from the device's WebSocket — never writing Zarr in either.
+updated: 2026-11-23
+summary: The TS web app has two modes — batch, which reads the Zarr boundary plus metadata and displays it (synced multi-pane charts, channel-filtered event markArea overlays, a brush-selected windowed-metrics card, a landing page listing every deployed study), and RT, which plots the thirteen raw EDF+ channels live from the device's WebSocket — never writing Zarr in either.
 ---
 
 # The TS Web App (Viewer)
@@ -42,7 +42,7 @@ The pieces:
 | File | Role |
 | --- | --- |
 | `src_web/src/main.ts` | Entry. Reads `?meta=`, loads `meta.json` + Zarr, inits one ECharts canvas instance, wires window resize. |
-| `src_web/src/zarr_loader.ts` | Fetches `meta.json` and opens each named Zarr array (`t`, `rr`, `accel_x/y/z`, `accel_mag`, `hrv_t`, `hrv_rmssd`), plus `accel1_mag`/`accel_combined_mag` when present — read via `readOptionalArray`, which degrades to an empty array rather than failing the load when a store has only one accelerometer. |
+| `src_web/src/zarr_loader.ts` | Fetches `meta.json` and opens each named Zarr array (`t`, `rr`, `accel_x/y/z`, `accel_mag`, `hrv_t`, `hrv_rmssd`), plus `accel1_mag`/`accel_combined_mag`, `thoracic`/`abdomen`/`flow` and `temp0`/`temp1`/`temp_t` when present — read via `readOptionalArray`, which degrades to an empty array rather than failing the load when a store has only one accelerometer. |
 | `src_web/src/chart.ts` | Builds the ECharts option: synced multi-pane grid, LM/PLM `markArea` overlays, dataZoom, crosshair tooltip, title strip. |
 | `src_web/src/types.ts` | `SidecarMeta` (patient / recording / stats / `lm_events` / `plm_groups` / `git_hash` / `zarr_path`) and `ZarrData`. |
 | `src_web/src/signals.ts` | `SignalSource` — canonical channel name → series. The one data surface `chart.ts` reads, produced by both modes. |
@@ -118,7 +118,7 @@ Everything downstream of [Python processing](signal-processing.md) is **absent**
 faked: no PLMI gauge, no KPI row, no narrative, no LM/PLM `markArea` overlays, no
 windowed-metrics card, no provenance footer. The live shell says so explicitly in an
 "After the night" card rather than rendering empty widgets. The channels are the
-**eleven raw EDF+ channels** — including `ecg` and the `accel1_*` axes, which no
+**thirteen raw EDF+ channels** — including `ecg` and the `accel1_*` axes, which no
 derived store carries — and none of the derived ones (`accel_mag`, `hrv_rmssd`,
 `accel_combined_mag`), which need baseline removal and beat extraction that stay in
 Python. What RT adds is a live status strip: link state, recording state, battery,
@@ -140,7 +140,12 @@ cannot disagree about what a channel is.
 - **`hello`**, once on connect: device UID, recording start, and a `channels[]` array
   that is `logger.cpp`'s `SigDef` table verbatim — label, transducer, unit, rate, and
   the digital/physical min-max pair. The stream is self-describing; the viewer builds
-  its panes and its scaling from this rather than hardcoding eleven channels.
+  its panes and its scaling from this rather than hardcoding thirteen channels. A
+  channel may also carry an optional `no_reading_digital`: the digital value that means "no
+  reading" rather than a measurement. Only `temp0`/`temp1` declare one (−25600; see
+  [hardware § Temperature](hardware.md)). `rt_protocol.ts`'s `sampleDecoder` turns it into NaN,
+  so a sensor dropout draws as a gap, not a plunge to −200 °C. It is an additive field within
+  `1.0.0`; a client that ignores it still decodes every other sample correctly.
 - **`samples`**, repeated: `{seq, blocks: {<channel>: {n0, v[]}}}`. Values are the
   **digital integers `edfwrite_digital_samples` receives** — one streamed point per
   EDF+ sample, bit-identical to what reaches the card, because `rt_stream` calls
@@ -179,8 +184,9 @@ must be the sample at index *t*·rate in the file.
 
 `test/rt_firmware_contract.test.ts` closes the loop the other way — it reads
 `logger.cpp`'s `SigDef` and `rt_stream.c`'s `HELLO_CHANNELS` out of the firmware
-sources and asserts all eleven channels agree with each other and with the viewer's
-fixtures. Drift there would silently mis-scale a trace, and nothing at runtime would
+sources and asserts all thirteen channels agree with each other and with the viewer's
+fixtures, including that the temperatures' `no_reading_digital` is the
+`TEMP_DIGITAL_NO_READING` `logger.h` writes. Drift there would silently mis-scale a trace, and nothing at runtime would
 notice.
 
 ## Migrate zarr.js → zarrita.js

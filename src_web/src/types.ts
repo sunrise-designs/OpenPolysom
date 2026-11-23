@@ -213,6 +213,12 @@ export interface ZarrData {
   readonly abdomen: Float32Array;
   /** Nasal airflow (mbar). Empty on wrist-only recordings with no respiratory device. */
   readonly flow: Float32Array;
+  /** TMP117 #0 (0x48) temperature, °C, NaN where there was no reading. Empty on recordings made before the sensors were fitted. */
+  readonly temp0: Float32Array;
+  /** TMP117 #1 (0x49) temperature, °C, NaN where there was no reading. Empty on recordings made before the sensors were fitted. */
+  readonly temp1: Float32Array;
+  /** The temperatures' own 1 Hz time axis, seconds — not the 50 Hz `t`. */
+  readonly temp_t: Float64Array;
   readonly rr: Float32Array;
   readonly rr_t: Float64Array;
   readonly hrv_t: Float64Array;

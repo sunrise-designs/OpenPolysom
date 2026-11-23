@@ -63,7 +63,12 @@ function parseChannel(v: unknown): RtChannelDef | undefined {
   // producer that declares one has a broken channel table, not a scaling quirk.
   if (digital_max === digital_min) return undefined;
 
+  // Optional; anything but a number is treated as absent rather than as a
+  // malformed channel, so a producer that omits it loses nothing.
+  const noReading = isNum(v.no_reading_digital) ? { no_reading_digital: v.no_reading_digital } : {};
+
   return {
+    ...noReading,
     name,
     edf_label: str(v.edf_label, name),
     transducer: str(v.transducer),
@@ -87,6 +92,18 @@ export function affineMap(ch: RtChannelDef): (digital: number) => number {
   const gain = (ch.physical_max - ch.physical_min) / (ch.digital_max - ch.digital_min);
   const offset = ch.physical_min - gain * ch.digital_min;
   return (digital: number): number => gain * digital + offset;
+}
+
+/**
+ * How one streamed digital sample becomes a plotted value: the channel's
+ * `affineMap`, except that its declared `no_reading_digital` marker (if any)
+ * becomes NaN — a gap in the line — rather than a physical value.
+ */
+export function sampleDecoder(ch: RtChannelDef): (digital: number) => number {
+  const toPhysical = affineMap(ch);
+  const marker = ch.no_reading_digital;
+  if (marker === undefined) return toPhysical;
+  return (digital: number): number => (digital === marker ? Number.NaN : toPhysical(digital));
 }
 
 // ── frames ───────────────────────────────────────────────────────────────────

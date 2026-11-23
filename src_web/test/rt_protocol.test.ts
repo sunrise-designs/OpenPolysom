@@ -1,21 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { affineMap, gapBefore, isCompatibleProtocol, parseRtMessage } from '../src/rt_protocol';
+import { affineMap, gapBefore, isCompatibleProtocol, parseRtMessage, sampleDecoder } from '../src/rt_protocol';
 import { RT_PROTOCOL } from '../src/rt_types';
 import { EDF_CHANNELS, channel, helloFixture } from './helpers/rtFixtures';
 
 const frame = (obj: unknown): string => JSON.stringify(obj);
 
 describe('parseRtMessage — hello', () => {
-  it('accepts the device\'s full 11-channel declaration', () => {
+  it('accepts the device\'s full 13-channel declaration', () => {
     const msg = parseRtMessage(frame(helloFixture()));
     expect(msg.type).toBe('hello');
     if (msg.type !== 'hello') return;
-    expect(msg.channels).toHaveLength(11);
+    expect(msg.channels).toHaveLength(13);
     expect(msg.channels.map((c) => c.name)).toEqual([
       'thoracic', 'abdomen', 'flow', 'ecg',
       'accel0_x', 'accel0_y', 'accel0_z',
       'accel1_x', 'accel1_y', 'accel1_z', 'rr',
+      'temp0', 'temp1',
     ]);
+    expect(msg.channels.find((c) => c.name === 'temp0')?.no_reading_digital).toBe(-25600);
+    expect(msg.channels.find((c) => c.name === 'rr')?.no_reading_digital).toBeUndefined();
     expect(msg.device_uid).toBe('A1B2C3D4E5F6');
   });
 
@@ -109,6 +112,33 @@ describe('parseRtMessage — status', () => {
     expect(msg.elapsed_s).toBe(128);
     expect(msg.dropped_frames).toBe(3);
     expect(msg.batt_pct).toBeNull();
+  });
+});
+
+describe('sampleDecoder — the affine map plus a channel\'s no-reading marker', () => {
+  it('decodes a temperature sample at exactly 1/128 °C per digital step', () => {
+    const decode = sampleDecoder(channel('temp0'));
+    expect(decode(4736)).toBe(37); // 37 °C × 128 — the TMP117 register value
+    expect(decode(1)).toBe(1 / 128);
+    expect(decode(-25599)).toBeCloseTo(-199.9921875, 9);
+  });
+
+  it('turns the no-reading marker into a gap, not -200 °C', () => {
+    expect(sampleDecoder(channel('temp1'))(-25600)).toBeNaN();
+  });
+
+  it('leaves a channel without a marker exactly as affineMap has it — RR\'s and ECG\'s 0 stay 0', () => {
+    expect(sampleDecoder(channel('rr'))(0)).toBe(0);
+    expect(sampleDecoder(channel('ecg'))(0)).toBe(0);
+  });
+
+  it('ignores a non-numeric no_reading_digital rather than rejecting the channel', () => {
+    const msg = parseRtMessage(frame(helloFixture({
+      channels: [{ ...channel('temp0'), no_reading_digital: 'x' as unknown as number }],
+    })));
+    expect(msg.type).toBe('hello');
+    if (msg.type !== 'hello') return;
+    expect(msg.channels[0]?.no_reading_digital).toBeUndefined();
   });
 });
 

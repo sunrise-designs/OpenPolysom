@@ -13,6 +13,10 @@ extern volatile int16_t  g_accel1_x, g_accel1_y, g_accel1_z;
 extern volatile uint32_t g_ldc0, g_ldc1;
 extern volatile float    g_pressure_mbar;
 extern volatile uint16_t g_ecg_raw;
+// TMP117 #0 (0x48) / #1 (0x49), degrees Celsius. NAN when there is no valid
+// reading (sensor absent, read failed, or no conversion finished yet) — 0 °C is
+// a real temperature, so it cannot double as "missing".
+extern volatile float    g_temp0_c, g_temp1_c;
 
 // True once sensors_init() has detected a DS3231 RTC on the I2C bus.
 extern volatile bool g_rtc_present;
@@ -23,6 +27,8 @@ extern volatile bool g_mma0_present;
 extern volatile bool g_mma1_present;
 extern volatile bool g_ldc_present;
 extern volatile bool g_sdp_present;
+extern volatile bool g_tmp0_present;
+extern volatile bool g_tmp1_present;
 
 // Register all sensors on the given I2C bus (created by display_init() — see
 // display_get_i2c_bus() — since only one master bus handle can own a port,

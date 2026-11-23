@@ -24,6 +24,8 @@ export const COLORS = {
   neuro: '#8ea2ff',
   respir: '#f7b267',
   hrv: '#b388f5',
+  temp: '#ff8f6b',
+  temp2: '#ffc09f',
 
   good: '#4fd6a3',
   warn: '#f5b942',

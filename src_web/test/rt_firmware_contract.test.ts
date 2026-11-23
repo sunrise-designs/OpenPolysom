@@ -10,7 +10,7 @@ import { EDF_CHANNELS } from './helpers/rtFixtures';
  * The cross-language contract check for the live stream, in the spirit of
  * wiki/standards/coding.md § "Cross-language read parity".
  *
- * Three descriptions of the same eleven channels have to agree, and they live
+ * Three descriptions of the same thirteen channels have to agree, and they live
  * in three different languages and repos-worth of code:
  *
  *   1. `logger.cpp`'s `SigDef` table — what is written to the EDF+ raw anchor.
@@ -46,7 +46,8 @@ function parseSigDef(source: string): readonly RtChannelDef[] {
 
 /** Parse `HELLO_CHANNELS` out of rt_stream.c by reassembling its concatenated string literals. */
 function parseHelloChannels(source: string): readonly RtChannelDef[] {
-  const decl = /static const char \*HELLO_CHANNELS =([\s\S]*?);\n/.exec(source);
+  // `\r?` because a Windows checkout (core.autocrlf) has CRLF line endings.
+  const decl = /static const char \*HELLO_CHANNELS =([\s\S]*?);\r?\n/.exec(source);
   if (decl === null) throw new Error('HELLO_CHANNELS not found in rt_stream.c');
 
   const json = Array.from(decl[1].matchAll(/"((?:[^"\\]|\\.)*)"/g), (m) => m[1])
@@ -68,10 +69,10 @@ const sigDef = parseSigDef(read('ESP32-C6-heart-idf/components/logger/logger.cpp
 const hello = parseHelloChannels(read('ESP32-C6-heart-idf/components/rt_stream/rt_stream.c'));
 
 describe('the live stream announces exactly the channels the EDF+ records', () => {
-  it('finds all eleven signals in logger.cpp and in rt_stream.c', () => {
-    expect(sigDef).toHaveLength(11);
-    expect(hello).toHaveLength(11);
-    expect(EDF_CHANNELS).toHaveLength(11);
+  it('finds all thirteen signals in logger.cpp and in rt_stream.c', () => {
+    expect(sigDef).toHaveLength(13);
+    expect(hello).toHaveLength(13);
+    expect(EDF_CHANNELS).toHaveLength(13);
   });
 
   it('streams the channels in EDF signal order', () => {
@@ -96,6 +97,25 @@ describe('the live stream announces exactly the channels the EDF+ records', () =
     expect(streamed.edf_label).toBe(recorded.edf_label);
     expect(streamed.transducer).toBe(recorded.transducer);
     expect(streamed.unit).toBe(recorded.unit);
+    expect(streamed.no_reading_digital, `${name}.no_reading_digital (stream vs fixture)`).toBe(fixture.no_reading_digital);
+  });
+});
+
+describe('the temperature no-reading marker is the one logger.h writes', () => {
+  // TEMP_DIGITAL_NO_READING is what logger_temp_digital() writes for a missing
+  // reading; the stream must announce that same value, or the viewer would plot
+  // a dropout as -200 °C. It must also be inside the declared digital range —
+  // edflib clamps every sample into it, so an out-of-range marker would arrive
+  // as digital_min anyway.
+  const header = read('ESP32-C6-heart-idf/components/logger/include/logger.h');
+  const max = Number(/#define TEMP_DIGITAL_MAX\s+(\d+)/.exec(header)?.[1]);
+  const marker = /#define TEMP_DIGITAL_NO_READING\s+\(-TEMP_DIGITAL_MAX\)/.test(header) ? -max : Number.NaN;
+
+  it.each(['temp0', 'temp1'])('%s announces TEMP_DIGITAL_NO_READING, inside its digital range', (name) => {
+    const ch = hello.find((c) => c.name === name);
+    expect(ch?.no_reading_digital).toBe(marker);
+    expect(ch?.digital_min).toBe(marker);
+    expect(ch?.digital_max).toBe(max);
   });
 });
 

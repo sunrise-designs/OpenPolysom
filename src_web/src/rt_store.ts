@@ -4,7 +4,7 @@
  * builders read unchanged.
  *
  * Interleaved-and-growable rather than a pair of arrays rebuilt per render,
- * because a live session keeps everything since connect: 11 channels over a
+ * because a live session keeps everything since connect: 13 channels over a
  * night is ~17 M samples, and `chart.ts`'s `zip()` would allocate a JS array
  * object per point. Here each render tick hands ECharts a `subarray` view of
  * the buffer the samples already live in — zero copies, zero garbage.
@@ -14,7 +14,7 @@
  * arithmetic) factored out into `rt_protocol.ts` where they are pure.
  */
 
-import { affineMap, gapBefore } from './rt_protocol';
+import { gapBefore, sampleDecoder } from './rt_protocol';
 import type { RtChannelDef, RtSamples } from './rt_types';
 import type { Series, SignalSource } from './signals';
 
@@ -35,7 +35,8 @@ class ChannelBuffer {
   private readonly period: number;
 
   constructor(private readonly def: RtChannelDef, private readonly maxPoints: number) {
-    this.toPhysical = affineMap(def);
+    // The EDF+ affine map, plus the channel's no-reading marker → NaN.
+    this.toPhysical = sampleDecoder(def);
     this.period = 1 / def.sample_rate_hz;
   }
 

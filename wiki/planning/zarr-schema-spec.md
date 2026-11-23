@@ -2,13 +2,13 @@
 title: PSG-on-Zarr Schema Specification
 domain: planning
 status: snapshot
-updated: 2026-08-20
+updated: 2026-11-23
 summary: The concrete Zarr working-store + events + metadata schema and the EDF round-trip, rewritten 2026-07-19 against the single-device ESP32-C6 hardware.
 ---
 
 > Note: the language split has since settled to **C++ ingest / Python processing / TS web app** (see [decisions](../state/decisions.md)). The Zarr schema, events, metadata, and round-trip below stand; treat any in-text language attributions as the design-time snapshot.
 >
-> **Single-device hardware.** The **ESP32-C6's 11-channel EDF+ is the sole raw anchor**, and the tables below are written against `logger.cpp`'s actual `SigDef`. Three structural consequences hold throughout: there is **one clock** (§6.4 carries no cross-device offset/skew model), **one `signals/` group**, and **every captured array is `storage="digital"`** (the firmware writes `edfwrite_digital_samples` exclusively — the attribute is retained for derived arrays and future producers).
+> **Single-device hardware.** The **ESP32-C6's 13-channel EDF+ is the sole raw anchor**, and the tables below are written against `logger.cpp`'s actual `SigDef`. Three structural consequences hold throughout: there is **one clock** (§6.4 carries no cross-device offset/skew model), **one `signals/` group**, and **every captured array is `storage="digital"`** (the firmware writes `edfwrite_digital_samples` exclusively — the attribute is retained for derived arrays and future producers).
 
 # ProtoSom — PSG-on-Zarr Schema Specification (v0.1)
 
@@ -51,7 +51,7 @@ ProtoSom stores one sleep recording as a directory holding three layers. **Layer
 
 ## 3. Zarr group layout, dtypes, chunks, attributes
 
-### 3.1 Worked tree (the ESP32-C6 11-channel recording + derived)
+### 3.1 Worked tree (the ESP32-C6 13-channel recording + derived)
 
 ```
 working.zarr/                       # .zgroup {"zarr_format": 2}; root .zattrs in §6.1
@@ -66,7 +66,9 @@ working.zarr/                       # .zgroup {"zarr_format": 2}; root .zattrs i
 │   ├─ accel1_x     int16    rate 50   chunks (3000,)   storage=digital   mask=accel1_x_mask
 │   ├─ accel1_y     int16    rate 50   chunks (3000,)   storage=digital
 │   ├─ accel1_z     int16    rate 50   chunks (3000,)   storage=digital
-│   └─ rr           int16    rate 2.5  chunks (1024,)   storage=digital   mask=rr_mask
+│   ├─ rr           int16    rate 2.5  chunks (1024,)   storage=digital   mask=rr_mask
+│   ├─ temp0        int16    rate 1    chunks (1024,)   storage=digital   mask=temp0_mask
+│   └─ temp1        int16    rate 1    chunks (1024,)   storage=digital   mask=temp1_mask
 ├─ derived/
 │   ├─ accel0_mag   float32  rate 50  chunks (3000,)   gap=NaN   (per-leg PLM input)
 │   ├─ accel1_mag   float32  rate 50  chunks (3000,)   gap=NaN   (per-leg PLM input)
@@ -94,7 +96,7 @@ attribute is retained regardless, because the *derived* layer holds calibrated f
 future producer may write physical doubles. This table is canonical; §5/§6/§7 reference it and do
 not redefine dtypes.
 
-Values are exact from the `SigDef` table at `logger.cpp:473–485`.
+Values are exact from the `SigDef` table at `logger.cpp:514–529`.
 
 | Array | Source | Rate (Hz) | `storage` | Zarr dtype | digital_min/max | physical_min/max | unit | gap mechanism |
 |---|---|---|---|---|---|---|---|---|
@@ -105,6 +107,8 @@ Values are exact from the `SigDef` table at `logger.cpp:473–485`.
 | `signals/accel0_x/y/z` | MMA8451 ch0 | 50 | digital | int16 | −8192 / 8191 | −2000 / 2000 | mg | mask array |
 | `signals/accel1_x/y/z` | MMA8451 ch1 | 50 | digital | int16 | −8192 / 8191 | −2000 / 2000 | mg | mask array |
 | `signals/rr` | **none — logs zeros** | 2.5 | digital | int16 | 0 / 2000 | 0 / 2000 | ms | mask array |
+| `signals/temp0` | TMP117 0x48 | 1 | digital | int16 | −25600 / 25600 | −200 / 200 | degC | mask array, from the in-band −25600 marker |
+| `signals/temp1` | TMP117 0x49 | 1 | digital | int16 | −25600 / 25600 | −200 / 200 | degC | mask array, from the in-band −25600 marker |
 | **Future** `signals/eeg` (2D `[ch,time]`) | EEG ADC | 256 | digital | int32 | −8388608 / 8388607 | per montage | µV | mask array |
 | **Future** `signals/spo2` | pulse-ox | 1 | digital | uint8 | 0 / 100 | 0 / 100 | % | mask array |
 | **Future** `signals/body_position` | position | 1 | digital | uint8 | 0 / 5 | 0 / 5 | code | `categories` attr |
@@ -181,6 +185,11 @@ The signal-arrays slice's "fill_value = digital_min" scheme is broken against th
 
 - **Every captured array is `storage="digital"` (int)**, so the gap mechanism is uniformly a companion **`uint8` mask array** (`<name>_mask`, `0`=valid, `1`=gap) — no in-band int sentinel is safe. Mask arrays carry `protosom_role: "mask"`.
 - **`storage="physical"` (float32) arrays** exist only in `derived/`. There the gap sentinel is **`NaN`** (JSON string `"NaN"` in `.zattrs` fill_value — never a bare token; a C++ writer must emit the literal string).
+- **`signals/temp0`/`temp1` are the one exception to "no in-band sentinel".** Added 2026-11-23
+  (after this snapshot), the firmware writes the declared digital minimum −25600 (−200 °C) for a
+  missing reading, deliberately chosen to be physically impossible for a TMP117 (−55 °C floor;
+  real values clamp one step above). Ingest should derive the mask from it and keep the integer
+  unchanged, so the round-trip stays bit-exact. See [hardware § Temperature](../knowledge/hardware.md).
 - **`signals/rr` is a whole-array gap.** It is not "sometimes missing" — it has no source at all and is zeros end to end. Its mask should be all-1 from ingest, so downstream code that respects masks cannot mistake it for a flat-but-valid series.
 - The `events.json` `gap` annotation (§5) is an optional human-readable index, never the sole record of a gap.
 
@@ -564,12 +573,13 @@ EDF calibration: `physical = (digital − dmin)·(pmax − pmin)/(dmax − dmin)
 |---|---|---|---|---|---|
 | Thoracic / Abdomen | 50 | digital | `signals/thoracic`,`abdomen` int16 | EDF+ | **bit-exact** |
 | Flow | 50 | digital | `signals/flow` int16 | EDF+ | **bit-exact** |
+| Temp0 / Temp1 | 1 | digital | `signals/temp0`,`temp1` int16 | EDF+ | **bit-exact** (incl. the −25600 no-reading marker) |
 | ECG | 100 | digital | `signals/ecg` int16 | EDF+ | **bit-exact** (phys range == digital range = identity today; guarded by test #4) |
 | Accel0X/Y/Z, Accel1X/Y/Z | 50 | digital | `signals/accel{0,1}_{x,y,z}` int16 | EDF+ | **bit-exact**; phys ±2000 mg calibration preserved |
 | RR | 2.5 | digital | `signals/rr` int16 | EDF+ | **bit-exact** (of zeros — the channel has no source) |
 | EEG ×N (future) | 256 | digital | `signals/eeg` int32 (bit_depth 24) | **BDF+** | bit-exact, 3-byte two's-complement LE packing |
 
-**What is lossless, precisely:** `digital(EDF_in) == digital(EDF_out)` sample-for-sample for **every** channel — exact **by construction for all eleven**, since the firmware writes digital samples and ingest stores the integer unchanged. The half-an-EDF-quantum caveat applies only to `storage="physical"` arrays, i.e. hypothetical future producers that write physical doubles.
+**What is lossless, precisely:** `digital(EDF_in) == digital(EDF_out)` sample-for-sample for **every** channel — exact **by construction for all thirteen**, since the firmware writes digital samples and ingest stores the integer unchanged. The half-an-EDF-quantum caveat applies only to `storage="physical"` arrays, i.e. hypothetical future producers that write physical doubles.
 
 **What is still lost, and it is upstream of everything here:** the RIP channels' on-device count division (`÷15`, `÷11`) is applied *before* the EDF write, so the pre-division raw LDC1612 counts are gone from the raw anchor permanently. The round-trip faithfully reproduces the divided values; it cannot recover what was divided away. Recording the divisors in provenance (§6.5) is what makes the transform *auditable*, not reversible.
 

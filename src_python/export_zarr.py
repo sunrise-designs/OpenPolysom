@@ -142,7 +142,8 @@ def _build_events(recording_id, t0_iso, stats, leg_stats=None):
 
 def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
                    stats, recording_meta, source_path=None, skip_s=0.0, rr_t=None,
-                   accel1_mag=None, leg_stats=None, accel1_raw=None, respiratory_raw=None):
+                   accel1_mag=None, leg_stats=None, accel1_raw=None, respiratory_raw=None,
+                   temperature=None, temp_t=None):
     """Write time series to a Zarr v2 store and metadata + events to JSON sidecars.
 
     Parameters
@@ -175,11 +176,17 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
                   arbitrary sub-window (baseline removal isn't correctly re-runnable on
                   the already-filtered `accel1_mag` trace for a new, smaller window).
     respiratory_raw : tuple(list, list, list) | None — Thoracic, Abdomen, Flow (physical
-                  units: nH, nH, mbar), present on the ESP32-C6 11-channel device,
+                  units: nH, nH, mbar), present on the ESP32-C6 device,
                   absent on wrist-only logs. Written as
                   `thoracic`/`abdomen`/`flow`, sharing the accelerometer time axis `t`
                   (same 50 Hz source rate, trimmed identically). No DSP applied yet — the
                   raw physical-unit trace, for display only.
+    temperature : dict[str, list[float]] | None — TMP117 temperatures in degC keyed by
+                  array name (`temp0`, `temp1`), absent on recordings made before the
+                  sensors were fitted. Dropouts are NaN (edf_reader.NO_READING_DIGITAL),
+                  which the viewer draws as a gap. Display only, no DSP.
+    temp_t      : list[float] | None — the temperatures' own time axis in seconds (1 Hz,
+                  not the accelerometer's 50 Hz `t`), written as `temp_t`.
     """
     stem = Path(stem)
     stem.parent.mkdir(parents=True, exist_ok=True)
@@ -214,6 +221,10 @@ def save_zarr_json(stem, t, rr, accel_raw, accel_mag, hrv_t, hrv_rmssd,
         arrays['thoracic'] = np.asarray(respiratory_raw[0], dtype=np.float32)
         arrays['abdomen'] = np.asarray(respiratory_raw[1], dtype=np.float32)
         arrays['flow'] = np.asarray(respiratory_raw[2], dtype=np.float32)
+    if temperature:
+        arrays['temp_t'] = np.asarray(temp_t, dtype=np.float32)
+        for name, data in temperature.items():
+            arrays[name] = np.asarray(data, dtype=np.float32)
     if leg_stats is not None:
         # `accel_mag` above stays Accel0's own trace; the combined bilateral
         # envelope (what `stats`/`accel_mag` used to mean before both legs

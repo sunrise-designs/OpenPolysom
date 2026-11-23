@@ -2,7 +2,7 @@
 title: Data Formats
 domain: knowledge
 status: living
-updated: 2026-08-09
+updated: 2026-11-23
 summary: The on-disk formats across the three-layer data model — EDF+/BDF+ and FLAC as the raw anchor, the Zarr v2 working store as the language-neutral boundary, and the JSON sidecars — plus the three-format history, its resolution, and why the device's live sample stream is not a fourth layer.
 ---
 
@@ -48,9 +48,9 @@ C library the devices already use; `pyEDFlib` is the equivalent Python binding).
 
 ### Current acquisition channels
 
-The ESP32-C6 (`ESP32-C6-heart-idf/components/logger/logger.cpp`) writes an **11-channel EDF+**
-file (`edfopen_file_writeonly(..., EDFLIB_FILETYPE_EDFPLUS, NUM_SIGNALS)`, `logger.cpp:461`),
-in **10 s data records** (`logger.cpp:469`). The `SigDef` table (`logger.cpp:473-485`) is the
+The ESP32-C6 (`ESP32-C6-heart-idf/components/logger/logger.cpp`) writes a **13-channel EDF+**
+file (`edfopen_file_writeonly(..., EDFLIB_FILETYPE_EDFPLUS, NUM_SIGNALS)`, `logger.cpp:502`),
+in **10 s data records** (`logger.cpp:510`). The `SigDef` table (`logger.cpp:514-529`) is the
 ground truth:
 
 | # | Label | Transducer | Rate (Hz) | Phys dim | Phys range | Digital range |
@@ -62,12 +62,23 @@ ground truth:
 | 4–6 | Accel0X/Y/Z | MMA8451 ch0 | 50 | mg | ±2000 | −8192–8191 |
 | 7–9 | Accel1X/Y/Z | MMA8451 ch1 | 50 | mg | ±2000 | −8192–8191 |
 | 10 | RR | `N/A` — no live source | 2.5 | ms | 0–2000 | 0–2000 |
+| 11 | Temp0 | TMP117 0x48 | 1 | degC | ±200 | ±25600 |
+| 12 | Temp1 | TMP117 0x49 | 1 | degC | ±200 | ±25600 |
 
 `RR` is declared but **logs zeros** — the device has no R-peak detection, so there is no genuine
 cardiac interval series today. See [hardware](hardware.md) for what wiring it up would take.
 
+`Temp0`/`Temp1` were appended on 2026-11-23, so older recordings are the same layout minus the last
+two signals; readers treat them as optional. Their encoding is exact: one digital step is exactly
+1/128 °C, the TMP117's own register resolution. They are also the **only channels with a
+"no reading" value**: digital **−25600** (the declared minimum, −200 °C) means "no reading", not a
+temperature. Readers must turn it into a gap. `src_python/edf_reader.py` does this by label, and
+the live stream declares it per channel as `no_reading_digital`. Don't generalise it to "digital_min
+means missing": ECG's and RR's digital minimum is a legitimate 0. Details and rationale in
+[hardware § Temperature](hardware.md).
+
 > **The digital write path.** `logger.cpp` writes **digital** integers via
-> `edfwrite_digital_samples` (`logger.cpp:548`), so no edflib requantization happens on the way
+> `edfwrite_digital_samples` (`logger.cpp:594`), so no edflib requantization happens on the way
 > out — the on-disk digital samples are exactly what the firmware computed. C++ ingest carries
 > this forward into the working store as a per-array `storage` attribute (see below) so readers
 > know whether a Zarr array already holds physical units or needs the affine map applied. Every
@@ -75,7 +86,7 @@ cardiac interval series today. See [hardware](hardware.md) for what wiring it up
 > defined for derived arrays and for any future producer that writes calibrated doubles.
 
 > **The RIP header caveat.** Thoracic/Abdomen declare `counts` over ±1,000,000 with the raw
-> LDC1612 counts pre-divided on-device (`THORACIC_DIVISOR`/`ABDOMEN_DIVISOR`, `logger.cpp:194-195`)
+> LDC1612 counts pre-divided on-device (`THORACIC_DIVISOR`/`ABDOMEN_DIVISOR`, `logger.cpp:196-197`)
 > to use more of the digital range. The declared physical range was not adjusted to match, so
 > applying the header's affine map does **not** yield nanohenries. Treat those two channels'
 > physical units as nominal until open fork **O3** lands — see [hardware](hardware.md) and
@@ -168,7 +179,8 @@ and the [zarr schema spec](../planning/zarr-schema-spec.md).
 
 One array per dense signal, chunked along time; sparse annotations and metadata live
 in JSON sidecars, not in Zarr. `export_zarr.py` writes a shared `t` time axis plus
-per-signal arrays (`rr`, `accel_x/y/z`, `accel_mag`, `hrv_*`) — a subset of the
+per-signal arrays (`rr`, `accel_x/y/z`, `accel_mag`, `hrv_*`, and `temp0`/`temp1` on their own
+1 Hz `temp_t` axis, float32 °C with NaN for a missing reading) — a subset of the
 canonical per-channel schema, dtypes, chunk sizes, and attribute set defined in the
 **[full zarr schema spec](../planning/zarr-schema-spec.md)**.
 
